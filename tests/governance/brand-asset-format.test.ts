@@ -41,10 +41,15 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import {
+  PROVIDER_LOGO_FILES,
+  RATING_STATE_ICONS,
   STATIC_AUTHORIZATION,
   STREAMING_ORIGIN_CREDITS,
+  streamingProviderEntries,
   type LicenseLogoAsset,
 } from '@screena/legal'
+
+import { WATCH_PROVIDER_REGISTRY } from '../../services/streaming/src/provider-registry'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const publicDir = path.join(repoRoot, 'apps', 'web', 'public')
@@ -62,7 +67,91 @@ function todosOsAssets(): readonly { origem: string; asset: LicenseLogoAsset }[]
       out.push({ origem: credito.attributionText, asset: credito.logoAsset })
     }
   }
+  // Os provedores de streaming: a licenca nasce por provedor REGISTRADO, e o
+  // registro real (`WATCH_PROVIDER_REGISTRY`) e a lista que vale aqui.
+  for (const entrada of streamingProviderEntries(
+    WATCH_PROVIDER_REGISTRY.map((p) => ({ slug: p.slug, canonicalName: p.canonicalName })),
+  )) {
+    if (entrada.license.logoAsset !== null) {
+      out.push({ origem: entrada.label, asset: entrada.license.logoAsset })
+    }
+  }
   return out
+}
+
+/**
+ * Todo ARQUIVO de marca declarado — logotipos e icones de estado — com o que o
+ * registro afirma sobre os bytes. Os icones de estado ficam FORA de
+ * `todosOsAssets` de proposito: la eles seriam exatamente o defeito do teste (2).
+ */
+function todosOsArquivos(): readonly {
+  origem: string
+  path: string
+  format: string
+  status: string
+  intrinsicSize: { readonly width: number; readonly height: number } | null
+}[] {
+  return [
+    ...todosOsAssets().map(({ origem, asset }) => ({
+      origem,
+      path: asset.path,
+      format: asset.format,
+      status: asset.status,
+      intrinsicSize: asset.intrinsicSize,
+    })),
+    ...RATING_STATE_ICONS.map((icon) => ({
+      origem: `icone de estado ${icon.ratingSource}/${icon.state}`,
+      path: icon.path,
+      format: icon.format,
+      status: icon.status,
+      intrinsicSize: icon.intrinsicSize,
+    })),
+  ]
+}
+
+/**
+ * As dimensoes REAIS do arquivo, lidas do cabecalho. `null` = cabecalho que este
+ * leitor nao conhece (achado, nao default).
+ *   PNG   IHDR: largura/altura big-endian nos bytes 16..23
+ *   WEBP  VP8L (sem perda): 14 bits de largura-1 e 14 de altura-1 a partir do byte 21
+ *         VP8X (estendido): 24 bits de largura-1 no byte 24 e de altura-1 no 27
+ *         VP8  (com perda): largura/altura (14 bits) nos bytes 26 e 28
+ *   SVG   o `viewBox` (vetor nao tem pixel: a proporcao e o que conta)
+ */
+function dimensoesReais(arquivo: string): { width: number; height: number } | null {
+  const fd = openSync(arquivo, 'r')
+  try {
+    const buf = Buffer.alloc(512)
+    const lidos = readSync(fd, buf, 0, 512, 0)
+    const head = buf.subarray(0, lidos)
+    if (head[0] === 0x89 && head.subarray(1, 4).toString('latin1') === 'PNG') {
+      return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) }
+    }
+    if (
+      head.subarray(0, 4).toString('latin1') === 'RIFF' &&
+      head.subarray(8, 12).toString('latin1') === 'WEBP'
+    ) {
+      const chunk = head.subarray(12, 16).toString('latin1')
+      if (chunk === 'VP8L') {
+        const bits = head.readUInt32LE(21)
+        return { width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 }
+      }
+      if (chunk === 'VP8X') {
+        return { width: head.readUIntLE(24, 3) + 1, height: head.readUIntLE(27, 3) + 1 }
+      }
+      if (chunk === 'VP8 ') {
+        return { width: head.readUInt16LE(26) & 0x3fff, height: head.readUInt16LE(28) & 0x3fff }
+      }
+      return null
+    }
+    const viewBox = /viewBox="\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)\s*"/.exec(
+      head.toString('utf8'),
+    )
+    if (viewBox !== null) return { width: Number(viewBox[1]), height: Number(viewBox[2]) }
+    return null
+  } finally {
+    closeSync(fd)
+  }
 }
 
 /**
@@ -125,13 +214,13 @@ describe('assets de marca: o arquivo e o que o registro afirma', () => {
     // Asset ainda `pending_official_file` normalmente NAO tem arquivo — e isso
     // e legitimo. Quando o arquivo EXISTE, os bytes mandam.
     const divergentes: string[] = []
-    for (const { origem, asset } of todosOsAssets()) {
-      const arquivo = path.join(publicDir, asset.path.replace(/^\//, ''))
+    for (const item of todosOsArquivos()) {
+      const arquivo = path.join(publicDir, item.path.replace(/^\//, ''))
       if (!existsSync(arquivo)) continue
       const real = formatoReal(arquivo)
-      if (real !== asset.format) {
+      if (real !== item.format) {
         divergentes.push(
-          `${origem}: ${asset.path} declara "${asset.format}" e os bytes dizem "${String(real)}"`,
+          `${item.origem}: ${item.path} declara "${item.format}" e os bytes dizem "${String(real)}"`,
         )
       }
     }
@@ -148,10 +237,10 @@ describe('assets de marca: o arquivo e o que o registro afirma', () => {
     // Antes de o arquivo existir, a extensao e o unico sinal — e um
     // `imdb.svg` com `format: "webp"` ja seria contraditorio no registro.
     const errados: string[] = []
-    for (const { origem, asset } of todosOsAssets()) {
-      const ext = path.extname(asset.path).replace('.', '').toLowerCase()
-      if (ext !== asset.format) {
-        errados.push(`${origem}: ${asset.path} declara "${asset.format}"`)
+    for (const item of todosOsArquivos()) {
+      const ext = path.extname(item.path).replace('.', '').toLowerCase()
+      if (ext !== item.format) {
+        errados.push(`${item.origem}: ${item.path} declara "${item.format}"`)
       }
     }
     expect(errados).toEqual([])
@@ -162,10 +251,10 @@ describe('assets de marca: o arquivo e o que o registro afirma', () => {
     // nao estiver, o render pediria uma imagem que 404 — e a ausencia deixaria
     // de ser registrada, que e o oposto do desenho.
     const faltando: string[] = []
-    for (const { origem, asset } of todosOsAssets()) {
-      if (asset.status !== 'present') continue
-      if (!existsSync(path.join(publicDir, asset.path.replace(/^\//, '')))) {
-        faltando.push(`${origem}: ${asset.path}`)
+    for (const item of todosOsArquivos()) {
+      if (item.status !== 'present') continue
+      if (!existsSync(path.join(publicDir, item.path.replace(/^\//, '')))) {
+        faltando.push(`${item.origem}: ${item.path}`)
       }
     }
     expect(faltando).toEqual([])
@@ -177,5 +266,71 @@ describe('assets de marca: o arquivo e o que o registro afirma', () => {
     const imdb = todosOsAssets().find((a) => a.asset.path.includes('imdb'))
     expect(imdb, 'nao ha asset declarado para o IMDb').toBeDefined()
     expect(imdb?.asset.displayConditions.join(' ')).toContain('trademarks of IMDb.com')
+  })
+
+  it('(7) as dimensoes DECLARADAS batem com as do arquivo (senao o width do <img> mente)', () => {
+    // `intrinsicSize` vira o atributo `width` na tela. Declarado errado, o
+    // navegador reserva o espaco errado e o logo salta ao chegar (CLS).
+    const divergentes: string[] = []
+    let conferidos = 0
+    for (const item of todosOsArquivos()) {
+      if (item.intrinsicSize === null) continue
+      const arquivo = path.join(publicDir, item.path.replace(/^\//, ''))
+      if (!existsSync(arquivo)) continue
+      const real = dimensoesReais(arquivo)
+      conferidos += 1
+      if (
+        real === null ||
+        real.width !== item.intrinsicSize.width ||
+        real.height !== item.intrinsicSize.height
+      ) {
+        divergentes.push(
+          `${item.origem}: declara ${item.intrinsicSize.width}x${item.intrinsicSize.height}, ` +
+            `arquivo tem ${real === null ? '?' : `${real.width}x${real.height}`}`,
+        )
+      }
+    }
+    expect(conferidos, 'controle positivo: ha arquivos com dimensao declarada').toBeGreaterThan(30)
+    expect(divergentes).toEqual([])
+  })
+
+  it('(8) TODO provedor registrado tem logo NO AR (ordem do proprietario, 2026-09-11)', () => {
+    // "inclua OBRIGATORIAMENTE AS LOGOS dos servicos de stream". Provedor novo
+    // no registro sem arquivo reprova AQUI — e nao em producao, com a
+    // palavra-marca no lugar e ninguem percebendo.
+    const semArquivo = WATCH_PROVIDER_REGISTRY.map((p) => p.slug).filter(
+      (slug) => PROVIDER_LOGO_FILES[slug] === undefined,
+    )
+    expect(semArquivo).toEqual([])
+    // E o inverso: arquivo declarado para slug fora do registro e lixo.
+    const orfaos = Object.keys(PROVIDER_LOGO_FILES).filter(
+      (slug) => !WATCH_PROVIDER_REGISTRY.some((p) => p.slug === slug),
+    )
+    expect(orfaos).toEqual([])
+  })
+
+  it('(9) o logo do provedor e o do PRIMEIRO alias TMDB do registro', () => {
+    // O `provider_id` do arquivo tem de ser a identidade que o registro usa. Um
+    // id trocado poria o logo de uma plataforma na oferta de outra.
+    for (const entry of WATCH_PROVIDER_REGISTRY) {
+      const primeiroTmdb = entry.aliases.find((a) => a.providerApi === 'tmdb')
+      expect(primeiroTmdb, `${entry.slug} sem alias tmdb`).toBeDefined()
+      expect(PROVIDER_LOGO_FILES[entry.slug]?.tmdbProviderId, entry.slug).toBe(
+        Number(primeiroTmdb!.externalKey),
+      )
+    }
+  })
+
+  it('(10) icone de estado: faixas da mesma fonte e metrica nunca se sobrepoem', () => {
+    // Duas faixas sobrepostas dariam dois icones para o mesmo numero — um deles
+    // necessariamente errado.
+    for (const a of RATING_STATE_ICONS) {
+      expect(a.kind).toBe('state_icon')
+      for (const b of RATING_STATE_ICONS) {
+        if (a === b || a.ratingSource !== b.ratingSource || a.scoreType !== b.scoreType) continue
+        const sobrepoe = a.band.min < b.band.maxExclusive && b.band.min < a.band.maxExclusive
+        expect(sobrepoe, `${a.state} x ${b.state}`).toBe(false)
+      }
+    }
   })
 })

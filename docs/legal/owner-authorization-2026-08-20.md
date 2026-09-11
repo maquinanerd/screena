@@ -92,3 +92,24 @@ corepack pnpm legal sources apply --reviewer="Pablo Eduardo — proprietario da 
 
 Quem roda é o proprietário, em produção. O apply é idempotente e preserva
 histórico (`supersedes_id`); a leva é `cinerie-source-auth/2026-08-v2`.
+
+## Adendo — 11/09/2026: os arquivos entram
+
+**Pablo Eduardo, proprietário da Cinerie, 11/09/2026**, reenviando os arquivos:
+
+> "substitua as logos, para cada area do site, e inclua OBRIGATORIAMENTE AS
+> LOGOS dos serviços de stream e dos sites de notas. ação obrigatória."
+
+Nenhuma permissão nova: `logo_allowed` já era `true` desde 20/08. O que entrou
+foram os **arquivos** (`OWNER_ORDER_2026_09_11` em `authorization-spec.ts`):
+
+| Alvo | Arquivo | Estado |
+|---|---|---|
+| IMDb | `/brand/sources/imdb.webp` (bytes do proprietário) | `present` |
+| Metacritic | `/brand/sources/metacritic.webp` (bytes do proprietário) | `present` |
+| Rotten Tomatoes | o tomate *Fresh* entregue **não é palavra-marca**: entrou como **ícone de estado** (`RATING_STATE_ICONS`), só com Tomatometer ≥ 60% | palavra-marca segue `pending_official_file` |
+| 33 provedores de streaming | `/brand/providers/{slug}.png` (entrega licenciada do TMDB, `w154`) | `present` |
+| JustWatch | — | segue `pending_official_file` |
+
+**Não exige `legal sources apply`:** `licenseMatches` não compara o asset, então
+nenhuma licença é supersedida — a mudança vai ao ar com o deploy do app.

@@ -8,6 +8,15 @@
 > "completar o que falta na página" deve ler isto antes.
 >
 > Atualizado em 2026-08-12.
+>
+> **Atualização 2026-09-11 — marcas.** Os trechos abaixo que dizem
+> `logoAllowed: false` ("os wordmarks não são portáveis", "sem logo") descrevem o
+> estado ANTERIOR à decisão do proprietário de 20/08/2026. Desde 11/09/2026 o
+> chip de nota mostra o logo do IMDb e do Metacritic, o tomate *Fresh* à esquerda
+> do Tomatometer ≥ 60%, e a fileira "Onde assistir" mostra o logo de cada serviço
+> — sempre o arquivo que a licença declara, nunca desenhado. Ver
+> [`docs/legal/owner-authorization-2026-08-20.md`](../legal/owner-authorization-2026-08-20.md)
+> (adendo de 11/09/2026).
 
 ---
 

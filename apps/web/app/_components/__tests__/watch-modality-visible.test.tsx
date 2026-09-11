@@ -80,6 +80,7 @@ function tickerItem(modalityLabel: string): HomeTickerItem {
     provider: {
       name: 'Fictiloja',
       key: 'fictiloja',
+      logo: null,
       modalityLabel,
       attributionText: 'Disponibilidade fornecida por Exemplo Agregador',
       attributionUrl: 'https://exemplo.test/sobre',
@@ -214,6 +215,8 @@ describe('4/4 — hub onde assistir', () => {
     {
       key: 'solo:fictiloja',
       name: 'Fictiloja',
+      // Provedor fictício: sem arquivo de marca declarado, sem logo.
+      logo: null,
       routes: [{ providerName: 'Fictiloja', label: null }],
       titles: [
         {

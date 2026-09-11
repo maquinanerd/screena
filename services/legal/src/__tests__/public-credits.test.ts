@@ -17,12 +17,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PROVIDER_LOGO_FILES,
   STATIC_AUTHORIZATION,
   STREAMING_ORIGIN_CREDITS,
   TMDB_LOGO_ASSET,
   type AuthorizationEntry,
 } from "../authorization-spec.js";
-import { publicSourceCredits, tmdbNonEndorsementDisclaimer } from "../public-credits.js";
+import {
+  publicRatingSourceMark,
+  publicRatingStateIcon,
+  publicSourceCredits,
+  publicTrademarkNotices,
+  publicWatchProviderLogo,
+  tmdbNonEndorsementDisclaimer,
+} from "../public-credits.js";
 
 /** Textos da projecao real, para assercoes de conteudo. */
 const textsOf = (credits: readonly { text: string }[]): string[] =>
@@ -255,10 +263,14 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
     const tmdb = publicSourceCredits().find((c) => c.text.includes("TMDB"));
     expect(tmdb, "o credito do TMDB tem de existir").toBeDefined();
     expect(tmdb!.text.length).toBeGreaterThan(0);
+    const size = TMDB_LOGO_ASSET.intrinsicSize!;
     expect(tmdb!.logo).toEqual({
       src: TMDB_LOGO_ASSET.path,
       alt: TMDB_LOGO_ASSET.alt,
       heightPx: TMDB_LOGO_ASSET.displayHeightPx,
+      // A largura sai da PROPORCAO do arquivo na altura declarada — e ela que o
+      // <img> leva no atributo `width` para nao haver salto de layout.
+      widthPx: Math.round((TMDB_LOGO_ASSET.displayHeightPx * size.width) / size.height),
     });
     // O controle que impede o assert de virar tautologia: se alguem rebaixar o
     // arquivo para pendente, este teste tem de reprovar em vez de se adaptar.
@@ -267,13 +279,25 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
   });
 
   it("fonte de nota com logo autorizado e arquivo AUSENTE: textual + pendencia declarada", () => {
-    // O estado real do IMDb hoje (decisao do dono, arquivo ainda fora do
-    // repositorio). O credito textual sai; o logo nao; e `logoPending` e a
+    // O estado real do Rotten Tomatoes hoje (decisao do dono; a palavra-marca
+    // ainda fora do repositorio — o que entrou foi o icone de ESTADO, que nunca
+    // ocupa este slot). O credito textual sai; o logo nao; e `logoPending` e a
     // unica coisa que separa isto de "nada e devido".
-    const imdb = publicSourceCredits().find((c) => c.text.includes("IMDb"));
-    expect(imdb, "o credito do IMDb tem de existir").toBeDefined();
-    expect(imdb!.logo).toBeNull();
-    expect(imdb!.logoPending).toBe(true);
+    const rt = publicSourceCredits().find((c) => c.text.includes("Rotten Tomatoes"));
+    expect(rt, "o credito do Rotten Tomatoes tem de existir").toBeDefined();
+    expect(rt!.logo).toBeNull();
+    expect(rt!.logoPending).toBe(true);
+  });
+
+  it("IMDb e Metacritic com arquivo PRESENTE (2026-09-11): logo sobe e o texto continua", () => {
+    for (const nome of ["IMDb", "Metacritic"]) {
+      const credito = publicSourceCredits().find((c) => c.text === `Nota fornecida por ${nome}`);
+      expect(credito, `o credito de ${nome} tem de existir`).toBeDefined();
+      expect(credito!.logo?.alt).toBe(nome);
+      expect(credito!.logo?.src).toMatch(/^\/brand\/sources\/.+\.webp$/);
+      expect(credito!.logoPending).toBe(false);
+      expect(credito!.text).toContain(nome);
+    }
   });
 
   it("com o arquivo OFICIAL presente, o logo sobe — e o texto CONTINUA", () => {
@@ -289,6 +313,7 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
           alt: "TMDB",
           displayHeightPx: 18,
           format: "svg",
+          intrinsicSize: null,
           kind: "wordmark",
           displayConditions: [],
           status: "present",
@@ -300,6 +325,8 @@ describe("publicSourceCredits — a projecao publica do registro de licencas", (
       src: "/brand/sources/tmdb-primary.svg",
       alt: "TMDB",
       heightPx: 18,
+      // Sem dimensoes declaradas, sem largura inventada.
+      widthPx: null,
     });
     expect(credito!.logoPending).toBe(false);
     expect(credito!.text).toContain("TMDB");
@@ -318,5 +345,101 @@ describe("tmdbNonEndorsementDisclaimer — exigencia dos termos da API", () => {
       (entry) => entry.license.sourceKey !== "tmdb",
     );
     expect(() => tmdbNonEndorsementDisclaimer(semTmdb)).toThrow(/licenca do TMDB ausente/i);
+  });
+});
+
+describe("publicTrademarkNotices — condicoes de marca das fontes com logo no ar", () => {
+  it("o IMDb, com logo presente, exige a declaracao de marca registrada", () => {
+    expect(publicTrademarkNotices()).toContain(
+      "IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its affiliates.",
+    );
+  });
+
+  it("condicao de marca de logo PENDENTE nao sai (texto juridico sem objeto)", () => {
+    const imdb = STATIC_AUTHORIZATION.find((e) => e.license.ratingSourceKey === "imdb")!;
+    const pendente: AuthorizationEntry = {
+      ...imdb,
+      license: {
+        ...imdb.license,
+        logoAsset: { ...imdb.license.logoAsset!, status: "pending_official_file" },
+      },
+    };
+    expect(publicTrademarkNotices([pendente], [])).toEqual([]);
+  });
+});
+
+describe("publicRatingSourceMark — a marca da fonte de nota, pela licenca", () => {
+  it("IMDb e Metacritic: arquivo declarado e presente", () => {
+    expect(publicRatingSourceMark("imdb").logo?.src).toBe("/brand/sources/imdb.webp");
+    expect(publicRatingSourceMark("metacritic").logo?.src).toBe("/brand/sources/metacritic.webp");
+  });
+
+  it("largura derivada da proporcao do arquivo (IMDb 960x484 a 18px = 36px)", () => {
+    expect(publicRatingSourceMark("imdb").logo).toEqual({
+      src: "/brand/sources/imdb.webp",
+      alt: "IMDb",
+      heightPx: 18,
+      widthPx: 36,
+    });
+  });
+
+  it("Rotten Tomatoes: palavra-marca pendente — sem logo, com pendencia declarada", () => {
+    expect(publicRatingSourceMark("rotten_tomatoes")).toEqual({ logo: null, logoPending: true });
+  });
+
+  it("fonte com exibicao revogada ou desconhecida: nada (nem pendencia)", () => {
+    expect(publicRatingSourceMark("letterboxd")).toEqual({ logo: null, logoPending: false });
+    expect(publicRatingSourceMark("fonte_inexistente")).toEqual({ logo: null, logoPending: false });
+  });
+});
+
+describe("publicRatingStateIcon — icone de ESTADO derivado do VALOR", () => {
+  it("Tomatometer >= 60: o tomate Fresh", () => {
+    expect(publicRatingStateIcon("rotten_tomatoes", "critics", 60)?.alt).toBe("Fresh");
+    expect(publicRatingStateIcon("rotten_tomatoes", "critics", 100)?.src).toBe(
+      "/brand/sources/rotten-tomatoes-fresh.webp",
+    );
+  });
+
+  it("Tomatometer < 60: nenhum icone (o Rotten Splat nao esta no repositorio)", () => {
+    expect(publicRatingStateIcon("rotten_tomatoes", "critics", 59)).toBeNull();
+    expect(publicRatingStateIcon("rotten_tomatoes", "critics", 0)).toBeNull();
+  });
+
+  it("o tomate e SO do Tomatometer: publico, outra fonte e valor invalido nao ganham", () => {
+    expect(publicRatingStateIcon("rotten_tomatoes", "audience", 90)).toBeNull();
+    expect(publicRatingStateIcon("imdb", "audience", 90)).toBeNull();
+    expect(publicRatingStateIcon("metacritic", "critics", 90)).toBeNull();
+    expect(publicRatingStateIcon("rotten_tomatoes", "critics", Number.NaN)).toBeNull();
+  });
+
+  it("sem licenca de marca da fonte, o icone nao sai", () => {
+    const semMarca: AuthorizationEntry[] = STATIC_AUTHORIZATION.map((e) =>
+      e.license.ratingSourceKey === "rotten_tomatoes"
+        ? { ...e, license: { ...e.license, logoAllowed: false, logoBasis: null, logoAsset: null } }
+        : e,
+    );
+    expect(publicRatingStateIcon("rotten_tomatoes", "critics", 90, semMarca)).toBeNull();
+  });
+});
+
+describe("publicWatchProviderLogo — o logo do provedor, pela licenca dele", () => {
+  it("todo provedor com arquivo declarado projeta o PNG da entrega TMDB", () => {
+    const slugs = Object.keys(PROVIDER_LOGO_FILES);
+    expect(slugs.length).toBeGreaterThan(30); // controle positivo
+    for (const slug of slugs) {
+      const logo = publicWatchProviderLogo(slug, "Nome");
+      expect(logo, slug).not.toBeNull();
+      expect(logo!.src).toBe(`/brand/providers/${slug}.png`);
+      expect(logo!.alt).toBe("Nome");
+      expect(logo!.heightPx).toBe(24);
+    }
+  });
+
+  it("slug sem arquivo, vazio ou chave de fornecedor nao vira logo", () => {
+    expect(publicWatchProviderLogo("provedor-sem-arquivo", "X")).toBeNull();
+    expect(publicWatchProviderLogo("", "X")).toBeNull();
+    expect(publicWatchProviderLogo(null, "X")).toBeNull();
+    expect(publicWatchProviderLogo("vendor:8", "X")).toBeNull();
   });
 });

@@ -251,7 +251,7 @@ export default async function ExplorePage({
                     <div className="disc-feature__where">
                       <span className="disc-feature__where-label">Onde assistir</span>
                       {/*
-                        Provedores como TEXTO (logo_allowed=false), com a
+                        Provedores com o LOGO que a licenca declara + o nome, com a
                         MODALIDADE ao lado do nome. Nomear so a marca num titulo
                         que so tem compra/aluguel afirma ao leitor que ja esta
                         incluso na assinatura dele — e compra+aluguel sao a
@@ -260,6 +260,7 @@ export default async function ExplorePage({
                       {featured.watchProviders.map((provider) => (
                         <WatchPlatformLine
                           key={provider.name}
+                          logo={provider.logo}
                           modalityLabels={provider.modalityLabels}
                           name={provider.name}
                         />

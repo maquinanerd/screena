@@ -134,12 +134,29 @@ export default async function WatchBrowsePage() {
             <>
               <div className="watch-hero__kicker">Serviços de streaming no Cinerie</div>
               <div className="watch-hero__services">
-                {/* MARCAS como TEXTO: logo_allowed=false (licença). Uma entrada
-                    por marca, com as rotas embaixo — a rota diz o que o leitor
-                    precisa contratar, e somê-la esconderia um custo. */}
+                {/* MARCAS com o LOGO que a licença de cada provedor declara
+                    (ordem do proprietário, 2026-09-11) e o nome escrito ao lado.
+                    Uma entrada por marca, com as rotas embaixo — a rota diz o que
+                    o leitor precisa contratar, e somê-la esconderia um custo. */}
                 {brands.map((brand) => (
                   <span className="watch-hero__service" key={brand.key}>
-                    <span className="watch-hero__service-name">{brand.name}</span>
+                    <span className="watch-hero__service-name">
+                      {brand.logo !== null ? (
+                        <img
+                          alt=""
+                          aria-hidden="true"
+                          className="watch-logo watch-logo--hero"
+                          decoding="async"
+                          // ~30 marcas no hero: sem prioridade baixa, o React
+                          // 19 emitiria ~30 preloads de prioridade alta.
+                          fetchPriority="low"
+                          height={brand.logo.heightPx}
+                          src={brand.logo.src}
+                          width={brand.logo.widthPx ?? undefined}
+                        />
+                      ) : null}
+                      {brand.name}
+                    </span>
                     {brand.routes.length > 1 ? (
                       <span className="watch-hero__service-routes">
                         {brand.routes
@@ -169,6 +186,14 @@ export default async function WatchBrowsePage() {
               brands={brands.map((brand) => ({
                 key: brand.key,
                 name: brand.name,
+                logo:
+                  brand.logo === null
+                    ? null
+                    : {
+                        src: brand.logo.src,
+                        heightPx: brand.logo.heightPx,
+                        widthPx: brand.logo.widthPx,
+                      },
                 routes: brand.routes.map((route) => ({
                   providerName: route.providerName,
                   label: route.label,

@@ -18,6 +18,7 @@ import { CardBookmark } from '../../../_components/card-bookmark'
 import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
 import type { NewsArticleView } from '../../../../src/lib/news-presenter'
+import { CINERIE_SCORE_LOGO } from '../../../../src/lib/brand-logos'
 import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
@@ -384,8 +385,17 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
               {/* Área de score do canônico: Cinerie Score segue BLOQUEADO —
                   estado honesto, nunca outra métrica no lugar. */}
               <div className="art-ficha__stats">
-                <span>
-                  Cinerie Score <strong>—</strong> ainda não calculado
+                <span className="art-ficha__score">
+                  <img
+                    alt="Cinerie Score"
+                    className="art-ficha__score-logo"
+                    decoding="async"
+                    height={CINERIE_SCORE_LOGO.height}
+                    loading="lazy"
+                    src={CINERIE_SCORE_LOGO.src}
+                    width={CINERIE_SCORE_LOGO.width}
+                  />{' '}
+                  <strong>—</strong> ainda não calculado
                 </span>
               </div>
               {card.summary !== null ? <p className="art-ficha__summary">{card.summary}</p> : null}

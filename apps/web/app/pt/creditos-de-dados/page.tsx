@@ -115,8 +115,9 @@ export default function CreditosDeDadosPage(): ReactNode {
           <h2>Marcas e imagens</h2>
           <p>
             Imagens, pôsteres, logotipos e marcas pertencem aos respectivos titulares. A
-            Cinerie credita cada fonte em texto e não reproduz a marca gráfica de
-            terceiros: as licenças registradas não autorizam o uso de logotipo.
+            Cinerie credita cada fonte em texto e, onde a licença registrada autoriza,
+            exibe também o logotipo oficial da fonte ou da plataforma, apenas para
+            identificá-la — sem alterar a marca e sem sugerir parceria.
           </p>
           <p>
             A presença de uma fonte, marca, produto ou serviço na Cinerie não implica

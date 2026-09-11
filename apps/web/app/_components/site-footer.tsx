@@ -15,7 +15,9 @@ import {
   FOOTER_SOCIAL_LINKS,
   SITE_INDEX_PATH,
   TMDB_DISCLAIMER,
+  TRADEMARK_NOTICES,
 } from "../../src/config/footer";
+import { CINERIE_AREA_LOGOS } from "../../src/lib/brand-logos";
 import { HOME_HREF } from "../../src/lib/navigation";
 import { PRIVACY_PATH, TERMS_PATH } from "../../src/lib/routes";
 
@@ -57,15 +59,17 @@ import { PRIVACY_PATH, TERMS_PATH } from "../../src/lib/routes";
  *    traz um — e a projeção só traz quando a licença autoriza E o arquivo
  *    oficial existe. Nenhum SVG de terceiro é escrito aqui dentro.
  *
- *    A razão (a) continua de pé e é hoje o único bloqueio: o arquivo oficial do
- *    TMDB não está no repositório. Enquanto não estiver, a licença fica em
- *    `pending_official_file`, o crédito sai textual, e a ausência é REGISTRADA
- *    (`SectionBoundary`, motivo `source_logo_asset_missing`) em vez de muda.
- *    Desenhar uma aproximação de marca registrada seria pior que a ausência.
+ *    Estado em 2026-09-11: TMDB, IMDb e Metacritic com arquivo oficial no
+ *    repositório (logo no ar); Rotten Tomatoes e JustWatch ainda sem a
+ *    palavra-marca — a licença fica em `pending_official_file`, o crédito sai
+ *    textual e a ausência é REGISTRADA (`SectionBoundary`, motivo
+ *    `source_logo_asset_missing`) em vez de muda. Desenhar uma aproximação de
+ *    marca registrada seria pior que a ausência.
  * 2. WORDMARK. A spec pede `uploads/5f-logo-branca-sublinhado-branco.svg`, que
- *    não existe aqui. Usamos `/brand/cinerie-wordmark-white.svg`, a variante
- *    branca aprovada do repositório para fundo escuro. Ela não tem o sublinhado
- *    (esse dispositivo pertencia ao logo antigo, "Screen").
+ *    não existe aqui. Usamos a marca-mãe BRANCA entregue pelo proprietário em
+ *    2026-09-11 (`CINERIE_AREA_LOGOS.neutral.inverse`, ver
+ *    `src/lib/brand-logos.ts`) — o rodapé é o mesmo em toda área, então leva a
+ *    marca-mãe, não a da seção.
  * 3. WIKIDATA não aparece: não há licença de Wikidata em `authorization-spec.ts`.
  *    Creditar uma fonte que o registro legal não conhece seria inventar
  *    procedência. Registre a licença e o crédito aparece sozinho.
@@ -91,6 +95,9 @@ function decisaoDeLogo(logo: PublicCreditLogo | null): SectionDecision<PublicCre
     }),
   };
 }
+
+/** A marca-mãe branca (o rodapé é escuro e igual em toda área). */
+const FOOTER_WORDMARK = CINERIE_AREA_LOGOS.neutral.inverse;
 
 /** Ícones oficiais das redes. Decorativos: o nome vem do `aria-label` do link. */
 const SOCIAL_ICONS: Readonly<Record<string, ReactNode>> = {
@@ -177,9 +184,9 @@ export function SiteFooter(): ReactNode {
             <img
               alt=""
               className="footer__wordmark"
-              height={46}
-              src="/brand/cinerie-wordmark-white.svg"
-              width={150}
+              height={FOOTER_WORDMARK.height}
+              src={FOOTER_WORDMARK.src}
+              width={FOOTER_WORDMARK.width}
             />
           </a>
           {/* Sem perfil real cadastrado, a faixa some inteira. Um círculo que
@@ -268,7 +275,8 @@ export function SiteFooter(): ReactNode {
           </nav>
 
           {/*
-            OS CRÉDITOS. Texto, nunca logo (ver o cabeçalho, divergência 1).
+            OS CRÉDITOS. Texto SEMPRE; o logo vai ao lado quando a licença o
+            autoriza e o arquivo oficial existe (ver o cabeçalho, divergência 1).
             Cada item sai verbatim de `services/legal`; este componente não sabe
             o nome de nenhuma fonte. Uma licença nova aparece aqui sozinha.
           */}
@@ -305,8 +313,11 @@ export function SiteFooter(): ReactNode {
                           aria-hidden="true"
                           className="footer__credit-logo"
                           data-credit-logo={credit.creditKey}
+                          decoding="async"
                           height={logo.heightPx}
+                          loading="lazy"
                           src={logo.src}
+                          width={logo.widthPx ?? undefined}
                         />
                       )}
                     </SectionBoundary>
@@ -335,14 +346,24 @@ export function SiteFooter(): ReactNode {
               titulares. Detalhes em{" "}
               <a href={DATA_CREDITS_PATH}>Créditos de dados</a>.
             </p>
+            {/*
+              CONDIÇÕES DE MARCA das fontes cujo logo está no ar — hoje, a
+              declaração de marca registrada que o IMDb exige em QUALQUER
+              material que exiba a marca dele. Sai da LICENÇA
+              (`displayConditions`), nunca de um literal: condição não satisfeita
+              = logo não acende, e este rodapé está em toda página.
+            */}
+            {TRADEMARK_NOTICES.length > 0 ? (
+              <p className="footer__trademarks">{TRADEMARK_NOTICES.join(" ")}</p>
+            ) : null}
           </div>
           <img
             aria-hidden="true"
             alt=""
             className="footer__wordmark footer__wordmark--base"
-            height={30}
-            src="/brand/cinerie-wordmark-white.svg"
-            width={120}
+            height={FOOTER_WORDMARK.height}
+            src={FOOTER_WORDMARK.src}
+            width={FOOTER_WORDMARK.width}
           />
         </div>
       </div>

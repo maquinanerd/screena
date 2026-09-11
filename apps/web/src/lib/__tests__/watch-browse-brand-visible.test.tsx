@@ -102,6 +102,8 @@ function mount(slugs: Array<[string, string]>): HTMLElement {
       brands={brands.map((brand) => ({
         key: brand.key,
         name: brand.name,
+        // O logo que o agrupamento REAL resolveu pela licenca do provedor.
+        logo: brand.logo,
         routes: brand.routes.map((route) => ({
           providerName: route.providerName,
           label: route.label,

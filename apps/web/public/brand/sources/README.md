@@ -1,104 +1,81 @@
 # Marcas de fonte (`/brand/sources/`)
 
-Arquivos de **marca de terceiros**, servidos como atribuição.
+Arquivos de **marca de terceiros**, servidos como atribuição e identificação.
 
 > Nada aqui é decorativo. Um arquivo só entra neste diretório quando a licença
 > correspondente em [`authorization-spec.ts`](../../../../../services/legal/src/authorization-spec.ts)
-> declara `logoAllowed: true` **e** aponta para ele em `logoAsset.path`.
+> declara `logoAllowed: true` **e** aponta para ele — em `logoAsset.path`
+> (logotipo) ou em `RATING_STATE_ICONS` (ícone de estado).
 
 ## Regra
 
-1. **O arquivo tem de ser o oficial do detentor**, baixado da página que ele
-   publica para atribuição. Nunca um espelho de terceiro, nunca um redesenho,
-   nunca uma aproximação. Marca distorcida é violação, não cortesia — por isso o
-   render é *fail-closed*: sem arquivo, o crédito sai só em texto e a ausência é
-   registrada (`section_absent` / `source_logo_asset_missing`), nunca preenchida.
-2. **O logo nunca substitui o crédito textual.** Os termos do TMDB pedem os dois
-   (marca **e** disclaimer de não-endosso), e um crédito que virasse só imagem
-   sumiria para leitor de tela e para quem bloqueia imagem.
-3. **Nenhum SVG inline em componente.** A página lê `logoAsset.path`; ela não
+1. **O arquivo é o que o detentor publica, ou o que o proprietário entregou** —
+   nunca um redesenho ou aproximação. Marca distorcida é violação, não cortesia:
+   o render é *fail-closed* — sem arquivo, o crédito sai só em texto e a ausência
+   é registrada (`section_absent` / `source_logo_asset_missing`), nunca
+   preenchida.
+2. **O logo nunca substitui o crédito textual.** O crédito vive no rodapé global,
+   sempre em texto; o logo vai ao lado dele.
+3. **Nenhum SVG inline em componente.** A página lê o caminho declarado; ela não
    desenha marca de ninguém.
 
-## Pendências
+## Estado (2026-09-11)
 
-| Arquivo | Fonte | Situação | Onde baixar |
-|---|---|---|---|
-| `tmdb-primary.svg` | TMDB | **Faltando.** A licença exige (`status: "pending_official_file"`) | <https://www.themoviedb.org/about/logos-attribution> |
+| Arquivo | Fonte | Tipo | Situação | Onde aparece |
+|---|---|---|---|---|
+| `tmdb-primary.svg` | TMDB | palavra-marca | **no ar** desde 2026-08-20 (os termos **exigem** o logo) | rodapé |
+| `imdb.webp` | IMDb | palavra-marca | **no ar** desde 2026-09-11 | chip da nota, rodapé |
+| `metacritic.webp` | Metacritic | palavra-marca | **no ar** desde 2026-09-11 | chip da nota, rodapé |
+| `rotten-tomatoes-fresh.webp` | Rotten Tomatoes | **ícone de estado** (*Fresh*) | **no ar** desde 2026-09-11, só com Tomatometer ≥ 60% | chip da nota, à esquerda do número |
+| `rotten-tomatoes.svg` | Rotten Tomatoes | palavra-marca | **pendente** — o slot mostra "Rotten Tomatoes" em texto | — |
+| `rotten-tomatoes-rotten.webp` | Rotten Tomatoes | ícone de estado (*Rotten Splat*) | **pendente** — nota < 60% sai sem ícone | — |
+| `justwatch.svg` | JustWatch | palavra-marca | **pendente** — crédito em texto no rodapé | — |
 
-O TMDB **exige** o logo dele: *"You must use the TMDB logo to identify Your use
-of TMDB, the TMDB APIs, or TMDB Content"* (termos da API, seção 3). Os mesmos
-termos impõem o limite: ele deve ser **menos proeminente** que a marca do próprio
-produto e não pode sugerir endosso — por isso `displayHeightPx: 18`, contra 28px
-do wordmark da Cinerie no rodapé.
+Os três arquivos de 2026-09-11 foram entregues pelo proprietário (a mesma leva de
+2026-08-21, reenviada com ordem expressa de publicar). Os bytes entraram **sem
+recodificação**.
 
-Depois de colocar o arquivo, mude `status` para `"present"` em
-`TMDB_LOGO_ASSET`. Nenhum componente precisa ser tocado.
+## Os arquivos entregues tinham extensão `.svg` e NÃO eram SVG
 
-## Fontes cujo logo NÃO entra
+Cabeçalho `RIFF....WEBPVP8L`: são **WEBP raster** renomeados. Por isso entraram
+como `.webp`, com `format: "webp"` na licença.
+`tests/governance/brand-asset-format.test.ts` lê o cabeçalho e compara com o
+declarado — formato **e** dimensões.
 
-IMDb, Rotten Tomatoes, Metacritic, OMDb, Movie of the Night, JustWatch e as 24
-plataformas de streaming. O motivo de **cada uma** está escrito em
-`logoRationale`, na própria licença. Resumo: nenhuma delas concedeu o direito, e
-autorização do dono não cria direito que a fonte não deu.
+## Por que o tomate não ocupa o lugar do logotipo do Rotten Tomatoes
 
----
-
-## Os três arquivos baixados em 2026-08-21 — leia antes de usar
-
-Eles têm extensão `.svg`. **Nenhum dos três é SVG.** Cabeçalho
-`RIFF....WEBPVP8L`: são **WEBP raster** renomeados.
-
-| Arquivo | Formato real | Dimensão | Situação |
-| --- | --- | --- | --- |
-| `imdb.svg` | **WEBP** | 960 × 484 | Palavra-marca correta. Entra como **`imdb.webp`**. |
-| `metacritic.svg` | **WEBP** | 250 × 57 | Palavra-marca correta. Resolução justa — confira 2x antes de promover. Entra como **`metacritic.webp`**. |
-| `rottentomatoes.svg` | **WEBP** | 250 × 255 | **ARQUIVO ERRADO. NÃO USE.** |
-
-### Por que o do Rotten Tomatoes não entra
-
-Não é a marca do Rotten Tomatoes: é o **ícone do tomate fresco**, o indicador de
-estado *Fresh* do Tomatometer.
-
-Isso viola a **invariante 1**. O tomate fresco não é logo neutro — ele **afirma
-que o título é Fresh**. Ao lado de um Tomatometer de 40%, diz ao leitor o
-contrário do número que está do lado. É a mesma família de "nota IMDb virar
-tomates": a marca carregando um juízo que o dado não sustenta.
+O arquivo entregue como `rotten-tomatoes.svg` não é a palavra-marca: é o **ícone
+do tomate fresco**, o indicador de estado *Fresh* do Tomatometer. Ele **afirma**
+que o título é Fresh — ao lado de um Tomatometer de 40%, diria ao leitor o
+contrário do número (invariante 1).
 
 > **Regra que entra e fica: ícone de estado nunca é marca.** Fresh, Rotten,
-> Certified Fresh e Popcornmeter são indicadores de **resultado**. Se um dia
-> forem exibidos, é **derivado do valor real da nota** — nunca fixo, nunca como
-> logotipo. O logotipo do Rotten Tomatoes é a palavra-marca.
+> Certified Fresh e Popcornmeter são indicadores de **resultado**. Eles vivem em
+> `RATING_STATE_ICONS`, cada um com a faixa do valor em que é verdadeiro, e só
+> aparecem quando o **valor real** cai na faixa — à esquerda do número, como o
+> titular exige.
 
-Até a palavra-marca existir, a fonte é creditada em **texto**, na mesma caixa e
-na mesma âncora dos logos — a linha não pode ficar torta com dois arquivos e um
-texto misturados.
+Desde 2026-09-11: nota ≥ 60% mostra o tomate; nota < 60% sai **sem ícone** até o
+Rotten Splat oficial entrar — nunca com o tomate no lugar dele. A palavra-marca
+do Rotten Tomatoes continua pendente: o slot do chip mostra o nome em texto.
 
-### O que o registro exige de cada arquivo
-
-`LicenseLogoAsset` (em `services/legal/src/authorization-spec.ts`) declara
-`format`, `kind`, `displayHeightPx` e `displayConditions`. Dois testes de
-governança conferem, em `tests/governance/brand-asset-format.test.ts`:
-
-- **o `format` declarado é comparado com o CABEÇALHO dos bytes** — extensão é
-  palpite do sistema de arquivos, os bytes são o fato. Raster declarado como
-  vetor é a mesma classe de defeito do `COLOR_TOKENS`: campo que mente porque
-  nada o confere;
-- **`kind: "state_icon"` é recusado no slot de logotipo.**
-
-### Condição gravada na licença — IMDb
+## Condição gravada na licença — IMDb
 
 O IMDb exige, em **qualquer** material que exiba a marca:
 
 > IMDb, IMDb.COM, and the IMDb logo are trademarks of IMDb.com, Inc. or its
 > affiliates.
 
-Ela vive em `displayConditions` do asset, não em copy de componente.
-**Condição não satisfeita = logo não acende.** Usos fora das diretrizes
-publicadas exigem permissão por escrito.
+Ela vive em `displayConditions` do asset e sai no **rodapé de toda página**
+(`publicTrademarkNotices`), então está presente onde quer que o logo apareça.
+**Condição não satisfeita = logo não acende.**
 
-### Regras que valem para qualquer marca de terceiro
+## Regras que valem para qualquer marca de terceiro
 
-- **Nenhum SVG desenhado à mão.** Arquivo oficial ou palavra-marca; nunca
-  aproximação — marca distorcida é violação, não cortesia.
-- **Altura e proporção respeitadas.** Nada de marca de terceiro esticada.
+- **Nenhum SVG desenhado à mão.** Arquivo oficial/entregue ou palavra-marca em
+  texto; nunca aproximação.
+- **Altura e proporção respeitadas.** A altura vem da licença
+  (`displayHeightPx`); a largura, da proporção do arquivo (`intrinsicSize`).
+- **Nunca recolorir.** No rodapé escuro as marcas ficam sobre uma placa clara —
+  quem se adapta é o fundo, nunca a marca.
 - **O crédito textual permanece.** Logo não substitui atribuição.

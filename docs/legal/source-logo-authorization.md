@@ -47,17 +47,31 @@ nominal** — liberar qualquer fonte fora dela derruba o `apply` antes de escrev
 autorizar *usar* o que foi concedido; ele não pode conceder, em nome do IMDb, um
 direito que o IMDb condiciona a pedido por escrito.
 
-## Estado hoje
+## Estado hoje (2026-09-11)
 
-`logo_allowed = true` para as três licenças do TMDB (`other`, `image`, `video`) —
-mesma fonte, três `content_type`, **um único crédito** no rodapé.
+> **A tabela acima é a PESQUISA de 20/08/2026, anterior à decisão do
+> proprietário.** Na mesma data o proprietário autorizou a marca das fontes de
+> nota exibíveis, do JustWatch e dos provedores de streaming
+> ([`owner-authorization-2026-08-20.md`](./owner-authorization-2026-08-20.md),
+> base `owner_decision`), e em 11/09/2026 ordenou publicar os arquivos. A coluna
+> `logo_allowed` da tabela ficou histórica; o regime descrito em "Regra real"
+> continua sendo o registro do que cada titular publica.
 
-O **arquivo ainda não está no repositório**. Enquanto não estiver, a licença fica
-em `pending_official_file`, o crédito sai textual e a ausência é **registrada**
-(`section_absent` / `source_logo_asset_missing`, `actionable: true`) em vez de
-muda. Desenhar uma aproximação de marca registrada seria pior que a ausência.
+| Fonte | `logo_allowed` | Base | Arquivo |
+|---|---|---|---|
+| TMDB (`other`, `image`, `video`) | ✅ | `source_terms` | `tmdb-primary.svg` — **no ar** desde 2026-08-20 |
+| IMDb | ✅ | `owner_decision` | `imdb.webp` — **no ar** desde 2026-09-11 (declaração de marca no rodapé) |
+| Metacritic | ✅ | `owner_decision` | `metacritic.webp` — **no ar** desde 2026-09-11 |
+| Rotten Tomatoes | ✅ | `owner_decision` | palavra-marca **pendente**; ícone de estado *Fresh* **no ar** desde 2026-09-11, só com Tomatometer ≥ 60% |
+| JustWatch | ✅ | `owner_decision` | **pendente** (crédito em texto) |
+| 33 provedores de streaming | ✅ | `owner_decision` | **no ar** desde 2026-09-11 — PNG da entrega licenciada do TMDB, um por provedor registrado ([`providers/README.md`](../../apps/web/public/brand/providers/README.md)) |
+| Letterboxd / FilmAffinity / OMDb / Movie of the Night | ❌ | — | exibição revogada ou sem marca a exibir |
 
-Instruções para colocar o arquivo:
+O que continua valendo: arquivo pendente = crédito textual + ausência
+**registrada** (`section_absent` / `source_logo_asset_missing`), nunca aproximação
+desenhada.
+
+Instruções por arquivo:
 [`apps/web/public/brand/sources/README.md`](../../apps/web/public/brand/sources/README.md).
 
 ## Invariantes que isto não toca

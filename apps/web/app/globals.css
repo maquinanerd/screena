@@ -439,14 +439,22 @@ dl {
 .site-header__brand {
   display: flex;
   align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
+  /* Pode encolher: em tela estreita a marca de area (a mais larga) cede espaco
+     aos icones de 44px em vez de empurra-los para fora da barra. */
+  flex-shrink: 1;
+  min-width: 0;
+  /* Altura da PALAVRA "cinerie", igual em todas as areas. Cada arte escala por
+     `--logo-scale` (altura do arquivo / 163 — ver src/lib/brand-logos.ts). */
+  --brand-word-h: 28px;
 }
 
 .site-header__logo {
-  width: 97px;
-  height: 30px;
   display: block;
+  width: auto;
+  height: calc(var(--brand-word-h) * var(--logo-scale, 1));
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
 }
 
 /* Wordmark: as duas versoes estao no HTML, o CSS mostra uma. Padrao = solida. */
@@ -460,14 +468,6 @@ dl {
 
 .site-header[data-overlay='true'] .site-header__logo--inverse {
   display: block;
-}
-
-.site-header__news {
-  font-size: 24px;
-  font-weight: 800;
-  color: var(--c-accent-movie);
-  letter-spacing: 0.04em;
-  margin-left: 11px;
 }
 
 .site-header__nav {
@@ -601,6 +601,25 @@ dl {
   }
   .site-header__inner {
     padding-inline: var(--pad-page-mobile);
+  }
+  .site-header__brand {
+    --brand-word-h: 24px;
+  }
+}
+
+/* Telefone: a marca de area mais larga ("cinerie /serie e tv") precisa caber ao
+   lado dos tres alvos de toque de 44px. A 375px sobram ~183px com os vaos
+   abaixo; a arte de serie a 20px de palavra ocupa ~175px. Abaixo disso a marca
+   encolhe (object-fit), nunca empurra os icones. */
+@media (max-width: 480px) {
+  .site-header__inner {
+    gap: 12px;
+  }
+  .site-header__actions {
+    gap: 4px;
+  }
+  .site-header__brand {
+    --brand-word-h: 20px;
   }
 }
 
@@ -744,13 +763,12 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 
 .footer__wordmark {
   display: block;
-  width: 150px;
-  height: 46px;
+  width: auto;
+  height: 36px;
 }
 
 .footer__wordmark--base {
-  width: 120px;
-  height: 30px;
+  height: 24px;
   opacity: 0.55;
 }
 
@@ -995,6 +1013,13 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   height: 13px;
   width: auto;
   max-width: 100%;
+  /* PLACA CLARA: o rodape e escuro e ha marcas de fonte com texto preto (a
+     palavra-marca do Metacritic sumiria). A cor da marca NUNCA e alterada:
+     quem se adapta e o fundo. `content-box` mantem os 13 px na ARTE. */
+  box-sizing: content-box;
+  padding: 3px 6px;
+  background: #fff;
+  border-radius: 3px;
 }
 
 .footer__credit-text {
@@ -1037,6 +1062,14 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 .footer__disclaimer a {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* Condicoes de marca das fontes com logo no ar (ex.: declaracao do IMDb). */
+.footer__trademarks {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--footer-text-quaternary);
 }
 
 /* ---- Responsivo (FOOTER-SPEC.md §7) ---- */
@@ -3743,9 +3776,9 @@ a.tabs__tab[aria-current='page'] {
   min-width: 0;
 }
 
-/* Slot da marca: TEXTO, nunca logo (logo_allowed = false em toda licenca).
-   Ocupa a mesma faixa vertical que o SVG do canonico (21px) para a fileira
-   manter o ritmo. */
+/* Slot da marca: o ARQUIVO que a licenca declara (IMDb, Metacritic) ou, sem
+   arquivo, a palavra-marca em texto (Rotten Tomatoes). Ocupa a mesma faixa
+   vertical que a marca do canonico (21px) para a fileira manter o ritmo. */
 .rating-chip__mark {
   display: block;
   min-height: 21px;
@@ -3754,6 +3787,27 @@ a.tabs__tab[aria-current='page'] {
   letter-spacing: 0.02em;
   color: #12100e;
   overflow-wrap: anywhere;
+}
+
+.rating-chip__mark--logo {
+  display: flex;
+  align-items: center;
+}
+
+/* A ALTURA vem da licenca (`displayHeightPx`, no estilo inline do <img>); aqui
+   so a largura fica livre. Marca de terceiro esticada e violacao. */
+.rating-chip__logo {
+  display: block;
+  width: auto;
+  max-width: 100%;
+}
+
+/* Icone de ESTADO (tomate Fresh): a esquerda do numero, como o titular exige. */
+.rating-chip__state {
+  display: inline-block;
+  width: auto;
+  margin-right: 6px;
+  vertical-align: -1px;
 }
 
 .rating-chip__score {
@@ -5423,6 +5477,13 @@ a.media-strip__cell {
   color: var(--c-text-primary);
 }
 
+.art-ficha__score-logo {
+  display: inline-block;
+  height: 13px;
+  width: auto;
+  vertical-align: -2px;
+}
+
 .art-ficha__summary {
   font-size: 14px;
   line-height: 1.65;
@@ -6380,7 +6441,7 @@ h4.art-body__heading {
   flex-wrap: wrap;
 }
 
-/* Provedor como TEXTO (logo_allowed=false — licença): pill neutra escura */
+/* Provedor: LOGO declarado pela licenca + nome, numa pill neutra escura */
 .watch-hero__service {
   height: 52px;
   display: inline-flex;
@@ -6419,6 +6480,9 @@ h4.art-body__heading {
 }
 
 .watch-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -6753,6 +6817,8 @@ h4.art-body__heading {
 }
 
 .disc-feature__provider {
+  display: inline-flex;
+  align-items: center;
   font-size: 11.5px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
@@ -9156,6 +9222,12 @@ h4.art-body__heading {
   margin-bottom: 8px;
 }
 
+.auth-brand img {
+  display: block;
+  height: 28px;
+  width: auto;
+}
+
 .auth-lede {
   text-align: center;
   font-size: 14px;
@@ -10287,7 +10359,9 @@ h4.art-body__heading {
 }
 
 .watch-hero__service-name {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .watch-hero__service-routes {
@@ -10886,6 +10960,14 @@ main[data-vertical='series'] .detail-hero__genre-chip {
   text-transform: uppercase;
 }
 
+/* A marca "cinerie score" (degrade, arte do proprietario) no lugar do rotulo
+   em texto. Altura fixa, proporcao livre — marca nunca e esticada. */
+.score-card__logo {
+  display: block;
+  height: 17px;
+  width: auto;
+}
+
 main[data-vertical='movie'] .score-card__label {
   color: var(--c-accent-movie-dark);
 }
@@ -10975,6 +11057,7 @@ main[data-vertical='series'] .score-card__label {
 .watch-brands__mark {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-height: 20px;
   font-size: 14px;
   font-weight: 800;
@@ -10988,6 +11071,41 @@ main[data-vertical='series'] .score-card__label {
   font-size: 10px;
   font-weight: 600;
   color: var(--c-text-muted-aa);
+}
+
+/* LOGO DE PROVEDOR — o arquivo que a licenca do provedor declara (entrega
+   licenciada do TMDB; ordem do proprietario de 2026-09-11). Icone quadrado de
+   app: cantos arredondados e `contain` para o raro arquivo nao quadrado nunca
+   ser esticado. A marca nunca e recolorida nem cortada. */
+.watch-logo {
+  display: block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.watch-logo--tab {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+
+.watch-logo--hero {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.watch-logo--line,
+.watch-logo--ticker {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  vertical-align: -4px;
+  margin-right: 6px;
 }
 
 /* Corpo da sinopse completa em "A OBRA" (variant work do EntitySynopsis). */

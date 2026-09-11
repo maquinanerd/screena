@@ -43,6 +43,7 @@ import {
   type HomeTickerItem,
   type TickerProvider,
 } from "../lib/home-ticker-presenter";
+import { publicWatchProviderLogo } from "@screena/legal/public-credits";
 import {
   selectTickerWatchOffer,
   type WatchAvailabilityRow,
@@ -238,6 +239,8 @@ async function resolveProviders(
     out.set(key, {
       name: offer.providerName,
       key: offer.providerKey,
+      // Logo pela LICENCA do provedor (slug canonico), nunca por nome.
+      logo: publicWatchProviderLogo(offer.providerSlug, offer.providerName),
       // MODALIDADE em texto visivel (ver TickerProvider): nomear a loja sem
       // dizer "Aluguel" afirma que o titulo esta incluso numa assinatura.
       // (Sem citar marca nem em comentario: o guard varre o TEXTO do arquivo.)

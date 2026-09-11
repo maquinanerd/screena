@@ -21,8 +21,8 @@ const markup = renderToStaticMarkup(React.createElement(SiteFooter))
 
 mkdirSync(path.join(outDir, 'brand'), { recursive: true })
 copyFileSync(
-  path.join(root, 'public/brand/cinerie-wordmark-white.svg'),
-  path.join(outDir, 'brand/cinerie-wordmark-white.svg'),
+  path.join(root, 'public/brand/cinerie-wordmark-white.webp'),
+  path.join(outDir, 'brand/cinerie-wordmark-white.webp'),
 )
 writeFileSync(
   path.join(outDir, 'index.html'),
