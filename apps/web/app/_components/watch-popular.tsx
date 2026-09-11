@@ -6,6 +6,10 @@
  * ratings externos e UI de avaliação seguem inativos (estado honesto; dado
  * ausente nunca vira outra métrica). Diferenciação filme/série por badge
  * textual (invariante 11).
+ *
+ * Cada aba carrega o LOGO da plataforma (arquivo declarado pela licença do
+ * provedor, calculado no servidor) ao lado do nome escrito — o nome continua
+ * sendo o rótulo acessível da aba; o logo é decorativo no HTML.
  */
 
 import { useState } from 'react'
@@ -28,6 +32,13 @@ export interface WatchPopularTitle {
   offerTypeLabels: string[]
 }
 
+/** O logo de uma plataforma, ja resolvido pela licença no servidor. */
+export interface WatchPopularLogo {
+  src: string
+  heightPx: number
+  widthPx: number | null
+}
+
 /**
  * Uma MARCA do hub: um nome que o leitor reconhece e as rotas que levam a ela.
  *
@@ -40,6 +51,8 @@ export interface WatchPopularTitle {
 export interface WatchPopularBrand {
   key: string
   name: string
+  /** Logo da marca; `null` = só o nome (provedor sem arquivo presente). */
+  logo: WatchPopularLogo | null
   /** Rotas da marca. `label` null = marca de rota unica (nome ja diz tudo). */
   routes: { providerName: string; label: string | null }[]
   titles: WatchPopularTitle[]
@@ -78,6 +91,18 @@ export function WatchPopular({ brands }: { brands: WatchPopularBrand[] }): React
             role="tab"
             type="button"
           >
+            {brand.logo !== null ? (
+              <img
+                alt=""
+                aria-hidden="true"
+                className="watch-logo watch-logo--tab"
+                decoding="async"
+                height={brand.logo.heightPx}
+                loading="lazy"
+                src={brand.logo.src}
+                width={brand.logo.widthPx ?? undefined}
+              />
+            ) : null}
             {brand.name}
           </button>
         ))}

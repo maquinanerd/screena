@@ -73,9 +73,16 @@ describe("ratings-panel — componente publico", () => {
     expect(code).not.toMatch(/fornecida por/i);
   });
 
-  it("NUNCA renderiza logo/imagem de fonte (logo_allowed=false)", () => {
-    expect(code).not.toContain("<img");
-    expect(code).not.toMatch(/logo/i);
+  it("marca da fonte SO pelo arquivo que a licenca declara — nunca desenhada nem literal", () => {
+    // Ate 2026-09-11 este teste exigia ZERO <img> (logo_allowed=false). A
+    // permissao de marca veio em 2026-08-20 (decisao do proprietario) e os
+    // arquivos em 2026-09-11 (ordem expressa). O que continua proibido e o que
+    // importava: marca DESENHADA no componente ou caminho de arquivo LITERAL —
+    // as unicas imagens do painel sao as que o presenter repassa da licenca.
+    expect(code).not.toContain("<svg");
+    expect(code).not.toMatch(/src="\/brand/);
+    const srcs = [...code.matchAll(/src=\{([^}]+)\}/g)].map((m) => m[1]!.trim());
+    expect(srcs).toEqual(["item.logo.src", "item.stateIcon.src"]);
   });
 
   it("nao inventa nota propria nem AggregateRating", () => {

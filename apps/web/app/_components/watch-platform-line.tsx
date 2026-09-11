@@ -13,19 +13,35 @@ import type { ReactNode } from 'react'
  * Aluguel" e melhor que duas entradas da mesma marca, que e o defeito do hub
  * duplicado com outra roupa.
  *
- * NUNCA logo: a licenca do agregador da `logo_allowed = false`. So texto.
+ * O LOGO da plataforma (quando a licenca do provedor declara arquivo presente)
+ * vai ANTES do nome, e o nome continua escrito: o logo e decorativo no HTML.
  */
 export function WatchPlatformLine({
   name,
   modalityLabels,
+  logo = null,
 }: {
   /** Nome CANONICO da plataforma (nunca o nome do fornecedor tecnico). */
   name: string
   /** Rotulos pt-BR ja na ordem canonica (incluso antes do que custa). */
   modalityLabels: readonly string[]
+  /** Logo declarado pela licenca do provedor; `null` = so o nome. */
+  logo?: { readonly src: string; readonly heightPx: number; readonly widthPx: number | null } | null
 }): ReactNode {
   return (
     <span className="disc-feature__provider">
+      {logo !== null ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="watch-logo watch-logo--line"
+          decoding="async"
+          height={logo.heightPx}
+          loading="lazy"
+          src={logo.src}
+          width={logo.widthPx ?? undefined}
+        />
+      ) : null}
       <span className="disc-feature__provider-name">{name}</span>
       {modalityLabels.map((label) => (
         <span className="disc-feature__provider-modality" key={label}>

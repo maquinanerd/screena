@@ -19,14 +19,23 @@
  *    `requires_attribution` — o que mudou foi o endereco do credito, nunca a
  *    obrigacao. Ver `toPanelItem` para as duas metades que substituiram o gate
  *    antigo, e docs/legal/source-authorization-matrix.md para a matriz.
- *  - SEM logo: `logo_allowed = false` para todas as fontes. O painel exibe o
- *    NOME da fonte em texto, nunca a marca grafica.
+ *  - MARCA GRAFICA so pela LICENCA: o slot da fonte mostra o arquivo que
+ *    `authorization-spec.ts` declara (`logoAsset` com status `present` — IMDb e
+ *    Metacritic desde 2026-09-11) e a palavra-marca em texto quando o arquivo
+ *    falta (Rotten Tomatoes). O icone de ESTADO (tomate Fresh) e DERIVADO do
+ *    valor (>= 60%) e nunca ocupa o slot da marca. Nenhuma marca e desenhada
+ *    aqui: o presenter so repassa `publicRatingSourceMark`/`publicRatingStateIcon`.
  *  - SEM nota propria: este painel nunca agrega, calcula media ou inventa um
  *    "Cinerie Score". Ele so reexibe nota de terceiro, creditada.
  *  - SUFIXO E PROPRIEDADE DA FONTE, nao do numero. Ver `RATING_VALUE_SUFFIX`.
  */
 
 import { RATING_SCALES, type RatingSource } from "@screena/config";
+import {
+  publicRatingSourceMark,
+  publicRatingStateIcon,
+  type PublicCreditLogo,
+} from "@screena/legal/public-credits";
 import type { PublicExternalRating, RatingsPayload } from "@screena/public-contracts";
 
 /**
@@ -125,8 +134,20 @@ const SCORE_TYPE_LABELS: Readonly<Record<string, string>> = {
 export interface RatingsPanelItem {
   /** `rating_source` (imdb, rotten_tomatoes, ...) — usado como chave/data-attr. */
   sourceKey: string;
-  /** Nome da FONTE editorial, em texto (nunca logo). */
+  /** Nome da FONTE editorial, em texto. Vira o `alt` quando ha logo. */
   sourceLabel: string;
+  /**
+   * A MARCA GRAFICA da fonte, quando a licenca a autoriza E o arquivo oficial
+   * esta no repositorio (`publicRatingSourceMark`). `null` = o slot mostra
+   * `sourceLabel` em texto, na mesma caixa.
+   */
+  logo: PublicCreditLogo | null;
+  /**
+   * Icone de ESTADO DERIVADO DO VALOR — hoje so o tomate Fresh do Tomatometer, e
+   * so com >= 60% (`publicRatingStateIcon`). Fica ao lado do NUMERO, nunca no
+   * slot da marca: ele afirma um resultado, a marca nao afirma nada.
+   */
+  stateIcon: PublicCreditLogo | null;
   /** Natureza da nota, crua (para data-attr e teste). */
   scoreType: string;
   /** Natureza da nota, legivel ("Crítica"/"Público"/"Editorial"). */
@@ -301,6 +322,10 @@ function toPanelItem(rating: PublicExternalRating): RatingsPanelItem | null {
   return {
     sourceKey: rating.sourceKey,
     sourceLabel,
+    // A marca e o icone de estado vem da LICENCA (via projecao publica), nunca
+    // de um literal aqui. Fonte sem arquivo presente cai no texto.
+    logo: publicRatingSourceMark(rating.sourceKey).logo,
+    stateIcon: publicRatingStateIcon(rating.sourceKey, rating.scoreType, rating.value),
     scoreType: rating.scoreType,
     scoreTypeLabel,
     metricLabel,

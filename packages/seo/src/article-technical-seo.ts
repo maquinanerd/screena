@@ -312,7 +312,16 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
   jsonLd.publisher = {
     '@type': 'Organization',
     name: facts.siteName,
-    ...(publisherUrl === null ? {} : { url: publisherUrl }),
+    ...(publisherUrl === null
+      ? {}
+      : {
+          url: publisherUrl,
+          // A marca-mãe raster (PNG 672x163) — o mesmo arquivo de
+          // `CINERIE_ORGANIZATION_LOGO` (apps/web/src/lib/brand-logos.ts),
+          // amarrado por teste. Sem origem nao ha logo absoluto: o publisher
+          // degrada inteiro, nunca aponta para caminho relativo.
+          logo: { '@type': 'ImageObject', url: `${publisherUrl}/brand/cinerie-logo.png` },
+        }),
   }
 
   /*

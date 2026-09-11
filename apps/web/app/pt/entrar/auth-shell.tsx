@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { AdSlot } from '../../_components/ad-slot'
+import { CINERIE_AREA_LOGOS } from '../../../src/lib/brand-logos'
 
 /**
  * AuthShell — moldura da tela 16 do canônico (Entrar/Cadastrar), estrutura
@@ -28,7 +29,12 @@ export function AuthShell({
     <div className="auth-layout">
       <div className="auth-col">
         <div className="auth-brand">
-          <img alt="Cinerie" height={28} src="/brand/cinerie-wordmark-black.svg" width={146} />
+          <img
+            alt="Cinerie"
+            height={CINERIE_AREA_LOGOS.neutral.solid.height}
+            src={CINERIE_AREA_LOGOS.neutral.solid.src}
+            width={CINERIE_AREA_LOGOS.neutral.solid.width}
+          />
         </div>
         <p className="auth-lede">{lede}</p>
         <div className="auth-card">

@@ -87,14 +87,15 @@ describe('navegação pública global', () => {
     expect(isActiveNavigationPath(null, '/pt/')).toBe(false)
   })
 
-  it('usa a wordmark aprovada com nome acessível e menu mobile de verdade', () => {
-    // Guard ATUALIZADO DELIBERADAMENTE: o design canônico usa a wordmark
-    // aprovada do handoff (uploads/5a–5j) com sublinhado por contexto. A marca
-    // continua NOMEADA para leitores de tela via aria-label do link; o menu
-    // mobile usa <dialog> nativo (foco preso + Escape).
+  it('usa a marca aprovada com nome acessível e menu mobile de verdade', () => {
+    // Guard ATUALIZADO DELIBERADAMENTE (2026-09-11): o header usa a marca POR
+    // ÁREA entregue pelo proprietário (src/lib/brand-logos.ts, que tem teste
+    // próprio lendo os bytes de cada arquivo). A marca continua NOMEADA para
+    // leitores de tela via aria-label do link; o menu mobile usa <dialog>
+    // nativo (foco preso + Escape).
     const header = read('apps/web/app/_components/site-header.tsx')
     expect(header).toContain('aria-label="Cinerie — início"')
-    expect(header).toMatch(/cinerie-wordmark-(?:black|white)/)
+    expect(header).toContain('CINERIE_AREA_LOGOS')
     expect(header).toContain('NAV_ITEMS.map')
     expect(header).toContain('<dialog')
     expect(header).toContain("aria-current={active ? 'page' : undefined}")

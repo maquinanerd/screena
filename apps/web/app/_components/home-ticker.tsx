@@ -66,7 +66,20 @@ function providerCta(provider: TickerProvider): ReactNode {
         guard de governanca varre o TEXTO do componente, e uma marca citada em
         comentario reprova igual (ver no-fake-streaming-in-ui).
       */}
-      Onde assistir <strong>{provider.name}</strong>
+      Onde assistir{' '}
+      {provider.logo !== null ? (
+        <img
+          alt=""
+          aria-hidden="true"
+          className="watch-logo watch-logo--ticker"
+          decoding="async"
+          fetchPriority="low"
+          height={provider.logo.heightPx}
+          src={provider.logo.src}
+          width={provider.logo.widthPx ?? undefined}
+        />
+      ) : null}
+      <strong>{provider.name}</strong>
       <span className="home-ticker__modality"> · {provider.modalityLabel}</span>
     </>
   )
@@ -75,7 +88,8 @@ function providerCta(provider: TickerProvider): ReactNode {
 /**
  * CTA por tipo de novidade. Com provedor licenciado, "Onde assistir ·
  * <provedor>"; sem ele, a ficha real da entidade ("Ver filme" / "Ver série").
- * Nunca plataforma que não tenha vindo do banco, nunca logo.
+ * Nunca plataforma que não tenha vindo do banco; logo só o que a licença do
+ * provedor declara (`provider.logo`), e o nome continua escrito ao lado.
  */
 function ctaLabel(item: HomeTickerItem): ReactNode {
   if (item.provider !== null) {

@@ -27,6 +27,7 @@ import {
   trendingAbsenceFor,
   type TrendingAbsenceReason,
 } from './trending-snapshot'
+import { publicWatchProviderLogo, type PublicCreditLogo } from '@screena/legal/public-credits'
 import { distinctWatchPlatforms, resolveWatchPlatform } from '../lib/watch-platform-identity'
 import {
   describeUnsupportedWatchModality,
@@ -56,6 +57,8 @@ export interface DiscoverWatchPlatform {
   name: string
   /** Rotulos pt-BR ja na ordem canonica (incluso antes do que custa). */
   modalityLabels: string[]
+  /** Logo declarado pela licenca do provedor; `null` = so o nome. */
+  logo: PublicCreditLogo | null
 }
 
 export interface DiscoverFeatured extends DiscoverCard {
@@ -63,7 +66,7 @@ export interface DiscoverFeatured extends DiscoverCard {
   backdropUrl: string | null
   summary: string | null
   /**
-   * Plataformas com oferta LICENCIADA vigente (texto, nunca logo), cada uma com
+   * Plataformas com oferta LICENCIADA vigente (nome + logo da licenca), cada uma com
    * as MODALIDADES que ela oferece — "Prime Video · Assinatura · Aluguel".
    *
    * Era `string[]` (so o nome). Compra e aluguel sao a maioria do corpus, entao
@@ -353,6 +356,9 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
       .map((platform) => ({
         name: platform.displayName,
         modalityLabels: watchModalityLabels(modalitiesByBucket.get(platform.bucketKey) ?? []),
+        // `bucketKey` e o slug canonico (ou `vendor:...` sem alias, que nunca
+        // casa com arquivo — cai no nome).
+        logo: publicWatchProviderLogo(platform.bucketKey, platform.displayName),
       }))
       // Plataforma cuja unica oferta tinha modalidade desconhecida sai da lista:
       // exibir a marca sem dizer o que ela custa e exatamente o que esta

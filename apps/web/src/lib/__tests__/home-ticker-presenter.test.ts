@@ -26,6 +26,7 @@ const PROVIDER: TickerProvider = {
   // plataforma sem a modalidade afirma que o titulo esta incluso na assinatura
   // que o leitor ja paga, e compra/aluguel sao a maioria do corpus.
   modalityLabel: "Assinatura",
+  logo: null,
   attributionText: "Disponibilidade fornecida por Movie of the Night",
   attributionUrl: "https://www.movieofthenight.com/",
 };
