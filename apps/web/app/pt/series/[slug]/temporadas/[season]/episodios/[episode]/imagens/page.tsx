@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { serializeJsonLd } from '@screena/seo'
+import { QUALITY_GATE_ROBOTS, serializeJsonLd } from '@screena/seo'
 
 import { GalleryImageGrid } from '../../../../../../../../_components/gallery-grids'
 import { GalleryShell } from '../../../../../../../../_components/gallery-shell'
@@ -99,10 +99,16 @@ export async function generateMetadata({
   return {
     title,
     description: `${String(images.total)} imagens do episódio "${view.episodeTitle}", fornecidas pelo TMDB.`,
-    // O MESMO piso de pagina fina das outras galerias: abaixo dele a pagina
-    // RESPONDE (o conteudo existe) mas nao indexa. E o caso tecnico da
-    // invariante 5 — o episodio dono continua indexando normalmente.
-    robots: gatePublicRobots({ index: images.indexable, follow: true }),
+    // D1 (decisao do dono, 2026-09-11): galeria nunca indexa como pagina
+    // propria.
+    //
+    // Isto tambem fecha o VAZAMENTO que a auditoria achou aqui. A decisao era so
+    // o piso de imagens (`images.indexable`), sem olhar o episodio dono — e o
+    // dono esta suspenso desde 2026-08-27. A galeria de um episodio `noindex`
+    // saia `index, follow`. O comentario que morava aqui ("o episodio dono
+    // continua indexando normalmente") era falso desde a suspensao. Uma galeria
+    // que nunca indexa nao consegue ser mais indexavel que o dono.
+    robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: canonical === null ? undefined : { canonical: `${SITE_URL}${canonical}` },
     openGraph: {
       title,

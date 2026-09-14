@@ -22,6 +22,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  OWNER_EXCLUDED_SITEMAP_TYPES,
   SITEMAP_TYPE_URL_CEILING,
   SUSPENDED_SITEMAP_TYPES,
   getSitemapIndexXml,
@@ -35,8 +36,11 @@ import {
 import { REPO_ROOT, readSourceWithoutComments } from "../support/source-text";
 import path from "node:path";
 
-/** Tipos publicados hoje, derivados do que `parseShardId` aceita. */
-const PUBLISHED = ["movies", "series", "people", "news", "imagens", "videos", "static"] as const;
+/**
+ * Tipos publicados hoje, derivados do que `parseShardId` aceita. Galerias sairam
+ * em 2026-09-11 por decisao do dono (D1) — ver o caso (4b).
+ */
+const PUBLISHED = ["movies", "series", "people", "news", "static"] as const;
 
 /** `PageSeoResolution` minima — so o que a valvula le e reescreve. */
 function resolution(overrides: Record<string, unknown> = {}) {
@@ -94,6 +98,16 @@ describe("valvula — o shard suspenso responde 404", () => {
       expect(parseShardId(`sitemap-pt-BR-${type}-1.xml`)).not.toBeNull();
     }
   });
+
+  it("(4b) galeria saiu por DECISAO DO DONO (D1): o shard antigo de imagens e videos responde 404", () => {
+    // Os nomes sao LITERAIS de proposito (a mesma licao do caso 7 da suite de
+    // governanca): derivar da propria lista faria o teste passar vazio se alguem
+    // a esvaziasse.
+    expect([...OWNER_EXCLUDED_SITEMAP_TYPES].sort()).toEqual(["imagens", "videos"]);
+    for (const type of ["imagens", "videos"]) {
+      expect(parseShardId(`sitemap-pt-BR-${type}-1.xml`)).toBeNull();
+    }
+  });
 });
 
 describe("valvula — a meta tag, que e o que de fato desindexa", () => {
@@ -135,7 +149,7 @@ describe("valvula — a meta tag, que e o que de fato desindexa", () => {
 
 describe("teto declarado do sitemap", () => {
   it("(9) abaixo do teto o index publica normalmente", async () => {
-    // 6 tipos publicados x 1.000 = 6.000, bem abaixo do teto.
+    // Cada tipo publicado com 1.000 URLs: bem abaixo de todo teto por tipo.
     const { xml } = await getSitemapIndexXml(undefined, fakePrisma(1_000));
     expect(xml).toContain("<sitemap>");
     expect(xml).toContain("sitemap-pt-BR-movies-1.xml");

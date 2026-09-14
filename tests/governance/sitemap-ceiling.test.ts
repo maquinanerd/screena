@@ -347,15 +347,16 @@ describe("sitemap: o gate por decisao — sem linha, fora do sitemap", () => {
     expect(saida.urls.some((u) => u.includes("/filmes/filme-2200/"))).toBe(false);
   });
 
-  it("(3) a galeria herda a decisao do DONO — galeria de filme sem linha fica fora", async () => {
-    // A galeria era o unico tipo do sitemap sem clausula de decisao nenhuma, e o
-    // MAIOR em producao (43.155 URLs). Sem herdar, sobreviveria a um corte que
-    // derrubasse os donos.
+  it("(3) NENHUMA galeria sai no sitemap — nem a de dono indexavel (decisao do dono D1)", async () => {
+    // Ate 2026-09-11 a galeria herdava a decisao do dono. Desde a decisao D1 ela
+    // nao entra de jeito nenhum: 69.016 URLs sem conteudo proprio, 42,7% do
+    // sitemap. O conjunto tem galeria em METADE dos filmes e series INDEXAVEIS —
+    // se o tipo voltasse a publicar, este caso reprovaria pela saida, e nao por
+    // leitura de fonte.
     const saida = await buildSitemap(new FakeDb(dataset()));
-    const galerias = (saida.byType["imagens"] ?? 0) + (saida.byType["videos"] ?? 0);
-    const donosIndexaveis = 1_200 / 2 + 1_100 / 2; // metade tem galeria (i % 2)
-    expect(galerias).toBeLessThanOrEqual(donosIndexaveis * 2);
-    expect(saida.urls.some((u) => /filme-2200\/(imagens|videos)\/$/.test(u))).toBe(false);
+    expect(saida.byType["imagens"] ?? 0).toBe(0);
+    expect(saida.byType["videos"] ?? 0).toBe(0);
+    expect(saida.urls.some((u) => /\/(imagens|videos)\/$/.test(u))).toBe(false);
   });
 
   it("(4) DESARMADO (poucas decisoes) o sitemap NAO despenca — a entidade sem linha continua entrando", async () => {

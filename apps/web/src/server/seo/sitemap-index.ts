@@ -49,6 +49,7 @@ import {
   renderUrlset,
   SITEMAP_CONTENT_TYPE,
   SITEMAP_URL_LIMIT,
+  TMDB_FALLBACK_SLUG_SQL_PATTERN,
   type SitemapCeilingReport,
   type SitemapIndexXmlEntry,
   type SitemapXmlUrl,
@@ -78,6 +79,7 @@ import {
   IMAGES_INDEX_FLOOR,
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
+import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -160,10 +162,36 @@ export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [
   "episodes",
 ];
 
-/** O que o sitemap PUBLICA hoje: o suportado menos o suspenso. */
+/**
+ * FORA DO SITEMAP POR DECISAO DO DONO — D1, 2026-09-11
+ * (`docs/seo/DECISOES-DO-DONO-2026-09-11.md`).
+ *
+ * Nao e valvula: a valvula acima e temporaria e morre quando a politica por dado
+ * chegar. Esta lista e uma DECISAO — galeria nao indexa como pagina propria.
+ * Medido na auditoria de SEO: 69.016 URLs de galeria, 42,7% do sitemap, com 0
+ * palavras de conteudo principal e sem `<main>`. Elas nao usavam extensao de
+ * sitemap de imagem nem de video: so pediam rastreio, sem alimentar Google
+ * Imagens ou Videos.
+ *
+ * O par, como na valvula: a pagina de galeria passa a emitir `noindex, follow`
+ * pelo portao `evaluateGalleryGate` (`@screena/seo`). As duas coisas, ou
+ * nenhuma. E o shard antigo (`sitemap-pt-BR-imagens-1.xml`) responde 404, pelo
+ * mesmo mecanismo do tipo suspenso.
+ */
+export const OWNER_EXCLUDED_SITEMAP_TYPES: readonly EntitySitemapType[] = ["imagens", "videos"];
+
+/** O que o sitemap PUBLICA hoje: o suportado, menos o suspenso, menos o excluido por decisao. */
 const ENTITY_TYPES: readonly EntitySitemapType[] = SUPPORTED_ENTITY_TYPES.filter(
-  (type) => !SUSPENDED_SITEMAP_TYPES.includes(type),
+  (type) => !SUSPENDED_SITEMAP_TYPES.includes(type) && !OWNER_EXCLUDED_SITEMAP_TYPES.includes(type),
 );
+
+/**
+ * Os locales que a PAGINA considera publicados (`synopsis-language.ts`), como
+ * parametro de SQL. O portao de localizacao do sitemap le exatamente as mesmas
+ * linhas de traducao que a pagina le para titulo e meta — outro conjunto aqui e
+ * sitemap e meta robots discordando de novo.
+ */
+const PUBLISHED_LOCALE_CODES: string[] = [...PUBLISHED_LOCALES];
 
 /**
  * Tipos aceitos por `parseShardId`. Tipo suspenso NAO entra: o shard antigo
@@ -525,6 +553,22 @@ async function aggregateEntity(
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'movie' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -535,6 +579,22 @@ async function aggregateEntity(
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'tv' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -808,6 +868,22 @@ async function pageEntity(
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'movie' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -820,6 +896,22 @@ async function pageEntity(
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'tv' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
