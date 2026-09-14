@@ -27,8 +27,16 @@ interface LocalImageSpec {
   tmdbSize: TmdbImageSize;
 }
 
-/** Retrato 2:3 do elenco (mesma proporcao dos cards de pessoa). */
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 200, height: 300, tmdbSize: "original" };
+/**
+ * Retrato 2:3 do elenco (mesma proporcao dos cards de pessoa).
+ *
+ * `w300`, NAO `original` (2026-09-11). Medido na auditoria de SEO: seis fotos de
+ * elenco em `original` somavam 951 KB — 61% do peso da ficha —, a maior com
+ * 2000x3000 px para um quadrado de 64 px no celular. O retrato cabe numa coluna
+ * de ~190 px da faixa de seis; `w300` e 1,5x essa largura, retina sem
+ * desperdicio. Em `w300` as mesmas seis fotos somaram 101 KB.
+ */
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 200, height: 300, tmdbSize: "w300" };
 
 /** Teto padrao de membros de elenco exibidos na faixa (elenco principal). */
 export const DEFAULT_CAST_LIMIT = 12;

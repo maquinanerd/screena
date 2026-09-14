@@ -31,7 +31,8 @@ interface ImageSpec {
 }
 const POSTER_SPEC: ImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
 const BACKDROP_SPEC: ImageSpec = { width: 1280, height: 720, tmdbSize: "w1280" };
-const STILL_SPEC: ImageSpec = { width: 640, height: 360, tmdbSize: "original" };
+// `w500`, nao `original` (2026-09-11) — o mesmo still 16:9 de `series-presenter.ts`.
+const STILL_SPEC: ImageSpec = { width: 640, height: 360, tmdbSize: "w500" };
 
 function trimToNull(value: string | null | undefined): string | null {
   if (value == null) return null;
