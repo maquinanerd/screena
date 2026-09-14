@@ -452,7 +452,7 @@ dl {
   display: block;
   width: auto;
   height: calc(var(--brand-word-h) * var(--logo-scale, 1));
-  max-width: 100%;
+  max-width: 80%;
   object-fit: contain;
   object-position: left center;
 }
