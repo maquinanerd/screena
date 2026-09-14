@@ -270,9 +270,22 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   const seoStale = await seams.resolveEntityPageSeo({ entityType: "movie", entityId: idStale, languageCode: LANGUAGE }, facts);
   record(8, "decisao persistida stale -> stale/fora do sitemap", seoStale.decision === "stale" && seoStale.includeInSitemap === false, `decision=${seoStale.decision}`);
 
+  // MUDOU EM 2026-09-11: falha de banco nao e decisao de SEO. Ate essa data este
+  // check afirmava `noindex` — que a rota servia com 200 e o ISR GUARDAVA. Agora
+  // a leitura que falha LANCA, e a rota responde 5xx (o Next nao cacheia erro).
+  // Um `noindex` aqui voltaria a ser regressao, nao "fail-closed".
   const throwingClient = { pageIndexabilityDecision: { findFirst: async () => { throw new Error("db down"); } } };
-  const seoFailClosed = await seams.resolveEntityPageSeo({ entityType: "movie", entityId: idIndexed, languageCode: LANGUAGE }, facts, throwingClient);
-  record(9, "fail-closed: erro ao ler decisao vigente -> noindex", seoFailClosed.decision === "noindex", `decision=${seoFailClosed.decision}`);
+  let falhaLancou = false;
+  let nomeDoErro = "nenhum";
+  let decisaoIndevida = "nenhuma";
+  try {
+    const resolucao = await seams.resolveEntityPageSeo({ entityType: "movie", entityId: idIndexed, languageCode: LANGUAGE }, facts, throwingClient);
+    decisaoIndevida = resolucao.decision;
+  } catch (error) {
+    falhaLancou = true;
+    nomeDoErro = (error as Error).name;
+  }
+  record(9, "falha ao ler decisao vigente LANCA (5xx), nunca vira noindex cacheavel", falhaLancou && nomeDoErro === "IndexabilityDecisionUnavailableError", `lancou=${falhaLancou} erro=${nomeDoErro} decisao-devolvida=${decisaoIndevida}`);
 
   // ---- Redirects ---------------------------------------------------------
   seams.clearRedirectCache();
