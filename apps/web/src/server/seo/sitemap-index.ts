@@ -42,10 +42,14 @@
 
 import { getPrismaClient } from "@screena/db/server";
 import {
+  describeSitemapCeilingVerdict,
+  evaluateSitemapCeilings,
+  evaluateSitemapTypeCeiling,
   renderSitemapIndex,
   renderUrlset,
   SITEMAP_CONTENT_TYPE,
   SITEMAP_URL_LIMIT,
+  type SitemapCeilingReport,
   type SitemapIndexXmlEntry,
   type SitemapXmlUrl,
 } from "@screena/seo";
@@ -169,7 +173,7 @@ const ENTITY_TYPES: readonly EntitySitemapType[] = SUPPORTED_ENTITY_TYPES.filter
 const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
 
 /**
- * TETO DECLARADO DE URLs DO SITEMAP INTEIRO.
+ * TETO DECLARADO DE URLs DO SITEMAP — HISTORICO DO TETO GLOBAL.
  *
  * POR QUE ISTO EXISTE. Em 2026-08-22 o sitemap tinha 53.054 URLs. Em 2026-08-27
  * tinha 4.069.444 — 77x em cinco dias — e NENHUM alarme disparou. Nao disparou
@@ -180,7 +184,11 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * codigo e nao houve linha de log: o catalogo cresceu e o sitemap cresceu junto,
  * calado. Sem um teto, a proxima vez tambem passaria em silencio.
  *
- * O teto e sobre o TOTAL PUBLICADO (a soma das contagens de `ENTITY_TYPES`),
+ * ESTE BLOCO E HISTORICO: descreve o teto GLOBAL, vigente de 2026-08-27 a
+ * 2026-09-11. Ele fica porque explica por que existe teto — e por que ele deixou
+ * de ser global. A regra VIGENTE e `SITEMAP_TYPE_URL_CEILING`, logo abaixo.
+ *
+ * O teto ERA sobre o TOTAL PUBLICADO (a soma das contagens de `ENTITY_TYPES`),
  * nao sobre o shard. Ele nao substitui a politica por dado da Fase 3 — e o
  * detector de fumaca que avisa quando a politica falhou.
  *
@@ -215,24 +223,55 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * numero maior escrito aqui. Subir este valor sem ligar o gate por dado so
  * troca a data do estouro.
  */
-export const SITEMAP_TOTAL_URL_CEILING = 300_000;
+/**
+ * TETO VIGENTE: POR TIPO (desde 2026-09-11).
+ *
+ * O teto global descrito acima tinha um defeito que a auditoria de SEO mediu com
+ * data: um tipo so empurrava a soma, e o corte apagava junto os tipos que nao
+ * tinham nada com isso. Em 11/09 as galerias eram 42,7% do sitemap, e a projecao
+ * linear punha o estouro entre ~21/10 e ~06/11/2026 — levando filmes, series e
+ * noticias para fora do indice por causa delas.
+ *
+ * Agora cada tipo e avaliado SOZINHO (`evaluateSitemapCeilings`, em
+ * `@screena/seo`): estourar o teto tira do sitemap SO aquele tipo, e o aviso
+ * chega antes do corte, em 80%, 90% e 95%. Continua fail-closed — por tipo. Um
+ * tipo acima do teto NAO e cortado nas primeiras N URLs: publicar um recorte que
+ * ninguem escolheu seria pior do que nao publicar o tipo.
+ *
+ * Filme e serie ficam em ~4x o volume medido em 2026-08-27 (34.799 e 32.392) — a
+ * mesma ordem de folga do teto global, agora sem que o crescimento de um tipo
+ * consuma a folga do outro. Pessoa tem o teto de filme de proposito: o portao de
+ * pessoa (decisao do dono D2) vai abrir, e o 0 medido nao e um volume.
+ *
+ * Tipos suspensos (temporada, episodio) e tipos fora do sitemap por decisao do
+ * dono tambem tem teto declarado: se voltarem a publicar, voltam com o detector
+ * ligado. Contra o evento de 2026-08-27, o teto de episodio reprovaria as
+ * 3.793.672 URLs medidas por 25x.
+ *
+ * Subir um teto continua sendo mudanca de codigo revisada. O que segura o
+ * crescimento e a politica por DADO de cada tipo, nao um numero maior aqui.
+ */
+export const SITEMAP_TYPE_URL_CEILING: Readonly<Record<EntitySitemapType, number>> = Object.freeze({
+  movies: 150_000,
+  series: 150_000,
+  people: 150_000,
+  news: 50_000,
+  seasons: 150_000,
+  episodes: 150_000,
+  imagens: 150_000,
+  videos: 150_000,
+});
 
-/** Erro do teto — separado para o teste apontar para a causa, nao para a forma. */
-export class SitemapCeilingExceededError extends Error {
-  constructor(
-    readonly total: number,
-    readonly ceiling: number,
-    readonly byType: Readonly<Record<string, number>>,
-  ) {
-    super(
-      `sitemap: ${total} URLs excedem o teto declarado de ${ceiling}. ` +
-        `Por tipo: ${Object.entries(byType)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(" ")}. ` +
-        "Ou a politica de indexabilidade parou de filtrar, ou o catalogo mudou de " +
-        "ordem de grandeza. Ate alguem olhar, o sitemap sai vazio.",
-    );
-    this.name = "SitemapCeilingExceededError";
+/**
+ * Loga o relatorio do teto: corte como ERRO, alerta como AVISO. Tipo `ok` nao
+ * gera linha — log que fala a cada requisicao vira ruido e deixa de ser lido.
+ */
+function logCeilingReport(report: SitemapCeilingReport): void {
+  for (const verdict of report.verdicts) {
+    if (verdict.excluded) console.error(`[sitemap] ${describeSitemapCeilingVerdict(verdict)}`);
+  }
+  for (const verdict of report.alerts) {
+    console.warn(`[sitemap] ${describeSitemapCeilingVerdict(verdict)}`);
   }
 }
 
@@ -998,9 +1037,15 @@ async function allEntityCounts(
   prisma: PrismaClient,
   language: string,
   coverage: DecisionCoverage,
-): Promise<{ counts: Record<EntitySitemapType, number>; maxLastmod: Record<EntitySitemapType, Date | null> }> {
+): Promise<{
+  counts: Record<EntitySitemapType, number>;
+  maxLastmod: Record<EntitySitemapType, Date | null>;
+  /** Tipos cuja contagem FALHOU: saem do index, e so eles. */
+  unavailable: EntitySitemapType[];
+}> {
   const counts = {} as Record<EntitySitemapType, number>;
   const maxLastmod = {} as Record<EntitySitemapType, Date | null>;
+  const unavailable: EntitySitemapType[] = [];
   // Tipo suspenso fica em ZERO, e nao `undefined`: `eligibleStaticRoutes` le
   // este mapa por chave, e um `undefined` tipado como `number` atravessaria o
   // typecheck para explodir so no render.
@@ -1010,12 +1055,26 @@ async function allEntityCounts(
   }
   // Uma consulta de CONTAGEM (+max) por tipo PUBLICADO — nunca busca URLs, e
   // nunca conta o que nao vai ao sitemap.
+  //
+  // Cada tipo no SEU try (2026-09-11). Antes, a excecao de uma unica contagem
+  // atravessava ate o catch do index e o sitemap inteiro saia vazio por causa de
+  // um tipo. Agora a consulta que falha tira do index SO o seu tipo — e se o
+  // banco inteiro caiu, todos falham um a um e o resultado converge para vazio
+  // pelo motivo certo.
   for (const type of ENTITY_TYPES) {
-    const agg = await aggregateEntity(prisma, type, language, coverage);
-    counts[type] = agg.count;
-    maxLastmod[type] = agg.maxLastmod;
+    try {
+      const agg = await aggregateEntity(prisma, type, language, coverage);
+      counts[type] = agg.count;
+      maxLastmod[type] = agg.maxLastmod;
+    } catch (error) {
+      console.error(
+        `[sitemap] a contagem do tipo ${type} falhou; SO este tipo sai do index, os demais seguem:`,
+        error,
+      );
+      unavailable.push(type);
+    }
   }
-  return { counts, maxLastmod };
+  return { counts, maxLastmod, unavailable };
 }
 
 function shardId(language: string, type: string, page: number): string {
@@ -1039,19 +1098,28 @@ export async function getSitemapIndexXml(
   try {
     const prisma = client ?? getPrismaClient();
     // A COBERTURA vem ANTES de qualquer contagem: e ela que decide o que uma
-    // decisao ausente significa em todas as consultas seguintes.
+    // decisao ausente significa em todas as consultas seguintes. Se ELA falhar,
+    // nenhum tipo pode ser contado com a regra certa — e o unico caso em que o
+    // index inteiro ainda sai vazio (catch abaixo).
     const coverage = await readDecisionCoverage(prisma, language);
     warnUnarmedGates(coverage);
-    const { counts, maxLastmod } = await allEntityCounts(prisma, language, coverage);
+    const { counts, maxLastmod, unavailable } = await allEntityCounts(prisma, language, coverage);
 
-    // TETO: antes de anunciar um shard sequer. Ver SITEMAP_TOTAL_URL_CEILING.
-    const total = ENTITY_TYPES.reduce((sum, type) => sum + counts[type], 0);
-    if (total > SITEMAP_TOTAL_URL_CEILING) {
-      throw new SitemapCeilingExceededError(total, SITEMAP_TOTAL_URL_CEILING, counts);
+    // TETO POR TIPO: antes de anunciar um shard sequer. Ver SITEMAP_TYPE_URL_CEILING.
+    // So entra na avaliacao quem conseguiu ser contado; tipo `unavailable` ja
+    // ficou fora pelo catch da propria contagem.
+    const publishedCounts: Record<string, number> = {};
+    for (const type of ENTITY_TYPES) {
+      if (!unavailable.includes(type)) publishedCounts[type] = counts[type];
     }
+    const ceilingReport = evaluateSitemapCeilings(publishedCounts, SITEMAP_TYPE_URL_CEILING);
+    logCeilingReport(ceilingReport);
 
     const entries: SitemapIndexXmlEntry[] = [];
     for (const type of ENTITY_TYPES) {
+      // Fora do index: tipo cuja contagem falhou ou que estourou o SEU teto. Os
+      // demais seguem — a correcao de 2026-09-11 inteira mora nesta linha.
+      if (!ceilingReport.published.includes(type)) continue;
       const shards = shardCountFor(counts[type], limit);
       const lastmod = isoOrNull(maxLastmod[type]);
       for (let page = 1; page <= shards; page += 1) {
@@ -1071,7 +1139,9 @@ export async function getSitemapIndexXml(
 
     return { xml: renderSitemapIndex(entries), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
-    // FAIL-CLOSED: sem conseguir contar, publica um index vazio (nunca URLs incertas).
+    // FAIL-CLOSED GLOBAL so para o que afeta TODOS os tipos: o cliente do banco e
+    // a cobertura de decisoes. Falha de UM tipo nao chega aqui — ela e isolada em
+    // `allEntityCounts`, e teto estourado e isolado pelo relatorio acima.
     console.error("[sitemap] falha ao montar o sitemap index; fail-closed (index vazio):", error);
     return { xml: renderSitemapIndex([]), contentType: SITEMAP_CONTENT_TYPE };
   }
@@ -1133,6 +1203,18 @@ export async function getSitemapShardXml(
     const entityType = type as EntitySitemapType;
     // Uma contagem (deste tipo) para saber quantos shards existem.
     const { count } = await aggregateEntity(prisma, entityType, language, coverage);
+    // O MESMO teto que o index aplica, pela mesma funcao. Se so o index cortasse,
+    // o shard de um tipo estourado continuaria servindo URLs para quem guardou o
+    // endereco — o index e o shard descreveriam sitemaps diferentes.
+    const ceiling = evaluateSitemapTypeCeiling(
+      entityType,
+      count,
+      SITEMAP_TYPE_URL_CEILING[entityType],
+    );
+    if (ceiling.excluded) {
+      console.error(`[sitemap] ${describeSitemapCeilingVerdict(ceiling)}`);
+      return null;
+    }
     const shards = shardCountFor(count, limit);
     if (page > shards) return null; // pagina acima do total -> 404
 

@@ -23,6 +23,7 @@ export * from "./article-publication.js";
 export * from "./redirects.js";
 export * from "./sitemap-plan.js";
 export * from "./sitemap-xml.js";
+export * from "./sitemap-ceiling.js";
 
 export * from './article-technical-seo.js'
 export * from './news-sitemap.js'

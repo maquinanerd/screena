@@ -3,7 +3,7 @@
  *
  * O QUE ESTE ARQUIVO PROVA. Que o construtor REAL do sitemap, executado contra
  * um conjunto de dados, produz uma SAIDA com: zero episodio, zero temporada,
- * total abaixo do teto declarado, e — a mudanca desta leva — **nenhuma entidade
+ * cada tipo abaixo do SEU teto declarado (por tipo desde 2026-09-11), e— a mudanca desta leva — **nenhuma entidade
  * sem linha em `page_indexability_decisions`**.
  *
  * POR QUE NAO E UM TESTE DE TEXTO. O modo de falha assinatura deste projeto e
@@ -36,7 +36,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   SITEMAP_DECISION_GATE_MIN_ROWS,
-  SITEMAP_TOTAL_URL_CEILING,
+  SITEMAP_TYPE_URL_CEILING,
   SUSPENDED_SITEMAP_TYPES,
   getSitemapIndexXml,
   getSitemapShardXml,
@@ -418,24 +418,43 @@ describe("sitemap: temporada e episodio nao saem na saida", () => {
 });
 
 describe("sitemap: o teto declarado", () => {
-  it("(8) a saida real fica abaixo do teto", async () => {
+  it("(8) cada tipo da saida real fica abaixo do SEU teto", async () => {
     const saida = await buildSitemap(new FakeDb(dataset()));
-    expect(saida.total).toBeLessThanOrEqual(SITEMAP_TOTAL_URL_CEILING);
+    // Segmento da rota -> nome do tipo do shard.
+    const tipoDoSegmento: Record<string, keyof typeof SITEMAP_TYPE_URL_CEILING> = {
+      filmes: "movies",
+      series: "series",
+      pessoas: "people",
+      noticias: "news",
+      imagens: "imagens",
+      videos: "videos",
+    };
+    for (const [segmento, n] of Object.entries(saida.byType)) {
+      const tipo = tipoDoSegmento[segmento];
+      if (tipo === undefined) continue; // estatica: fora do teto por tipo
+      expect(n, `${segmento}`).toBeLessThanOrEqual(SITEMAP_TYPE_URL_CEILING[tipo]);
+    }
     expect(saida.total).toBeGreaterThan(1_000); // e nao despencou a zero
   });
 
-  it("(9) estourar o teto esvazia o index e o erro nomeia o total", async () => {
+  it("(9) estourar o teto de FILMES tira so filmes — series e pessoas continuam na saida", async () => {
+    // O defeito que a auditoria de 11/09/2026 mediu, com filmes no papel de "o
+    // tipo que cresceu sozinho". Com o teto GLOBAL antigo este mesmo conjunto
+    // produzia um index VAZIO: 400.000 filmes arrastavam series, pessoas e
+    // noticias para fora junto.
     const grande: DataSet = {
       ...dataset(),
       movies: build("filme", 1_000, { index: 400_000, noindex: 0, missing: 0 }),
     };
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const prisma = new FakeDb(grande).asPrisma();
-      const index = await getSitemapIndexXml({ limit: LIMIT }, prisma);
-      expect(index.xml).not.toContain("<sitemap>");
+      const saida = await buildSitemap(new FakeDb(grande));
+      expect(saida.byType["filmes"] ?? 0).toBe(0);
+      expect(saida.byType["series"]).toBe(1_100);
+      expect(saida.byType["pessoas"]).toBe(1_050);
       const log = erro.mock.calls.flat().map(String).join(" ");
-      expect(log).toContain(String(SITEMAP_TOTAL_URL_CEILING));
+      expect(log).toContain("movies");
+      expect(log).toContain(String(SITEMAP_TYPE_URL_CEILING.movies));
     } finally {
       erro.mockRestore();
     }

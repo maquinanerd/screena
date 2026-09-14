@@ -13,14 +13,16 @@
  *     sem a outra, metade da valvula fica inerte e ninguem percebe.
  *  2. O SHARD ANTIGO MORRE. `sitemap-pt-BR-episodes-42.xml` precisa responder
  *     404, e nao continuar servindo 50.000 URLs para quem guardou o endereco.
- *  3. O TETO. Um total acima do declarado reprova aqui e sai fail-closed no
- *     runtime. E o detector de fumaca que faltava.
+ *  3. O TETO, POR TIPO. Um tipo acima do SEU teto sai sozinho do index e os
+ *     demais continuam. Ate 2026-09-11 era um teto global que esvaziava o
+ *     sitemap inteiro por causa de um tipo so — o defeito que a auditoria de SEO
+ *     mediu com data de estouro.
  */
 
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  SITEMAP_TOTAL_URL_CEILING,
+  SITEMAP_TYPE_URL_CEILING,
   SUSPENDED_SITEMAP_TYPES,
   getSitemapIndexXml,
   parseShardId,
@@ -139,25 +141,38 @@ describe("teto declarado do sitemap", () => {
     expect(xml).toContain("sitemap-pt-BR-movies-1.xml");
   });
 
-  it("(10) ACIMA do teto o index sai VAZIO e o erro nomeia o total", async () => {
+  it("(10) um tipo ACIMA do SEU teto sai sozinho; os outros continuam no index", async () => {
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+    const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      // 6 tipos x 100.000 = 600.000 > 300.000.
+      // Toda contagem = 100.000. Filme, serie e pessoa tem teto de 150.000 (67%);
+      // noticia tem 50.000 — so noticia estoura.
+      //
+      // O MESMO conjunto, com o teto global antigo (6 tipos x 100.000 = 600.000
+      // contra 300.000), produzia um index VAZIO. E essa a diferenca sob teste.
       const { xml } = await getSitemapIndexXml(undefined, fakePrisma(100_000));
-      expect(xml).not.toContain("<sitemap>");
+      expect(xml).toContain("sitemap-pt-BR-movies-1.xml");
+      expect(xml).toContain("sitemap-pt-BR-series-1.xml");
+      expect(xml).toContain("sitemap-pt-BR-people-1.xml");
+      expect(xml).not.toContain("-news-");
       const mensagem = erro.mock.calls.flat().map(String).join(" ");
-      expect(mensagem).toContain("600000");
-      expect(mensagem).toContain(String(SITEMAP_TOTAL_URL_CEILING));
+      expect(mensagem).toContain("news");
+      expect(mensagem).toContain("100000");
+      expect(mensagem).toContain(String(SITEMAP_TYPE_URL_CEILING.news));
     } finally {
       erro.mockRestore();
+      aviso.mockRestore();
     }
   });
 
-  it("(11) o teto e MENOR que o desastre medido — 4.069.444 URLs teriam reprovado", () => {
-    expect(SITEMAP_TOTAL_URL_CEILING).toBeLessThan(4_069_444);
-    // E maior que o volume publicado apos a valvula (~105.000), para nao
-    // reprovar por crescimento normal.
-    expect(SITEMAP_TOTAL_URL_CEILING).toBeGreaterThan(105_000);
+  it("(11) cada teto e MENOR que o desastre medido do seu tipo e MAIOR que o volume legitimo", () => {
+    // 2026-08-27: 3.793.672 episodios num dia. O teto de episodio reprovaria.
+    expect(SITEMAP_TYPE_URL_CEILING.episodes).toBeLessThan(3_793_672);
+    // E acima do volume publicado apos a valvula, para nao reprovar por
+    // crescimento normal (medido shard a shard em 2026-08-27).
+    expect(SITEMAP_TYPE_URL_CEILING.movies).toBeGreaterThan(34_799);
+    expect(SITEMAP_TYPE_URL_CEILING.series).toBeGreaterThan(32_392);
+    expect(SITEMAP_TYPE_URL_CEILING.imagens).toBeGreaterThan(43_155);
   });
 });
 
