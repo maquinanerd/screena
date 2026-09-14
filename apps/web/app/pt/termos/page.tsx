@@ -11,6 +11,7 @@ import {
   canonicalPublicUrl,
   legalDocRobots,
 } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 
 /**
  * Termos de Uso.
@@ -52,6 +53,12 @@ export function generateMetadata(): Metadata {
     description: DESCRIPTION,
     robots: legalDocRobots(),
     alternates: { canonical: canonicalPublicUrl(TERMS_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(TERMS_PATH),
+    }),
   }
 }
 

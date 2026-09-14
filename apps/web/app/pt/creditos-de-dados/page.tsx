@@ -6,6 +6,7 @@ import { serializeJsonLd } from '@screena/seo'
 import { DATA_CREDITS, DATA_CREDITS_PATH, TMDB_DISCLAIMER } from '../../../src/config/footer'
 import { HOME_PATH } from '../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 
 /**
  * Créditos de dados — o destino do link "Créditos de dados" do rodapé
@@ -48,6 +49,12 @@ export function generateMetadata(): Metadata {
     description: DESCRIPTION,
     robots: publicRobots(true),
     alternates: { canonical: canonicalPublicUrl(DATA_CREDITS_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(DATA_CREDITS_PATH),
+    }),
   }
 }
 

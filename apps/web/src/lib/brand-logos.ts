@@ -105,6 +105,24 @@ export const CINERIE_ORGANIZATION_LOGO: BrandLogoFile = {
 };
 
 /**
+ * O cartão social da MARCA (1200 × 630): a última candidata do `og:image` quando
+ * a página não tem arte própria (decisão do dono D4).
+ *
+ * DERIVADO de `cinerie-logo.png`, não desenhado: a mesma arte, sem escala nem
+ * recolor, centralizada sobre `#fdfdfd` (`--c-bg-page`, o fundo do site). A
+ * palavra-marca sozinha não serve de cartão: seus 163 px de altura ficam abaixo
+ * do mínimo de 200 px que o Facebook exige de `og:image`, e o fundo transparente
+ * fica à mercê da cor que cada aplicativo pinta atrás. 1200 × 630 é a proporção
+ * dos cartões grandes do Facebook e do LinkedIn; o recorte 2:1 do X tira 15 px de
+ * cima e de baixo, longe da marca.
+ */
+export const CINERIE_SOCIAL_CARD: BrandLogoFile = {
+  src: "/brand/cinerie-social-card.png",
+  width: 1200,
+  height: 630,
+};
+
+/**
  * A área de uma rota. Prefixo de SEGMENTO, nunca de string solta: `/pt/filmes`
  * e `/pt/filmes/...` são filmes; `/pt/filmesx` não é.
  */

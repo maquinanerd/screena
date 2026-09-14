@@ -12,6 +12,7 @@ import { TrailerModal } from '../../../../../_components/trailer-modal'
 import { decideSection } from '../../../../../../src/lib/section-absence'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../../../src/lib/social-metadata'
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
 
 /**
@@ -91,16 +92,26 @@ export async function generateMetadata({
 
   const { view, seo, canonicalUrl } = data
   const title = `${view.seriesTitle} — ${view.seasonTitle}`
+  const description = buildMetaDescription(view.overview)
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
-    openGraph: { title, url: canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026). A arte e a da
+    // propria temporada primeiro; o backdrop e da serie.
+    ...socialMetadata({
+      type: 'website',
+      title,
+      description,
+      canonicalUrl,
+      images: [
+        socialArt(view.poster, title, 'portrait'),
+        socialArt(view.backdrop, view.seriesTitle, 'landscape'),
+      ],
+    }),
   }
-  if (view.overview !== null) {
-    metadata.description = buildMetaDescription(view.overview) ?? view.overview
-    metadata.openGraph = { ...metadata.openGraph, description: view.overview }
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 

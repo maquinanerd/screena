@@ -6,6 +6,7 @@ import { AdSlot } from '../../_components/ad-slot'
 import { EmptyState } from '../../_components/ds'
 import type { NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 
 /**
@@ -31,6 +32,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
+    ...socialMetadata({ type: 'website', title: TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 

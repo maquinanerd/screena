@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
+import { buildSameAs, serializeJsonLd, buildMetaDescription, describePersonFactually } from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
 import { SectionTitle } from '../../../_components/ds'
@@ -10,10 +10,15 @@ import { Filmography } from '../../../_components/filmography'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
-import { formatHiddenCreditsNotice } from '../../../../src/lib/person-presenter'
+import {
+  formatHiddenCreditsNotice,
+  type PersonCredit,
+  type PersonPageView,
+} from '../../../../src/lib/person-presenter'
 import { personPhotosPath } from '../../../../src/lib/routes'
 import { decideSection } from '../../../../src/lib/section-absence'
 import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getPersonPageData } from '../../../../src/server/person-page'
 
 /**
@@ -74,6 +79,15 @@ export async function generateStaticParams(): Promise<Record<string, string>[]> 
 const PESSOAS_INDEX_PATH = '/pt/pessoas/'
 const BIOGRAPHY_BLOCK_TYPES: ReadonlySet<string> = new Set(['editorial_intro'])
 const KNOWN_FOR_LIMIT = 5
+
+/**
+ * "Conhecido por": os creditos com poster, na ordem da filmografia. A secao da
+ * pagina e a descricao factual da `<meta>` leem ESTA lista — a descricao nunca
+ * cita um trabalho que a pagina nao mostra.
+ */
+function knownForCredits(view: PersonPageView): PersonCredit[] {
+  return view.credits.filter((credit) => credit.posterUrl !== null).slice(0, KNOWN_FOR_LIMIT)
+}
 
 interface PersonPageParams {
   slug: string
@@ -141,15 +155,37 @@ export async function generateMetadata({
   }
 
   const { view, seo, canonicalUrl } = data
+  // Travessao, como "— Filme" e "— Série". O hifen solto era o unico titulo de
+  // entidade fora do padrao (auditoria de SEO, G18).
+  const title = view.metaTitle ?? `${view.name} — Pessoa`
+  // Sem descricao propria, os FATOS que a pagina mostra. Antes a tag nao saia:
+  // 2 de 2 pessoas amostradas pela auditoria de SEO (achado M4).
+  const description =
+    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      describePersonFactually({
+        name: view.name,
+        roleLabel: view.roleLabel,
+        knownFor: knownForCredits(view),
+        birthDateLabel: formatPersonDate(view.birthDateIso),
+        placeOfBirth: view.placeOfBirth,
+        deathDateLabel: formatPersonDate(view.deathDateIso),
+      }),
+    )
   const metadata: Metadata = {
-    title: view.metaTitle ?? `${view.name} - Pessoa`,
+    title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
+    // O retrato que a pagina exibe (decisao do dono D4); sem ele, a marca.
+    ...socialMetadata({
+      type: 'profile',
+      title,
+      description,
+      canonicalUrl,
+      images: [socialArt(view.profile, view.name, 'portrait')],
+    }),
   }
-
-  if (view.metaDescription !== null) {
-    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 
@@ -226,7 +262,7 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   // (está no catálogo, mas não tem página) — e até agora saía calada. Quem
   // decide se a linha existe é o formatador: `null` = lista completa.
   const hiddenCreditsNotice = formatHiddenCreditsNotice(view.hiddenCreditCount)
-  const knownFor = view.credits.filter((credit) => credit.posterUrl !== null).slice(0, KNOWN_FOR_LIMIT)
+  const knownFor = knownForCredits(view)
 
   // A TIRA DE FOTOS SUMIA CALADA ATE 27/08/2026.
   //

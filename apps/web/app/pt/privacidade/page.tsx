@@ -12,6 +12,7 @@ import {
   canonicalPublicUrl,
   legalDocRobots,
 } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 
 /**
  * Política de Privacidade (LGPD, Lei 13.709/2018).
@@ -76,6 +77,12 @@ export function generateMetadata(): Metadata {
     description: DESCRIPTION,
     robots: legalDocRobots(),
     alternates: { canonical: canonicalPublicUrl(PRIVACY_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(PRIVACY_PATH),
+    }),
   }
 }
 

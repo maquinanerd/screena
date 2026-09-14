@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
+import { buildSameAs, serializeJsonLd, buildMetaDescription, describeSeriesFactually } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -33,6 +33,7 @@ import {
 } from '../../../../src/lib/section-absence'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getSeriesPageData } from '../../../../src/server/series-page'
 import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
 import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
@@ -236,19 +237,42 @@ export async function generateMetadata({
     }
   }
 
-  const { view, seo, canonicalUrl } = data
+  const { view, seo, canonicalUrl, genres, cast } = data
   const title =
     view.metaTitle ??
     `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ''} — Série`
+  // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
+  // que a ficha ja mostra — antes a tag nao saia (auditoria de SEO, achado M4).
+  const description =
+    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      describeSeriesFactually({
+        title: view.title,
+        periodLabel: view.periodLabel,
+        genres,
+        seasonsCount: view.seasonsCount,
+        cast: cast.map((member) => member.name),
+      }),
+    )
 
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
+    // A arte que a ficha exibe, sob a mesma licenca (decisao do dono D4): o
+    // backdrop, depois o poster; sem nenhum dos dois, a marca.
+    ...socialMetadata({
+      type: 'video.tv_show',
+      title,
+      description,
+      canonicalUrl,
+      images: [
+        socialArt(view.media.backdrop, view.title, 'landscape'),
+        socialArt(view.media.poster, view.title, 'portrait'),
+      ],
+    }),
   }
-  if (view.metaDescription !== null) {
-    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 

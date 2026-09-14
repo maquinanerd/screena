@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
+import { buildSameAs, serializeJsonLd, buildMetaDescription, describeMovieFactually } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -30,6 +30,7 @@ import {
 } from '../../../../src/lib/section-absence'
 import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getMoviePageData } from '../../../../src/server/movie-page'
 import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
 import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
@@ -140,18 +141,43 @@ export async function generateMetadata({
     }
   }
 
-  const { view, seo, canonicalUrl } = data
+  const { view, seo, canonicalUrl, genres, cast, directors } = data
   const title =
     view.metaTitle ?? `${view.title}${view.year !== null ? ` (${view.year})` : ''} — Filme`
+  // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
+  // que a ficha ja mostra. Antes a tag simplesmente nao saia: 3 de 5 filmes
+  // amostrados pela auditoria de SEO (achado M4).
+  const description =
+    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      describeMovieFactually({
+        title: view.title,
+        year: view.year,
+        genres,
+        directors,
+        cast: cast.map((member) => member.name),
+        runtimeLabel: view.runtimeLabel,
+      }),
+    )
 
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
+    // A arte que a ficha exibe, sob a mesma licenca (decisao do dono D4): o
+    // backdrop, depois o poster; sem nenhum dos dois, a marca.
+    ...socialMetadata({
+      type: 'video.movie',
+      title,
+      description,
+      canonicalUrl,
+      images: [
+        socialArt(view.media.backdrop, view.title, 'landscape'),
+        socialArt(view.media.poster, view.title, 'portrait'),
+      ],
+    }),
   }
-  if (view.metaDescription !== null) {
-    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 

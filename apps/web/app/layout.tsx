@@ -4,6 +4,7 @@ import { preload } from "react-dom";
 
 import { SiteHeader } from "./_components/site-header";
 import { SiteFooter } from "./_components/site-footer";
+import { CINERIE_SOCIAL_CARD } from "../src/lib/brand-logos";
 import { SITE_URL } from "../src/lib/site";
 import "./globals.css";
 
@@ -21,10 +22,24 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: { default: "Cinerie", template: "%s | Cinerie" },
-  // Marca publica em cartoes sociais. Sem og:image fabricada (nenhum asset
-  // raster proprio nesta fase) — nunca inventar dado.
-  openGraph: { siteName: "Cinerie", locale: "pt_BR", type: "website" },
-  twitter: { card: "summary" },
+  // O cartao PADRAO, para a rota que nao monta o seu (conta, listas, entrar). As
+  // paginas publicas montam o cartao completo em `src/lib/social-metadata.ts` — e
+  // precisam: o `openGraph` de uma pagina SUBSTITUI este inteiro. A imagem e o
+  // cartao da marca, derivado da arte entregue pelo dono (decisao D4).
+  openGraph: {
+    siteName: "Cinerie",
+    locale: "pt_BR",
+    type: "website",
+    images: [
+      {
+        url: CINERIE_SOCIAL_CARD.src,
+        width: CINERIE_SOCIAL_CARD.width,
+        height: CINERIE_SOCIAL_CARD.height,
+        alt: "Cinerie",
+      },
+    ],
+  },
+  twitter: { card: "summary_large_image", images: [CINERIE_SOCIAL_CARD.src] },
 };
 
 /** O MESMO arquivo do `src` da `@font-face` em `globals.css` (travado por teste). */

@@ -11,6 +11,7 @@ import {
   SITE_URL,
   gatePublicRobots,
 } from '../../../../../../../../../src/lib/site'
+import { socialMetadata } from '../../../../../../../../../src/lib/social-metadata'
 import { getEpisodePageData } from '../../../../../../../../../src/server/episode-page'
 
 /**
@@ -96,9 +97,11 @@ export async function generateMetadata({
   const { view, images } = data
   const canonical = episodeImagesGalleryPath(view.seriesSlug, view.seasonNumber, view.episodeNumber)
   const title = `Imagens de ${view.episodeTitle} — ${view.seriesTitle}, T${view.seasonNumber} E${view.episodeNumber}`
+  const description = `${String(images.total)} imagens do episódio "${view.episodeTitle}", fornecidas pelo TMDB.`
+  const canonicalUrl = canonical === null ? null : `${SITE_URL}${canonical}`
   return {
     title,
-    description: `${String(images.total)} imagens do episódio "${view.episodeTitle}", fornecidas pelo TMDB.`,
+    description,
     // D1 (decisao do dono, 2026-09-11): galeria nunca indexa como pagina
     // propria.
     //
@@ -109,12 +112,10 @@ export async function generateMetadata({
     // continua indexando normalmente") era falso desde a suspensao. Uma galeria
     // que nunca indexa nao consegue ser mais indexavel que o dono.
     robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
-    alternates: canonical === null ? undefined : { canonical: `${SITE_URL}${canonical}` },
-    openGraph: {
-      title,
-      url: canonical === null ? undefined : `${SITE_URL}${canonical}`,
-      type: 'website',
-    },
+    alternates: canonicalUrl === null ? undefined : { canonical: canonicalUrl },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl }),
   }
 }
 

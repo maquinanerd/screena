@@ -269,9 +269,26 @@ export function isOfficialLegalDocsIndexableEnvironment(
 export interface PageRobots {
   readonly index: boolean;
   readonly follow: boolean;
+  /** So em pagina que INDEXA — ver `INDEX_FOLLOW`. */
+  readonly "max-image-preview"?: "large";
 }
 
 const NOINDEX: PageRobots = { index: false, follow: false };
+
+/**
+ * `index, follow, max-image-preview:large` — o robots de TODA pagina que indexa.
+ *
+ * AUDITORIA DE SEO (11/09/2026, secao 3.3): nenhuma pagina emitia
+ * `max-image-preview`, nem as materias. Sem a diretiva, o tamanho da previa de
+ * imagem fica a criterio do buscador; e a documentacao do Google Discover pede
+ * `max-image-preview:large` (alem de imagem com 1200 px de largura) para o
+ * cartao grande. Num catalogo que vive de poster e backdrop, era a diretiva que
+ * faltava.
+ *
+ * Fora do indice ela nao entra: previa de imagem numa pagina `noindex` nao tem o
+ * que governar.
+ */
+const INDEX_FOLLOW: PageRobots = { index: true, follow: true, "max-image-preview": "large" };
 
 /**
  * PONTO UNICO de decisao do `<meta robots>` de QUALQUER pagina publica.
@@ -301,7 +318,7 @@ export function publicRobots(
   env: SiteUrlEnv = process.env,
 ): PageRobots {
   if (!isOfficialIndexableEnvironment(env)) return NOINDEX;
-  return shouldIndex ? { index: true, follow: true } : NOINDEX;
+  return shouldIndex ? INDEX_FOLLOW : NOINDEX;
 }
 
 /**
@@ -335,7 +352,7 @@ export function legalDocRobots(env: SiteUrlEnv = process.env): PageRobots {
   const allowed =
     isOfficialIndexableEnvironment(env) ||
     isOfficialLegalDocsIndexableEnvironment(env);
-  return allowed ? { index: true, follow: true } : NOINDEX;
+  return allowed ? INDEX_FOLLOW : NOINDEX;
 }
 
 /**
@@ -352,7 +369,9 @@ export function gatePublicRobots(
   env: SiteUrlEnv = process.env,
 ): PageRobots {
   if (!isOfficialIndexableEnvironment(env)) return NOINDEX;
-  return robots;
+  // A decisao da entidade vale inteira, inclusive `noindex,follow`; so a pagina
+  // que INDEXA ganha a diretiva de previa de `INDEX_FOLLOW`.
+  return robots.index ? { ...robots, "max-image-preview": "large" } : robots;
 }
 
 /** URL canonica absoluta da pagina de um filme. */

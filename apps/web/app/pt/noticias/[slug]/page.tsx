@@ -20,6 +20,7 @@ import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/l
 import type { NewsArticleView } from '../../../../src/lib/news-presenter'
 import { CINERIE_SCORE_LOGO } from '../../../../src/lib/brand-logos'
 import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
+import { brandSocialImage } from '../../../../src/lib/social-metadata'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
 /**
@@ -125,6 +126,9 @@ function seoFactsOf(
     authorName: view.author,
     siteName: 'Cinerie',
     locale: 'pt-BR',
+    // Materia sem capa leva o cartao da MARCA no compartilhamento (decisao do
+    // dono D4); o JSON-LD continua sem `image`, porque logo nao e foto da materia.
+    socialFallbackImage: brandSocialImage(),
   }
 }
 

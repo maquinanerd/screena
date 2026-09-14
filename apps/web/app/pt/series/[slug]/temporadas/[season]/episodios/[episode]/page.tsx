@@ -17,6 +17,7 @@ import {
   parseRouteNumber,
 } from '../../../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../../../../../src/lib/social-metadata'
 import { getEpisodePageData } from '../../../../../../../../src/server/episode-page'
 
 /**
@@ -105,16 +106,22 @@ export async function generateMetadata({
 
   const { view, seo, canonicalUrl } = data
   const title = `${view.episodeTitle} — ${view.seriesTitle}, T${view.seasonNumber} E${view.episodeNumber}`
+  const description = buildMetaDescription(view.overview)
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
-    openGraph: { title, url: canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte (ver a nota da pagina de temporada). A arte e o
+    // still do proprio episodio.
+    ...socialMetadata({
+      type: 'video.episode',
+      title,
+      description,
+      canonicalUrl,
+      images: [socialArt(view.still, view.episodeTitle, 'landscape')],
+    }),
   }
-  if (view.overview !== null) {
-    metadata.description = buildMetaDescription(view.overview) ?? view.overview
-    metadata.openGraph = { ...metadata.openGraph, description: view.overview }
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 

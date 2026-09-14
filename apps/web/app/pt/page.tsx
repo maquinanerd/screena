@@ -17,6 +17,7 @@ import { RANKING_TABS } from '../../src/lib/popular-rankings'
 import { getPopularRankings } from '../../src/server/popular-rankings'
 import { CINERIE_ORGANIZATION_LOGO } from '../../src/lib/brand-logos'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
+import { socialMetadata } from '../../src/lib/social-metadata'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../src/server/home-hero'
@@ -198,6 +199,14 @@ export async function generateMetadata(): Promise<Metadata> {
           ? { 'pt-BR': homeCanonicalUrl, 'x-default': homeCanonicalUrl }
           : undefined,
     },
+    // Cartao social completo, com `og:url` = canonical e o cartao da marca
+    // (auditoria de SEO, 11/09/2026: a home saia sem `og:url` e sem imagem).
+    ...socialMetadata({
+      type: 'website',
+      title: HOME_TITLE,
+      description: HOME_DESCRIPTION,
+      canonicalUrl: homeCanonicalUrl,
+    }),
   }
 }
 

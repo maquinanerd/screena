@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { EntityIndex } from "../../_components/entity-index";
 import { getPersonIndexData } from "../../../src/server/entity-indexes";
 import { publicRobots } from "../../../src/lib/site";
+import { socialMetadata } from "../../../src/lib/social-metadata";
 
 /**
  * Listagem publica de pessoas - /pt/pessoas/ (porta de entrada; tom NEUTRO).
@@ -64,6 +65,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
+    ...socialMetadata({ type: "website", title: TITLE, description: DESCRIPTION, canonicalUrl }),
   };
 }
 

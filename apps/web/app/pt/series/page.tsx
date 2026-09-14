@@ -11,6 +11,7 @@ import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-pre
 import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
 import { RANKING_TABS } from '../../../src/lib/popular-rankings'
 import { SERIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
@@ -75,6 +76,7 @@ export async function generateMetadata(): Promise<Metadata> {
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
+    ...socialMetadata({ type: 'website', title: TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 

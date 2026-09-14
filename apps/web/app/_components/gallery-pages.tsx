@@ -39,6 +39,7 @@ import { GalleryImageGrid, GalleryVideoList, PersonPhotoGrid } from './gallery-g
 import { GalleryShell } from './gallery-shell'
 import { imagesGalleryPath, personPhotosPath, videosGalleryPath } from '../../src/lib/routes'
 import { PEOPLE_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../src/lib/site'
+import { socialMetadata } from '../../src/lib/social-metadata'
 import {
   getImagesGalleryPageData,
   getVideosGalleryPageData,
@@ -103,15 +104,18 @@ export async function imagesGalleryMetadata(
     return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
   }
   const title = `Imagens e pôsteres de ${data.entityTitle}`
+  const description = `${data.gallery.total} imagens de ${data.entityTitle}, fornecidas pelo TMDB.`
   return {
     title,
-    description: `${data.gallery.total} imagens de ${data.entityTitle}, fornecidas pelo TMDB.`,
+    description,
     // D1 (decisão do dono, 2026-09-11): galeria nunca indexa como página
     // própria. O piso de quantidade continua decidindo o aviso da tela
     // (`belowFloor`), e não mais o índice.
     robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: { canonical: data.canonicalUrl },
-    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl: data.canonicalUrl }),
   }
 }
 
@@ -125,13 +129,16 @@ export async function videosGalleryMetadata(
     return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
   }
   const title = `Trailers e vídeos de ${data.entityTitle}`
+  const description = `${data.gallery.total} vídeos de ${data.entityTitle}, fornecidos pelo TMDB.`
   return {
     title,
-    description: `${data.gallery.total} vídeos de ${data.entityTitle}, fornecidos pelo TMDB.`,
+    description,
     // D1: galeria nunca indexa como página própria (ver a nota do cabeçalho).
     robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: { canonical: data.canonicalUrl },
-    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl: data.canonicalUrl }),
   }
 }
 
@@ -255,13 +262,16 @@ export async function personPhotosGalleryMetadata(slug: string): Promise<Metadat
     return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
   }
   const title = `Fotos de ${data.personName}`
+  const description = `${data.gallery.total} fotos de ${data.personName}, fornecidas pelo TMDB.`
   return {
     title,
-    description: `${data.gallery.total} fotos de ${data.personName}, fornecidas pelo TMDB.`,
+    description,
     // D1: galeria nunca indexa como página própria (ver a nota do cabeçalho).
     robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: { canonical: data.canonicalUrl },
-    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl: data.canonicalUrl }),
   }
 }
 

@@ -18,6 +18,7 @@
 // do mesmo tipo divergem no primeiro estado novo, e o TypeScript nao avisa
 // enquanto os valores coincidirem.
 import type { IndexDecision } from './resolver.js'
+import { toOpenGraphLocale } from './social-metadata.js'
 
 export type { IndexDecision }
 
@@ -44,7 +45,14 @@ export interface ArticleSeoFacts {
   readonly updatedAtIso: string | null
   readonly authorName: string | null
   readonly siteName: string
+  /** Idioma BCP-47 (`pt-BR`) — o formato do JSON-LD. O Open Graph o converte. */
   readonly locale: string
+  /**
+   * O cartao social da materia SEM capa: a ultima candidata da decisao do dono D4
+   * (a marca). So o cartao a usa — o `image` do JSON-LD continua sendo so a capa
+   * real, porque logo nao e foto da materia.
+   */
+  readonly socialFallbackImage?: { readonly url: string; readonly alt: string } | null
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,7 +108,12 @@ export function resolveCanonical(facts: ArticleSeoFacts): CanonicalVerdict {
 export interface RobotsDirective {
   readonly index: boolean
   readonly follow: boolean
-  readonly googleBot?: { readonly index: boolean; readonly follow: boolean }
+  readonly 'max-image-preview'?: 'large'
+  readonly googleBot?: {
+    readonly index: boolean
+    readonly follow: boolean
+    readonly 'max-image-preview'?: 'large'
+  }
 }
 
 /**
@@ -113,7 +126,17 @@ export interface RobotsDirective {
  */
 export function articleRobots(decision: IndexDecision): RobotsDirective {
   const index = decision === 'index'
-  return { index, follow: true, googleBot: { index, follow: true } }
+  if (!index) return { index, follow: true, googleBot: { index, follow: true } }
+  // `max-image-preview:large` (auditoria de SEO de 11/09/2026, secao 3.3):
+  // nenhuma pagina o emitia, nem a materia — a que mais vive de imagem grande no
+  // Discover. So em pagina que indexa, e nos DOIS metas, para `robots` e
+  // `googlebot` dizerem a mesma coisa.
+  return {
+    index,
+    follow: true,
+    'max-image-preview': 'large',
+    googleBot: { index, follow: true, 'max-image-preview': 'large' },
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -171,14 +194,16 @@ export function buildOpenGraph(facts: ArticleSeoFacts): OpenGraphPayload {
     // social entre duas paginas.
     url: canonical.href,
     siteName: facts.siteName,
-    locale: facts.locale,
+    // O Open Graph escreve o idioma com sublinhado (`pt_BR`); `facts.locale` e
+    // BCP-47 (`pt-BR`), o formato do JSON-LD. Passar direto era o `og:locale`
+    // invalido que a auditoria de SEO achou em toda materia.
+    locale: toOpenGraphLocale(facts.locale),
     ...(facts.publishedAtIso === null ? {} : { publishedTime: facts.publishedAtIso }),
     ...(facts.updatedAtIso === null ? {} : { modifiedTime: facts.updatedAtIso }),
     ...(section === '' ? {} : { section }),
     ...(author === '' ? {} : { authors: [author] }),
-    ...(facts.imageUrl === null
-      ? {}
-      : {
+    ...(facts.imageUrl !== null
+      ? {
           images: [
             {
               url: facts.imageUrl,
@@ -188,7 +213,16 @@ export function buildOpenGraph(facts: ArticleSeoFacts): OpenGraphPayload {
               alt: (facts.imageAlt ?? '').trim() === '' ? facts.title : (facts.imageAlt as string),
             },
           ],
-        }),
+        }
+      : facts.socialFallbackImage
+        ? // Sem capa, o cartao leva a MARCA (decisao do dono D4) em vez de sair
+          // sem imagem nenhuma.
+          {
+            images: [
+              { url: facts.socialFallbackImage.url, alt: facts.socialFallbackImage.alt },
+            ],
+          }
+        : {}),
   }
 }
 
@@ -204,15 +238,16 @@ export interface TwitterPayload {
  *
  * `summary_large_image` exige imagem. Declarar o card grande SEM imagem produz
  * um card degradado — por isso o tipo acompanha a existencia da imagem em vez
- * de ser fixo.
+ * de ser fixo. A marca de reserva e 1200x630 e cabe no recorte do card grande.
  */
 export function buildTwitter(facts: ArticleSeoFacts): TwitterPayload {
   const description = socialDescriptionOf(facts)
+  const imageUrl = facts.imageUrl ?? facts.socialFallbackImage?.url ?? null
   return {
-    card: facts.imageUrl === null ? 'summary' : 'summary_large_image',
+    card: imageUrl === null ? 'summary' : 'summary_large_image',
     title: socialTitleOf(facts),
     ...(description === null ? {} : { description }),
-    ...(facts.imageUrl === null ? {} : { images: [facts.imageUrl] }),
+    ...(imageUrl === null ? {} : { images: [imageUrl] }),
   }
 }
 

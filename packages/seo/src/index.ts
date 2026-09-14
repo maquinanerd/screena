@@ -25,6 +25,8 @@ export * from "./sitemap-plan.js";
 export * from "./sitemap-xml.js";
 export * from "./sitemap-ceiling.js";
 export * from "./entity-quality-gates.js";
+export * from "./social-metadata.js";
+export * from "./factual-description.js";
 
 export * from './article-technical-seo.js'
 export * from './news-sitemap.js'

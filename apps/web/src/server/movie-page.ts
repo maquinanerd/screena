@@ -145,6 +145,11 @@ export interface MoviePageData {
    */
   fichaFacts: FichaFact[];
   /**
+   * Nomes da DIRECAO, na ordem dos creditos — os mesmos da ficha tecnica. A
+   * descricao factual da `<meta>` os cita quando o filme nao tem sinopse propria.
+   */
+  directors: string[];
+  /**
    * "Mais como este" — titulos da MESMA colecao do TMDB. `null` omite o bloco
    * (e a faixa final passa a UMA coluna, em vez de reservar metade para nada).
    */
@@ -422,6 +427,7 @@ export const getMoviePageData = cache(
       genres,
       score,
       fichaFacts,
+      directors: crewFacts.directors.map((person) => person.name),
       similar,
     };
   },

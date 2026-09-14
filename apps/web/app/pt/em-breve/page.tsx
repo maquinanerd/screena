@@ -5,6 +5,7 @@ import { serializeJsonLd } from '@screena/seo'
 import { AnticipatedGrid } from '../../_components/anticipated-grid'
 import { EmptyState } from '../../_components/ds'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getAnticipatedData } from '../../../src/server/anticipated'
 
 /**
@@ -60,6 +61,12 @@ export async function generateMetadata(): Promise<Metadata> {
     description: DESCRIPTION,
     robots: publicRobots(total > 0),
     alternates: { canonical: canonicalPublicUrl(ANTICIPATED_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(ANTICIPATED_PATH),
+    }),
   }
 }
 

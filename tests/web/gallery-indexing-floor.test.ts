@@ -89,9 +89,12 @@ function videos(quantidade: number): GalleryVideoRow[] {
 
 describe('o piso da galeria decide o AVISO da tela', () => {
   it('(1) CONTROLE DE AMBIENTE: com origem oficial, o gate NAO colapsa tudo', () => {
+    // A pagina que indexa sai com a previa grande de imagem (auditoria de SEO,
+    // 2026-09-11) — e o sinal de que o gate deixou a decisao passar inteira.
     expect(gatePublicRobots({ index: true, follow: true }, AMBIENTE_INDEXAVEL)).toEqual({
       index: true,
       follow: true,
+      'max-image-preview': 'large',
     })
     expect(gatePublicRobots({ index: true, follow: true }, { NODE_ENV: 'development' })).toEqual({
       index: false,
