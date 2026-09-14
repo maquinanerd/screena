@@ -28,6 +28,7 @@
     "qa:detail-responsive": "tsx --tsconfig scripts/tsconfig.json scripts/qa-detail-responsive.ts",
     "qa:footer": "tsx --tsconfig scripts/tsconfig.json scripts/qa-footer-harness.tsx",
     "qa:default-styles": "tsx --tsconfig scripts/tsconfig.json scripts/qa-default-styles-harness.tsx",
+    "seo:audit": "tsx scripts/seo-audit.ts",
     "seed:dev-movie": "tsx scripts/seed-dev-movie.ts",
     "gen:demo-media": "node scripts/generate-demo-media.mjs",
     "validate:person-eligibility": "tsx scripts/validate-person-eligibility-real-postgres.ts",
