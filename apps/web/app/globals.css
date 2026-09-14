@@ -4452,7 +4452,20 @@ a.media-strip__cell {
 
 @media (max-width: 1023px) {
   .ficha-grid {
-    grid-template-columns: 1fr;
+    /* minmax(0, 1fr), NUNCA `1fr` sozinho (corrigido em 2026-09-11).
+
+       `1fr` e `minmax(auto, 1fr)`: o MINIMO da faixa vira o min-content do
+       conteudo. E o conteudo desta coluna inclui o trilho "Mais como este" —
+       8 cartoes de 210px mais 7 vaos de 16px = 1.792px, que nao encolhem.
+
+       Medido na auditoria de SEO, viewport de 412px: o documento inteiro media
+       1.816px de largura, o Chrome limitou o zoom minimo, e o LCP da ficha
+       virou um poster a y=2.353px carregado com lazy — 5,1 s.
+
+       O trilho continua rolando DENTRO de si (`overflow-x: auto`); quem nao
+       pode rolar para o lado e a pagina. O desktop acima e `.ficha-grid--solo`
+       ja usavam minmax(0, 1fr) — so este override de mobile tinha escapado. */
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
