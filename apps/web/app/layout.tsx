@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { preload } from "react-dom";
 
 import { SiteHeader } from "./_components/site-header";
 import { SiteFooter } from "./_components/site-footer";
@@ -26,7 +27,20 @@ export const metadata: Metadata = {
   twitter: { card: "summary" },
 };
 
+/** O MESMO arquivo do `src` da `@font-face` em `globals.css` (travado por teste). */
+const FONT_PATH = "/fonts/montserrat-latin-variable.woff2";
+
 export default function RootLayout({ children }: { children: ReactNode }): ReactNode {
+  // PRELOAD DA FONTE (2026-09-11). A Montserrat variavel so era descoberta DEPOIS
+  // de o navegador baixar e analisar a folha global — e entrava no lugar do
+  // fallback com o texto ja pintado. Medido na auditoria de SEO: o CLS 0,088 da
+  // noticia no desktop e um unico deslocamento logo apos `fonts.ready`, com a
+  // navegacao do cabecalho mudando de 446 px para 461 px.
+  //
+  // `crossOrigin: "anonymous"` NAO e opcional, mesmo na mesma origem: fonte e
+  // buscada em modo CORS, e um preload sem ele nao casa com a requisicao da
+  // `@font-face` — o navegador baixaria a fonte DUAS vezes.
+  preload(FONT_PATH, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
   return (
     <html lang="pt-BR">
       <body>
