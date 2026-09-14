@@ -64,7 +64,7 @@ import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
-import type { PageSeoResolution } from "@screena/seo";
+import { evaluateLocalizationGate, type PageSeoResolution } from "@screena/seo";
 import { getImageDisplayAuthorization } from "./image-license";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
@@ -296,13 +296,28 @@ export const getMoviePageData = cache(
     });
     const ratings = buildRatingsView(ratingsPayload);
 
+    // PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+    // fallback tmdb-{id}, sem titulo e sem descricao no locale publicado, fica
+    // fora do indice ate ser enriquecida — e indexa sozinha quando ganhar um dos
+    // dois. Le a MESMA linha de traducao que a pagina usa para titulo e meta; o
+    // SQL do sitemap aplica o mesmo predicado.
+    const qualityGate = evaluateLocalizationGate({
+      canonicalSlug,
+      hasLocalizedTitle: (translation?.title ?? "").trim() !== "",
+      hasLocalizedDescription:
+        (translation?.summary ?? "").trim() !== "" ||
+        (translation?.metaDescription ?? "").trim() !== "",
+    });
+
     // Fonte unica da Fase 3: funde os fatos vivos com a decisao VIGENTE
-    // persistida em page_indexability_decisions (fail-closed em falha de banco).
+    // persistida em page_indexability_decisions. Falha de banco LANCA (5xx) —
+    // nunca vira um noindex guardado pelo ISR.
     const seo = await resolveEntityPageSeo(
       { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
         hasReliableStructuredData: true,
+        qualityGate,
         // Exatamente as notas RENDERIZADAS. Todas passaram pelo gate de licenca
         // de `entity-ratings` + atribuicao do presenter, entao chegam aqui com
         // `licenseDisplayAllowed: true`. Uma fonte desligada/expirada nao

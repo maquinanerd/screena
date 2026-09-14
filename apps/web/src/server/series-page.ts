@@ -56,7 +56,11 @@ import type { TrailerView } from "../lib/trailer-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
-import type { IndexabilityResult, PageSeoResolution } from "@screena/seo";
+import {
+  evaluateLocalizationGate,
+  type IndexabilityResult,
+  type PageSeoResolution,
+} from "@screena/seo";
 import { getImageDisplayAuthorization } from "./image-license";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -386,12 +390,25 @@ export const getSeriesPageData = cache(
     });
     const ratings = buildRatingsView(ratingsPayload);
 
-    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida (fail-closed).
+    // PORTAO DE LOCALIZACAO (decisao do dono D3) — o gemeo do de movie-page.ts,
+    // pela mesma funcao: serie com slug de fallback tmdb-{id}, sem titulo e sem
+    // descricao no locale publicado, fica fora do indice ate ser enriquecida.
+    const qualityGate = evaluateLocalizationGate({
+      canonicalSlug,
+      hasLocalizedTitle: (translation?.title ?? "").trim() !== "",
+      hasLocalizedDescription:
+        (translation?.summary ?? "").trim() !== "" ||
+        (translation?.metaDescription ?? "").trim() !== "",
+    });
+
+    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida. Falha de
+    // banco LANCA (5xx), nunca vira noindex.
     const seo = await resolveEntityPageSeo(
       { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
         hasReliableStructuredData: true,
+        qualityGate,
         // Exatamente as notas RENDERIZADAS (ver movie-page.ts).
         displayedRatings: (ratings?.items ?? []).map(() => ({
           licenseDisplayAllowed: true,

@@ -1,0 +1,228 @@
+/**
+ * entity-quality-gates.ts — os PORTOES DE QUALIDADE por tipo de pagina.
+ *
+ * DE ONDE VEM. A invariante 5 manda indexar toda entidade sincronizada, com
+ * `noindex` so para caso tecnico. Em 11/09/2026 o dono decidiu por escrito
+ * (`docs/seo/DECISOES-DO-DONO-2026-09-11.md`) tres recortes a essa regra, cada
+ * um sustentado por MEDICAO da auditoria de SEO:
+ *
+ *   D1  galerias    69.016 URLs, 0 palavras de conteudo principal, sem <main>;
+ *   D2  pessoas     73.574 perfis; 0 de 300 amostrados exibiam biografia;
+ *   D3  tmdb-{id}   11.666 fichas sem titulo localizado nem descricao.
+ *
+ * O QUE UM PORTAO E, E O QUE NAO E. Nao e caso tecnico (a pagina e valida) e
+ * nao e exclusao explicita (ninguem decidiu que a pagina e ruim para sempre). A
+ * pagina existe, responde 200 e continua util para quem chega nela — ela so nao
+ * e oferecida ao indice AINDA. Por isso o desfecho e `noindex, FOLLOW`: os links
+ * dela continuam sustentando as paginas que indexam.
+ *
+ * UMA REGRA, DUAS TRADUCOES. Cada portao existe aqui como funcao pura (a pagina
+ * usa) e como CONTRATO declarado (o SQL do sitemap usa). Se as duas divergirem, a
+ * meta tag diz uma coisa e o sitemap outra — o defeito que a remediacao existe
+ * para acabar. O validador real de PostgreSQL prova que concordam.
+ *
+ * O PORTAO SE ABRE SOZINHO. Nenhum depende de um humano rodar comando: a ficha
+ * que ganha titulo em pt-BR, a pessoa que ganha biografia licenciada e foto,
+ * passam a indexar na revalidacao seguinte e entram no sitemap pelo mesmo motivo.
+ *
+ * MODULO PURO: sem banco, sem rede, sem IO, sem Date.
+ */
+
+import { evaluatePersonEligibility } from "./person-eligibility.js";
+
+/** Qual portao produziu o veredito. */
+export type QualityGateId = "gallery" | "person" | "localization";
+
+/** Veredito de um portao de qualidade. */
+export interface QualityGateVerdict {
+  readonly passed: boolean;
+  readonly gate: QualityGateId;
+  /** Codigo estavel, para log, censo e teste. */
+  readonly code: string;
+  /** Explicacao em pt-BR, estavel o bastante para ir ao `reason` da decisao. */
+  readonly reason: string;
+}
+
+/** Diretivas de uma pagina barrada por portao de qualidade. */
+export const QUALITY_GATE_ROBOTS = Object.freeze({ index: false, follow: true } as const);
+
+function passed(gate: QualityGateId, code: string, reason: string): QualityGateVerdict {
+  return { passed: true, gate, code, reason };
+}
+
+function failed(gate: QualityGateId, code: string, reason: string): QualityGateVerdict {
+  return { passed: false, gate, code, reason };
+}
+
+// ---------------------------------------------------------------------------
+// D1 — GALERIA
+// ---------------------------------------------------------------------------
+
+/**
+ * D1: galeria de midia NUNCA indexa como pagina propria.
+ *
+ * Vale para `/imagens/`, `/videos/` e `/fotos/` de qualquer entidade. A pagina
+ * continua acessivel e com `follow`. Quem descobre imagem e video e a ENTIDADE
+ * dona (schema e extensao de sitemap dela), nao uma URL fina por midia.
+ *
+ * Nao recebe entrada, de proposito. Ate aqui cada galeria decidia pelo proprio
+ * piso de quantidade — e a galeria de episodio chegou a indexar com o episodio
+ * dono suspenso, porque o piso nao olhava o dono. Uma galeria que nunca indexa
+ * nao consegue ser mais indexavel que o dono: o vazamento some por construcao.
+ * Se esta decisao um dia for revertida, a nova regra precisa exigir o dono E o
+ * piso — nao so o piso.
+ */
+export function evaluateGalleryGate(): QualityGateVerdict {
+  return failed(
+    "gallery",
+    "gallery_not_indexable",
+    "Galeria de midia nao indexa como pagina propria (decisao do dono D1, 2026-09-11): a pagina continua acessivel, e a entidade dona e quem se oferece ao indice.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// D3 — FICHA COM SLUG DE FALLBACK E SEM LOCALIZACAO
+// ---------------------------------------------------------------------------
+
+/**
+ * Slug de FALLBACK da ingestao: `desiredCatalogSlug` devolve `tmdb-{id}` quando o
+ * titulo nao produz slug (tipicamente alfabeto nao latino). O sufixo de
+ * colisao `-tmdb-{id}` ("espaco-1999-tmdb-134") NAO casa — la o titulo produziu
+ * slug, e o portao nao se aplica.
+ */
+export const TMDB_FALLBACK_SLUG_PATTERN = /^tmdb-\d+$/;
+
+/** A MESMA regra, na sintaxe de regex do PostgreSQL (operador `~`). */
+export const TMDB_FALLBACK_SLUG_SQL_PATTERN = "^tmdb-[0-9]+$";
+
+/** Fatos que o portao de localizacao le. */
+export interface LocalizationGateInput {
+  /** Slug canonico da ficha no locale publicado. */
+  readonly canonicalSlug: string;
+  /** Ha titulo nao vazio no locale publicado? */
+  readonly hasLocalizedTitle: boolean;
+  /** Ha descricao nao vazia (`summary` ou `meta_description`) no locale publicado? */
+  readonly hasLocalizedDescription: boolean;
+}
+
+/**
+ * D3: ficha com slug de fallback, SEM titulo localizado E SEM descricao, nao
+ * indexa ate ser enriquecida.
+ *
+ * O slug restringe o ESCOPO ao que o dono decidiu; ele nao e a condicao. Uma
+ * ficha que ganha titulo em pt-BR ou descricao passa a indexar mesmo que o slug
+ * continue `tmdb-{id}` (slug e estavel; recanonizar e outro processo). Se a
+ * condicao fosse so o slug, a ficha enriquecida ficaria fora do indice para
+ * sempre.
+ *
+ * Basta UM dos dois — titulo OU descricao — para abrir: e a leitura menos
+ * agressiva de "titulo nao localizado + sem description", que e uma conjuncao.
+ */
+export function evaluateLocalizationGate(input: LocalizationGateInput): QualityGateVerdict {
+  if (!TMDB_FALLBACK_SLUG_PATTERN.test(input.canonicalSlug.trim())) {
+    return passed(
+      "localization",
+      "readable_slug",
+      "Slug derivado do titulo: o portao de localizacao nao se aplica.",
+    );
+  }
+  if (input.hasLocalizedTitle || input.hasLocalizedDescription) {
+    return passed(
+      "localization",
+      "localized",
+      "Ficha com slug de fallback, mas ja enriquecida no locale publicado (titulo ou descricao).",
+    );
+  }
+  return failed(
+    "localization",
+    "not_localized",
+    "Ficha com slug de fallback tmdb-{id}, sem titulo localizado e sem descricao em pt-BR: nao indexa ate ser enriquecida (decisao do dono D3, 2026-09-11). Indexa sozinha quando ganhar titulo ou descricao.",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// D2 — PESSOA
+// ---------------------------------------------------------------------------
+
+/**
+ * Status de `people.biography_source_status` que liberam a biografia para
+ * EXIBICAO (invariante 6). A coluna nasce `unknown`; texto ingerido sem
+ * liberacao nao aparece na tela, e portanto nao pode sustentar indexacao.
+ */
+export const DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES = Object.freeze([
+  "official",
+  "licensed",
+  "third_party",
+] as const);
+
+/** Fatos que o portao de pessoa le. */
+export interface PersonQualityGateInput {
+  readonly name: string;
+  readonly hasCanonicalSlug: boolean;
+  readonly biography: string | null;
+  readonly biographySourceStatus: string | null;
+  readonly profilePath: string | null;
+  /**
+   * Creditos (elenco ou equipe) em FILME ou SERIE que tem slug canonico no
+   * locale e decisao efetiva `index` — a mesma definicao do `EXISTS` do sitemap.
+   */
+  readonly indexableCreditCount: number;
+}
+
+function isDisplayableBiography(biography: string | null, status: string | null): boolean {
+  if (biography === null || biography.trim() === "") return false;
+  return (DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES as readonly string[]).includes(status ?? "");
+}
+
+/**
+ * D2: pessoa indexa so com material suficiente para sustentar a pagina.
+ *
+ * Os criterios sao os MESMOS que o sitemap ja exigia desde a valvula de
+ * 2026-08-27 — a mudanca e que a pagina passa a exigi-los tambem. Ordem, do mais
+ * tecnico ao mais editorial:
+ *
+ *  1. nome e slug canonico (a regra de elegibilidade que ja existia);
+ *  2. biografia com texto E com status que libera exibicao;
+ *  3. foto;
+ *  4. ao menos um credito em obra indexavel (a regra de elegibilidade).
+ *
+ * Nao sao criterios inventados para a ocasiao: sem biografia exibivel e sem foto
+ * a ficha rende ~52 palavras dentro de `<main>` — nome, papel e uma lista de
+ * links — medido em 2026-08-27.
+ */
+export function evaluatePersonQualityGate(input: PersonQualityGateInput): QualityGateVerdict {
+  const elegibilidade = evaluatePersonEligibility({
+    name: input.name,
+    hasCanonicalSlug: input.hasCanonicalSlug,
+    publishableCreditCount: input.indexableCreditCount,
+  });
+  // Nome e slug primeiro: sem eles nao ha pagina para avaliar.
+  if (
+    !elegibilidade.eligible &&
+    (elegibilidade.reason === "name_missing" || elegibilidade.reason === "slug_missing")
+  ) {
+    return failed("person", elegibilidade.reason, elegibilidade.explanation);
+  }
+  if (!isDisplayableBiography(input.biography, input.biographySourceStatus)) {
+    return failed(
+      "person",
+      "no_displayable_biography",
+      "Pessoa sem biografia exibivel (texto com status que libera exibicao): a ficha nao sustenta pagina propria no indice (decisao do dono D2, 2026-09-11).",
+    );
+  }
+  if (input.profilePath === null || input.profilePath.trim() === "") {
+    return failed(
+      "person",
+      "no_profile_photo",
+      "Pessoa sem foto de perfil: a ficha nao sustenta pagina propria no indice (decisao do dono D2, 2026-09-11).",
+    );
+  }
+  if (!elegibilidade.eligible) {
+    return failed("person", elegibilidade.reason ?? "no_publishable_credit", elegibilidade.explanation);
+  }
+  return passed(
+    "person",
+    "eligible",
+    `Pessoa com biografia exibivel, foto e ${input.indexableCreditCount} credito(s) em obra indexavel.`,
+  );
+}
