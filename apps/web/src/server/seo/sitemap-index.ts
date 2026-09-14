@@ -80,6 +80,20 @@ import {
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
 import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
+import {
+  absentDecisionFor,
+  isDecisionGateArmed,
+  readDecisionCoverage,
+  SITEMAP_DECISION_GATE_MIN_ROWS,
+  unarmedDecisionEntities,
+  type DecisionCoverage,
+  type DecisionEntity,
+} from "./decision-coverage";
+
+// Reexportados daqui de proposito: a suite de governanca e o validador real ja
+// importavam estes nomes deste modulo, e a regra continua sendo uma so.
+export { isDecisionGateArmed, SITEMAP_DECISION_GATE_MIN_ROWS };
+export type { DecisionCoverage, DecisionEntity };
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -303,147 +317,14 @@ function logCeilingReport(report: SitemapCeilingReport): void {
   }
 }
 
-/**
- * OS TIPOS DE `page_indexability_decisions` (nomes SINGULARES do enum
- * `EntityType`), que sao os nomes de decisao — nao os nomes de shard.
+/*
+ * A REGRA DE COBERTURA - quanto do tipo a politica ja decidiu, e o que a
+ * AUSENCIA de decisao vale por causa disso - mora em `decision-coverage.ts` desde
+ * 2026-09-11. Ela passou a servir tambem o `<meta robots>` da pagina, e duas
+ * copias da mesma regra sao exatamente a divergencia (d) que a auditoria de SEO
+ * achou. O porque do piso de 1.000, do armar por tipo e da contagem saturada
+ * esta documentado la, junto do codigo.
  */
-export type DecisionEntity = "movie" | "tv" | "person" | "season" | "episode";
-
-const DECISION_ENTITIES: readonly DecisionEntity[] = [
-  "movie",
-  "tv",
-  "person",
-  "season",
-  "episode",
-];
-
-/** Quantas decisoes VIGENTES existem por tipo de entidade, naquele idioma. */
-export type DecisionCoverage = Readonly<Record<DecisionEntity, number>>;
-
-const EMPTY_COVERAGE: DecisionCoverage = Object.freeze({
-  movie: 0,
-  tv: 0,
-  person: 0,
-  season: 0,
-  episode: 0,
-});
-
-/**
- * PISO DE LINHAS QUE ARMA O GATE ESTRITO, POR TIPO DE ENTIDADE.
- *
- * O QUE MUDOU. Ate aqui a regra do sitemap era `NOT EXISTS (... decision <>
- * 'index')`: **linha ausente fazia a URL ENTRAR**. Como
- * `page_indexability_decisions` nunca foi escrita, a clausula nunca excluiu uma
- * linha sequer e o site indexava por OMISSAO. A regra agora e a inversa —
- * entra quem TEM linha vigente dizendo `index`.
- *
- * POR QUE A INVERSAO NAO PODE SER INCONDICIONAL. Inverter a regra e povoar a
- * tabela sao duas coisas, e a segunda mora no banco de PRODUCAO: quem escreve e
- * `catalog index-decisions --apply` (services/ingestion), rodando no ciclo
- * horario. Se o codigo invertido chegar ao ar ANTES de o produtor ter rodado, a
- * tabela esta vazia, todo COALESCE cai no default e o sitemap inteiro vai a
- * zero. Nao e uma desindexacao — sitemap nao desindexa, so a meta tag faz isso
- * —, mas e a descoberta do dominio inteiro parando de um deploy para o outro,
- * sem ninguem pedir.
- *
- * Esta e a licao que o projeto ja pagou duas vezes: uma correcao que so esta
- * certa se um humano lembrar de rodar um comando ANTES, na ordem certa, e uma
- * correcao que vai falhar (ver `docs/operations/legal-supersede-carries-rows.md`
- * e a precondicao de licenca de imagem, que tambem mora no banco e nao viaja no
- * deploy). Entao o codigo detecta a precondicao SOZINHO.
- *
- * COMO FUNCIONA. Uma consulta agrupada conta as decisoes vigentes por tipo. Um
- * tipo com pelo menos este numero de linhas tem o gate ARMADO: decisao ausente
- * vale `noindex`. Abaixo disso o gate fica DESARMADO e a decisao ausente segue
- * valendo `index` — exatamente o comportamento antigo —, e o motivo vai para o
- * log a cada requisicao. Nao ha flag, nao ha env e nao ha segundo deploy: no
- * ciclo seguinte ao primeiro `--apply`, o gate se arma sozinho.
- *
- * POR QUE POR TIPO, E NAO GLOBAL. A CLI aceita `--entity person` (esta no
- * proprio help). Um numero global armaria o gate do catalogo inteiro a partir de
- * uma execucao que so decidiu pessoas, e filme e serie sairiam do sitemap sem
- * nunca terem sido avaliados. Por tipo, cada gate espera a sua propria prova.
- *
- * POR QUE 1.000. E a linha que o dono declarou como limite de sanidade para
- * esta mudanca ("abaixo de 1.000 URLs, pare e relate"). Fica bem acima de
- * qualquer execucao parcial acidental e MUITO abaixo de uma execucao completa
- * (o catalogo publicado em 2026-08-27 tinha 34.799 filmes e 32.392 series).
- */
-export const SITEMAP_DECISION_GATE_MIN_ROWS = 1_000;
-
-/** `true` quando aquele tipo ja tem decisoes suficientes para o gate valer. */
-export function isDecisionGateArmed(
-  coverage: DecisionCoverage,
-  entity: DecisionEntity,
-): boolean {
-  return coverage[entity] >= SITEMAP_DECISION_GATE_MIN_ROWS;
-}
-
-/**
- * O valor que uma decisao AUSENTE assume no SQL.
- *
- * Armado -> `noindex` (a entidade sem linha nao entra). Desarmado -> `index`
- * (comportamento antigo, ate o produtor rodar). E este par de strings que
- * atravessa como PARAMETRO para dentro do `COALESCE` de cada consulta — o SQL
- * tem UMA forma so, e o que muda e o dado.
- */
-function absentDecisionFor(
-  coverage: DecisionCoverage,
-  entity: DecisionEntity,
-): "index" | "noindex" {
-  return isDecisionGateArmed(coverage, entity) ? "noindex" : "index";
-}
-
-/**
- * Conta as decisoes vigentes por tipo — UMA consulta para os cinco.
- *
- * A CONTAGEM E LIMITADA AO PISO, DE PROPOSITO. Um `GROUP BY entity_type` sobre a
- * tabela inteira leria TODAS as linhas vigentes so para descobrir um booleano
- * ("passou de 1.000?"). Isso escala com o catalogo: ha uma decisao por episodio,
- * e episodio ja foi 3,79 milhoes de URLs. Numa rota `force-dynamic`, chamada a
- * cada requisicao de sitemap, isso vira um scan de milhoes de tuplas por
- * requisicao — o tipo de custo que so aparece meses depois, quando ninguem mais
- * associa a causa.
- *
- * O `LIMIT` dentro do subselect corta em `SITEMAP_DECISION_GATE_MIN_ROWS` por
- * tipo: no maximo ~5.000 tuplas lidas, sempre, independentemente do tamanho da
- * tabela. `n` NAO e a contagem real — e a contagem SATURADA no piso, que e a
- * unica coisa que a decisao precisa. O indice usado e o unique parcial
- * `page_indexability_decisions_current_unique` (entity_type, entity_id,
- * language_code) WHERE is_current, que ja e exatamente o conjunto varrido.
- *
- * `entity_type IS NOT NULL` esta implicito: a lista de tipos vem de `VALUES`, e
- * linha de ARTIGO (que divide a tabela via `doc_kind`) tem `entity_type` nulo e
- * nunca casa. Artigo tem o proprio gate em `article_translations.index_status`.
- *
- * Falha de banco NAO e tratada aqui: ela sobe e cai no fail-closed de quem
- * chamou (index vazio / shard 404), do mesmo jeito que qualquer outra consulta
- * do sitemap. Devolver "cobertura zero" em cima de um erro seria o pior dos
- * mundos: publicaria o catalogo inteiro com o gate desarmado por causa de um
- * timeout.
- */
-async function readDecisionCoverage(
-  prisma: PrismaClient,
-  language: string,
-): Promise<DecisionCoverage> {
-  const teto = SITEMAP_DECISION_GATE_MIN_ROWS;
-  const rows = await prisma.$queryRaw<{ entity_type: string; n: number }[]>`
-    SELECT t.entity_type AS entity_type,
-           (SELECT COUNT(*)::int FROM (
-              SELECT 1 FROM page_indexability_decisions d
-               WHERE d.entity_type = t.entity_type::"EntityType"
-                 AND d.language_code = ${language}
-                 AND d.is_current = true
-               LIMIT ${teto}
-            ) AS amostra) AS n
-    FROM (VALUES ('movie'),('tv'),('person'),('season'),('episode')) AS t(entity_type)`;
-  const coverage: Record<DecisionEntity, number> = { ...EMPTY_COVERAGE };
-  for (const row of rows) {
-    const key = row.entity_type as DecisionEntity;
-    if (DECISION_ENTITIES.includes(key)) coverage[key] = Number(row.n) || 0;
-  }
-  return coverage;
-}
 
 /**
  * Registra, uma vez por requisicao, quais gates ainda estao DESARMADOS.
@@ -453,7 +334,7 @@ async function readDecisionCoverage(
  * exatamente assim que 78 shards nasceram sem uma linha de log.
  */
 function warnUnarmedGates(coverage: DecisionCoverage): void {
-  const unarmed = DECISION_ENTITIES.filter((e) => !isDecisionGateArmed(coverage, e));
+  const unarmed = unarmedDecisionEntities(coverage);
   if (unarmed.length === 0) return;
   console.error(
     "[sitemap] gate de decisao DESARMADO para: " +

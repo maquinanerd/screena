@@ -17,6 +17,12 @@
  */
 
 import { getPrismaClient } from "@screena/db/server";
+
+import {
+  absentDecisionFor,
+  readDecisionCoverageForPage,
+  type DecisionCoverage,
+} from "./decision-coverage";
 import {
   mergePersistedDecision,
   resolvePageSeo,
@@ -136,6 +142,10 @@ export class IndexabilityDecisionUnavailableError extends Error {
  * Falha ao ler a decisao vigente LANCA `IndexabilityDecisionUnavailableError`
  * (a rota responde 5xx) — nunca devolve uma resolucao `noindex` inventada.
  *
+ * A AUSENCIA de decisao segue a MESMA regra do sitemap (desde 2026-09-11): com o
+ * gate do tipo armado, entidade sem linha vigente sai `noindex, follow` — como o
+ * sitemap ja a deixava de fora. Ver `decision-coverage.ts`.
+ *
  * Esta e a funcao que metadata, HTML, canonical e sitemap devem consumir para a
  * pagina de detalhe de uma entidade.
  */
@@ -146,8 +156,17 @@ export async function resolveEntityPageSeo(
 ): Promise<PageSeoResolution> {
   const live = resolvePageSeo(liveFacts);
   let persisted: PersistedDecisionFacts | null;
+  let coverage: DecisionCoverage;
   try {
-    persisted = await getCurrentPageIndexabilityDecision(key, client);
+    // Duas leituras independentes: a decisao DESTA entidade e o quanto do TIPO a
+    // politica ja decidiu. A segunda decide o que a ausencia da primeira
+    // significa. As duas falham do mesmo jeito: 5xx, nunca noindex.
+    [persisted, coverage] = await Promise.all([
+      getCurrentPageIndexabilityDecision(key, client),
+      // Memorizada por um minuto, contra o cliente de producao: a cobertura muda
+      // uma vez por produtor rodado, e o `client` injetado so serve a decisao.
+      readDecisionCoverageForPage(key.languageCode),
+    ]);
   } catch (error) {
     // O log continua de proposito: e ele que separa "banco caiu" de qualquer
     // outra causa de 500 no painel. O throw e o que impede o noindex de ir para
@@ -158,5 +177,7 @@ export async function resolveEntityPageSeo(
     );
     throw new IndexabilityDecisionUnavailableError(key, error);
   }
-  return mergePersistedDecision(live, persisted);
+  return mergePersistedDecision(live, persisted, {
+    absentDecision: absentDecisionFor(coverage, key.entityType),
+  });
 }
