@@ -443,7 +443,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               {view.media.poster !== null ? (
                 <img
                   alt={`Pôster de ${view.title}`}
-                  fetchPriority="high"
+                  // O poster NAO e o LCP quando ha destaque (2026-09-11): a celula
+                  // dele e 1/6 da faixa no desktop e 1/3 no tablet e no celular, e a
+                  // do destaque, ao lado, e sempre maior. `low` tira o preload de
+                  // alta prioridade que o SSR do React 19 emite para toda <img>
+                  // eager — sem `lazy`, porque ele segue acima da dobra. Sem
+                  // destaque, ele e a maior imagem da faixa e volta a `high`.
+                  fetchPriority={view.media.backdrop === null ? 'high' : 'low'}
                   height={view.media.poster.height}
                   src={view.media.poster.src}
                   width={view.media.poster.width}
@@ -454,8 +460,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               {view.media.backdrop !== null ? (
                 <img
                   alt=""
+                  // O LCP da ficha em TODA largura (2026-09-11). Carregava com
+                  // `loading="lazy"`: medido na auditoria de SEO, 269 ms de espera e
+                  // prioridade baixa no elemento que decide o LCP, enquanto o
+                  // preload de alta prioridade ia para o poster.
+                  fetchPriority="high"
                   height={view.media.backdrop.height}
-                  loading="lazy"
                   src={view.media.backdrop.src}
                   width={view.media.backdrop.width}
                 />

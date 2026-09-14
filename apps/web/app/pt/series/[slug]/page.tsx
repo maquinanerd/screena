@@ -547,7 +547,9 @@ export default async function SeriesPage({
               {view.media.poster !== null ? (
                 <img
                   alt={`Pôster de ${view.title}`}
-                  fetchPriority="high"
+                  // O poster NAO e o LCP quando ha destaque — ver a mesma nota na
+                  // ficha de filme. Sem destaque, ele volta a `high`.
+                  fetchPriority={view.media.backdrop === null ? 'high' : 'low'}
                   height={view.media.poster.height}
                   src={view.media.poster.src}
                   width={view.media.poster.width}
@@ -558,8 +560,10 @@ export default async function SeriesPage({
               {view.media.backdrop !== null ? (
                 <img
                   alt=""
+                  // O LCP da ficha em toda largura — carregava `lazy` (medido na
+                  // auditoria de SEO, 2026-09-11). Ver a nota na ficha de filme.
+                  fetchPriority="high"
                   height={view.media.backdrop.height}
-                  loading="lazy"
                   src={view.media.backdrop.src}
                   width={view.media.backdrop.width}
                 />
