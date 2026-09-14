@@ -122,6 +122,18 @@ export type SectionAbsenceReason =
    */
   | "no_offer_for_entity"
   /**
+   * Este titulo TEM oferta no catalogo, mas nenhuma aprovada para exibicao —
+   * nunca promovida, retida por decisao, ou desligada por ter sumido do
+   * snapshot do fornecedor.
+   *
+   * ACIONAVEL. Ate 2026-09-11 este estado saia rotulado `no_offer_for_entity`
+   * ("o titulo nao esta em lugar nenhum"), porque a sonda so perguntava se havia
+   * oferta exibivel no catalogo INTEIRO. A auditoria de SEO achou "Onde assistir"
+   * vazio em 6 de 6 titulos correntes, e a causa era uma promocao que nao
+   * avancava: um passo pendente com cara de fato sobre a obra.
+   */
+  | "offer_hidden_for_entity"
+  /**
    * A formula do Cinerie Score existe e esta registrada, mas NENHUMA
    * `DataUsageDecision` de `cinerie_score_display` a autoriza.
    *
@@ -348,6 +360,9 @@ const ACTIONABLE_REASONS: ReadonlySet<SectionAbsenceReason> = new Set([
   // nomeia qual. Nao e um fato sobre o catalogo — e uma pendencia de operacao.
   "source_logo_asset_missing",
   "no_authorized_provider",
+  // Acionavel: ha oferta deste titulo esperando promocao (ou retida, ou
+  // desligada) — o conserto e revisar a fila, nao aceitar a ausencia.
+  "offer_hidden_for_entity",
   "no_approved_formula",
   "no_awards_source",
   "no_recommendation_dataset",

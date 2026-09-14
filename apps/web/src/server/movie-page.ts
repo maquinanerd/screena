@@ -335,7 +335,8 @@ export const getMoviePageData = cache(
 
     // O motivo da AUSENCIA do painel de streaming e derivado do estado, nunca
     // fixo. So consulta quando nao ha painel — quem tem oferta nao paga a sonda.
-    const watchAbsence = watch === null ? await watchAbsenceReason(prisma) : null;
+    const watchAbsence =
+      watch === null ? await watchAbsenceReason(prisma, ENTITY_TYPE, entityId) : null;
 
     // Premiacao: o FATO ("Venceu 4 Oscars"), nunca uma nota. Mesma disciplina
     // do painel de streaming — o motivo da ausencia e derivado do estado do
