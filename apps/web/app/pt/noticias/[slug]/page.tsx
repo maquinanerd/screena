@@ -188,6 +188,11 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   // o `Inicio > Noticias > news`, com o mesmo degrau repetido em ingles.
   const sectionLabel = sectionCrumbLabel(view.articleSection ?? view.category)
 
+  // A trilha do schema e a trilha VISIVEL, degrau por degrau: `Início › Notícias
+  // › seção`. O schema terminava no titulo da materia, que a trilha visivel nao
+  // tem — eram duas trilhas para a mesma pagina (auditoria de SEO, 11/09/2026). A
+  // secao nao tem pagina propria, entao o ultimo degrau sai sem `item`, como o
+  // schema permite ao ultimo.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -204,7 +209,9 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
         name: 'Notícias',
         item: `${SITE_URL}${NEWS_INDEX_PATH}`,
       },
-      { '@type': 'ListItem', position: 3, name: view.title, item: canonicalUrl },
+      ...(sectionLabel !== null
+        ? [{ '@type': 'ListItem', position: 3, name: sectionLabel }]
+        : []),
     ],
   }
 

@@ -148,6 +148,8 @@ export interface SeasonPageView {
   overview: string | null;
   dateLabel: string | null;
   airYear: number | null;
+  /** A estreia em ISO `YYYY-MM-DD`: a data completa do JSON-LD. */
+  airDateIso: string | null;
   episodeCount: number | null;
   episodeCountLabel: string | null;
   poster: SeriesImageAsset | null;
@@ -204,6 +206,7 @@ export function buildSeasonPageView(input: SeasonPresenterInput): SeasonPageView
     overview: trimToNull(input.overview),
     dateLabel: formatAirDate(input.airDateIso),
     airYear: yearFromIso(input.airDateIso),
+    airDateIso: input.airDateIso,
     episodeCount,
     episodeCountLabel:
       episodeCount === null
@@ -257,6 +260,8 @@ export interface EpisodePageView {
   overview: string | null;
   dateLabel: string | null;
   airYear: number | null;
+  /** A exibicao em ISO `YYYY-MM-DD`: a data completa do JSON-LD. */
+  airDateIso: string | null;
   runtimeLabel: string | null;
   still: SeriesImageAsset | null;
   prevEpisode: EpisodeNavLink | null;
@@ -286,6 +291,7 @@ export function buildEpisodePageView(input: EpisodePresenterInput): EpisodePageV
     overview: trimToNull(input.overview),
     dateLabel: formatAirDate(input.airDateIso),
     airYear: yearFromIso(input.airDateIso),
+    airDateIso: input.airDateIso,
     runtimeLabel: formatRuntime(input.runtimeMinutes),
     still: imageAsset(input.stillPath, STILL_SPEC),
     prevEpisode: episodeLink(input.seriesSlug, input.seasonNumber, input.prevEpisodeNumber),

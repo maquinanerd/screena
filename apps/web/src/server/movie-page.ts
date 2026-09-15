@@ -145,10 +145,13 @@ export interface MoviePageData {
    */
   fichaFacts: FichaFact[];
   /**
-   * Nomes da DIRECAO, na ordem dos creditos — os mesmos da ficha tecnica. A
-   * descricao factual da `<meta>` os cita quando o filme nao tem sinopse propria.
+   * A DIRECAO, na ordem dos creditos — a mesma da ficha tecnica, com a pagina da
+   * pessoa quando ela existe. Alimenta a descricao factual da `<meta>` e o
+   * `director` do JSON-LD.
    */
-  directors: string[];
+  directors: readonly { readonly name: string; readonly href: string | null }[];
+  /** Estreia em ISO `YYYY-MM-DD`: a data completa do JSON-LD. */
+  releaseDateIso: string | null;
   /**
    * "Mais como este" — titulos da MESMA colecao do TMDB. `null` omite o bloco
    * (e a faixa final passa a UMA coluna, em vez de reservar metade para nada).
@@ -427,7 +430,9 @@ export const getMoviePageData = cache(
       genres,
       score,
       fichaFacts,
-      directors: crewFacts.directors.map((person) => person.name),
+      directors: crewFacts.directors,
+      releaseDateIso:
+        movie.releaseDate === null ? null : movie.releaseDate.toISOString().slice(0, 10),
       similar,
     };
   },

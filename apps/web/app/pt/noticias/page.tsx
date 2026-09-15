@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { AdSlot } from '../../_components/ad-slot'
 import { EmptyState } from '../../_components/ds'
@@ -83,6 +83,8 @@ export default async function NewsIndexPage() {
     name: TITLE,
     url: canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
   if (orderedCards.length > 0) {
     collectionJsonLd.mainEntity = {

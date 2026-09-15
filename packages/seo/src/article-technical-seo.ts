@@ -18,6 +18,7 @@
 // do mesmo tipo divergem no primeiro estado novo, e o TypeScript nao avisa
 // enquanto os valores coincidirem.
 import type { IndexDecision } from './resolver.js'
+import { organizationId, publicHomeUrl } from './site-identity.js'
 import { toOpenGraphLocale } from './social-metadata.js'
 
 export type { IndexDecision }
@@ -350,7 +351,12 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
     ...(publisherUrl === null
       ? {}
       : {
-          url: publisherUrl,
+          // O MESMO no da home (`@id`) e a mesma URL publica, a home canonica.
+          // Ate 11/09/2026 o publisher apontava para a origem sem barra, a home
+          // para `/pt/` e o WebSite para `/` — tres enderecos para uma
+          // organizacao, sem `@id` (auditoria de SEO, M7).
+          '@id': organizationId(publisherUrl),
+          url: publicHomeUrl(publisherUrl),
           // A marca-mãe raster (PNG 672x163) — o mesmo arquivo de
           // `CINERIE_ORGANIZATION_LOGO` (apps/web/src/lib/brand-logos.ts),
           // amarrado por teste. Sem origem nao ha logo absoluto: o publisher

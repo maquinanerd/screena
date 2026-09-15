@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { HomeLike } from '../../_components/home-like'
 import {
@@ -12,6 +12,7 @@ import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
 import { RANKING_TABS } from '../../../src/lib/popular-rankings'
 import { SERIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
+import { railItemListJsonLd } from '../../../src/lib/rail-item-list'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
@@ -125,19 +126,14 @@ export default async function SeriesCategoryPage() {
     name: TITLE,
     url: index.canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
-  if (index.view.cards.length > 0) {
-    collectionJsonLd.mainEntity = {
-      '@type': 'ItemList',
-      numberOfItems: index.view.cards.length,
-      itemListElement: index.view.cards.map((card, position) => ({
-        '@type': 'ListItem',
-        position: position + 1,
-        url: `${SITE_URL}${card.href}`,
-        name: card.title,
-      })),
-    }
-  }
+  // O ItemList descreve o trilho que a pagina RENDERIZA — o mesmo
+  // `catalog.series` passado ao HomeLike abaixo —, e nao a listagem por ano
+  // (auditoria de SEO, 3.4). Sem trilho, sem ItemList.
+  const railList = railItemListJsonLd('Séries da semana', catalog.series)
+  if (railList !== null) collectionJsonLd.mainEntity = railList
 
   return (
     <main data-vertical="series">

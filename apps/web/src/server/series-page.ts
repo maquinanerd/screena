@@ -142,6 +142,14 @@ export interface SeriesPageData {
   score: CinerieScoreInputView;
   /** A FICHA (Detalhes) do canônico, já composta — fatos apenas. */
   fichaFacts: FichaFact[];
+  /** Estreia e ultima exibicao em ISO `YYYY-MM-DD`: as datas completas do JSON-LD. */
+  firstAirDateIso: string | null;
+  lastAirDateIso: string | null;
+  /**
+   * A serie ACABOU (`Ended`/`Canceled` no TMDB)? So entao o schema declara
+   * `endDate`: a ultima exibicao de uma serie no ar nao e o fim dela.
+   */
+  ended: boolean;
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -151,6 +159,13 @@ function seriesCanonicalUrl(slug: string): string {
 function yearFromDate(date: Date | null): number | null {
   return date === null ? null : date.getUTCFullYear();
 }
+
+function isoDateOf(date: Date | null): string | null {
+  return date === null ? null : date.toISOString().slice(0, 10);
+}
+
+/** Situacoes do TMDB em que a serie ACABOU. */
+const ENDED_STATUSES: ReadonlySet<string> = new Set(["Ended", "Canceled"]);
 
 export const getSeriesPageData = cache(
   async (
@@ -511,6 +526,9 @@ export const getSeriesPageData = cache(
       awardsAbsence,
       ratings,
       externalIds,
+      firstAirDateIso: isoDateOf(series.firstAirDate),
+      lastAirDateIso: isoDateOf(series.lastAirDate),
+      ended: series.status !== null && ENDED_STATUSES.has(series.status),
     };
   },
 );

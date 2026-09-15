@@ -86,6 +86,22 @@ describe('categorias (tela 04) e índice de pessoas', () => {
     }
   })
 
+  /**
+   * O ItemList descreve o trilho RENDERIZADO, nao a listagem por ano (auditoria
+   * de SEO, 3.4: 0 de 24 titulos do schema apareciam na pagina). A paridade com
+   * o HTML e medida em `app/_components/__tests__/home-like-item-list.test.tsx`;
+   * aqui se prova que a pagina entrega o MESMO array aos dois lados.
+   */
+  it('o ItemList sai do mesmo array que o HomeLike renderiza', () => {
+    expect(movies).toContain("railItemListJsonLd('Filmes em alta', movieCards)")
+    expect(movies).toContain('movieCards={movieCards}')
+    expect(series).toContain("railItemListJsonLd('Séries da semana', catalog.series)")
+    expect(series).toContain('seriesCards={catalog.series}')
+    for (const page of [movies, series]) {
+      expect(page).not.toContain('index.view.cards')
+    }
+  })
+
   it('pessoas continua um índice fino com o contrato compartilhado', () => {
     expect(people).toContain('getPersonIndexData')
     expect(people).toContain('<EntityIndex')

@@ -1,7 +1,15 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription, describeMovieFactually } from '@screena/seo'
+import {
+  buildMetaDescription,
+  buildSameAs,
+  describeMovieFactually,
+  schemaImageUrls,
+  schemaPeople,
+  serializeJsonLd,
+  toIsoDuration,
+} from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -18,11 +26,7 @@ import {
   decideCinerieScore,
   type CinerieScoreView,
 } from '../../../../src/lib/cinerie-score-presenter'
-import {
-  HERO_SYNOPSIS_MAX_CHARS,
-  breadcrumbGenre,
-  heroGenreChips,
-} from '../../../../src/lib/detail-hero'
+import { HERO_SYNOPSIS_MAX_CHARS, heroGenreChips } from '../../../../src/lib/detail-hero'
 import {
   buildSectionAbsence,
   decideSection,
@@ -46,7 +50,8 @@ import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes
  * (320px).
  *
  * O TOPO É O CANÔNICO E MAIS NADA (decisão do dono, 20/08/2026): breadcrumb
- * com o gênero no meio; badge; título; chips (gêneros + meta + classificação);
+ * (sem o degrau de gênero desde 11/09/2026, enquanto não houver página de
+ * gênero); badge; título; chips (gêneros + meta + classificação);
  * sinopse de TRÊS linhas (texto completo em "A OBRA"); DOIS botões; cartão à
  * direita com Cinerie Score → Avaliações → Onde assistir (marcas em linha).
  * As sete remoções (linha de métrica, aviso de escala, "Atualizado em" ×2,
@@ -154,7 +159,7 @@ export async function generateMetadata({
         title: view.title,
         year: view.year,
         genres,
-        directors,
+        directors: directors.map((person) => person.name),
         cast: cast.map((member) => member.name),
         runtimeLabel: view.runtimeLabel,
       }),
@@ -189,13 +194,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, directors, releaseDateIso } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')
-  const crumbGenre = breadcrumbGenre(genres)
   const genreChips = heroGenreChips(genres)
   const scoreDecision = decideCinerieScore(score)
 
@@ -295,10 +299,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     reason: 'no_recommendation_for_entity',
   })
 
-  // Espelha a trilha VISIVEL do topo canonico: `Filmes / <genero> / titulo`
-  // (o genero entrou no lugar do "Inicio" — decisao do dono, 20/08/2026).
-  // Schema e trilha nunca divergem: sem genero, o item do meio nao existe nos
-  // dois lados.
+  // Espelha a trilha VISIVEL do topo: `Filmes / titulo`. Schema e trilha nunca
+  // divergem.
+  //
+  // O degrau de GENERO saiu dos dois lados em 11/09/2026 (decisao do dono): ele
+  // apontava para a MESMA URL da listagem geral, porque nao existe pagina de
+  // genero — "Filmes › Ação" levava a todos os filmes (auditoria de SEO, M8).
+  // Volta quando a pagina de genero existir.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -309,19 +316,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         name: 'Filmes',
         item: `${SITE_URL}${MOVIES_INDEX_PATH}`,
       },
-      ...(crumbGenre !== null
-        ? [
-            {
-              '@type': 'ListItem',
-              position: 2,
-              name: crumbGenre,
-              item: `${SITE_URL}${MOVIES_INDEX_PATH}`,
-            },
-          ]
-        : []),
       {
         '@type': 'ListItem',
-        position: crumbGenre !== null ? 3 : 2,
+        position: 2,
         name: view.title,
         item: canonicalUrl,
       },
@@ -336,10 +333,26 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     url: canonicalUrl,
     mainEntityOfPage: canonicalUrl,
   }
-  if (view.year !== null) movieJsonLd.datePublished = String(view.year)
+  // Data COMPLETA quando o banco a tem; o ano sozinho so na falta dela (auditoria
+  // de SEO: o `Movie` saia so com o ano).
+  const datePublished = releaseDateIso ?? (view.year !== null ? String(view.year) : null)
+  if (datePublished !== null) movieJsonLd.datePublished = datePublished
   if (view.metaDescription !== null) {
     movieJsonLd.description = view.metaDescription
   }
+  // O que a ficha MOSTRA, e nada alem disso (auditoria de SEO, 3.5): a arte da
+  // faixa de midia — `image` e obrigatoria para o Google em `Movie` —, os generos
+  // da ficha, a direcao da ficha tecnica, o elenco da faixa e a duracao. Pessoa
+  // com pagina ganha `url`; sem pagina, so o nome.
+  const images = schemaImageUrls([view.media.poster?.src, view.media.backdrop?.src], SITE_URL)
+  if (images.length > 0) movieJsonLd.image = images
+  if (genres.length > 0) movieJsonLd.genre = genres
+  const directorList = schemaPeople(directors, SITE_URL)
+  if (directorList.length > 0) movieJsonLd.director = directorList
+  const actorList = schemaPeople(primaryCast, SITE_URL)
+  if (actorList.length > 0) movieJsonLd.actor = actorList
+  const duration = toIsoDuration(view.runtimeMinutes)
+  if (duration !== null) movieJsonLd.duration = duration
   const sameAs = buildSameAs(externalIds, 'movie')
   if (sameAs.length > 0) movieJsonLd.sameAs = sameAs
 
@@ -358,11 +371,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               <li>
                 <a href={MOVIES_INDEX_PATH}>Filmes</a>
               </li>
-              {crumbGenre !== null ? (
-                <li>
-                  <a href={MOVIES_INDEX_PATH}>{crumbGenre}</a>
-                </li>
-              ) : null}
               <li aria-current="page">{view.title}</li>
             </ol>
           </nav>

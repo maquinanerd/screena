@@ -37,15 +37,6 @@ export function truncateAtWord(
 }
 
 /**
- * O gênero do BREADCRUMB (o do meio: `Séries / Drama / Vale dos Corvos`).
- * É o primeiro da lista determinística; sem gênero, o crumb do meio não existe
- * e a trilha fica `Séries / Título`.
- */
-export function breadcrumbGenre(genres: readonly string[]): string | null {
-  return genres.length > 0 ? (genres[0] as string) : null;
-}
-
-/**
  * Quantos chips de gênero o topo mostra. O canônico desenha dois; mais que
  * isso disputa a linha com o meta e a classificação.
  */

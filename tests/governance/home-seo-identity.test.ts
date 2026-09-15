@@ -3,6 +3,10 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { PUBLIC_HOME_PATH } from '@screena/seo'
+
+import { HOME_PATH } from '../../apps/web/src/lib/routes'
+
 const ROOT = process.cwd()
 const HOME_REL = 'apps/web/app/pt/page.tsx'
 const ENTITY_PAGES: ReadonlyArray<[string, string]> = [
@@ -66,5 +70,39 @@ describe('governança SEO: home entity-first e grafo de identidade', () => {
       expect(code, `${kind}: guarda sameAs`).toMatch(/if \(sameAs\.length > 0\)/)
       expect(code, `${kind}: sem AggregateRating`).not.toMatch(/AggregateRating/)
     }
+  })
+
+  /**
+   * UM no por identidade (auditoria de SEO, M7): `Organization.url` era `/pt/`,
+   * `WebSite.url` era `/`, o `publisher` apontava para a origem sem barra, e nao
+   * havia `@id`. A regra vive em `@screena/seo`; a home tem de usa-la.
+   */
+  it('grafo de identidade: @id por no, a MESMA URL publica, e o WebSite aponta a Organization', () => {
+    const code = withoutComments(read(HOME_REL))
+    expect(code).toContain("'@id': organizationId(SITE_URL)")
+    expect(code).toContain("'@id': websiteId(SITE_URL)")
+    expect(code.match(/url: publicHomeUrl\(SITE_URL\)/g)).toHaveLength(2)
+    expect(code).toContain("publisher: { '@id': organizationId(SITE_URL) }")
+    // A home canonica do pacote e a rota real do site — nunca duas verdades.
+    expect(PUBLIC_HOME_PATH).toBe(HOME_PATH)
+  })
+
+  /**
+   * As fichas descrevem o que a pagina MOSTRA (auditoria de SEO, 3.5): `Movie`
+   * saia sem `image` (obrigatoria para o Google), sem `director`, `genre` e
+   * `duration`; `TVSeries` e `Person` sem `image`. Os helpers sao testados no
+   * pacote; aqui se prova que a pagina os liga.
+   */
+  it('fichas emitem image e os fatos visiveis de cada tipo', () => {
+    const movie = withoutComments(read('apps/web/app/pt/filmes/[slug]/page.tsx'))
+    for (const field of ['image', 'genre', 'director', 'actor', 'duration', 'datePublished']) {
+      expect(movie, `Movie.${field}`).toContain(`movieJsonLd.${field} =`)
+    }
+    const series = withoutComments(read('apps/web/app/pt/series/[slug]/page.tsx'))
+    for (const field of ['image', 'genre', 'numberOfSeasons', 'numberOfEpisodes', 'actor', 'startDate', 'endDate']) {
+      expect(series, `TVSeries.${field}`).toContain(`seriesJsonLd.${field} =`)
+    }
+    const person = withoutComments(read('apps/web/app/pt/pessoas/[slug]/page.tsx'))
+    expect(person).toContain('personJsonLd.image =')
   })
 })

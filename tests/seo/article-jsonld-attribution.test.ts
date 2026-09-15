@@ -41,8 +41,11 @@ describe('publisher', () => {
     const jsonLd = buildArticleJsonLd(facts)
     expect(jsonLd.publisher).toEqual({
       '@type': 'Organization',
+      // O MESMO no da home: um `@id` e a URL publica da home canonica
+      // (auditoria de SEO, M7 — eram tres enderecos e nenhum `@id`).
+      '@id': 'https://cinerie.com/#organization',
       name: 'Cinerie',
-      url: 'https://cinerie.com',
+      url: 'https://cinerie.com/pt/',
       // A marca-mae raster: o Google pede logo de publisher em formato de
       // imagem indexavel. Mesma origem da canonical, nunca caminho relativo.
       logo: { '@type': 'ImageObject', url: 'https://cinerie.com/brand/cinerie-logo.png' },
@@ -54,7 +57,10 @@ describe('publisher', () => {
       ...facts,
       canonicalUrl: 'https://staging.cinerie.test/pt/noticias/x/',
     })
-    expect((jsonLd.publisher as Record<string, unknown>).url).toBe('https://staging.cinerie.test')
+    expect((jsonLd.publisher as Record<string, unknown>).url).toBe('https://staging.cinerie.test/pt/')
+    expect((jsonLd.publisher as Record<string, unknown>)['@id']).toBe(
+      'https://staging.cinerie.test/#organization',
+    )
   })
 
   it('canonical inutilizavel degrada para publisher sem URL, nao para publisher ausente', () => {

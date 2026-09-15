@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { AdSlot } from '../../_components/ad-slot'
 import { CardBookmark } from '../../_components/card-bookmark'
@@ -191,6 +191,8 @@ export default async function ExplorePage({
     name: TITLE,
     url: canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
 
   return (

@@ -1,7 +1,13 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription, describePersonFactually } from '@screena/seo'
+import {
+  buildMetaDescription,
+  buildSameAs,
+  describePersonFactually,
+  schemaImageUrls,
+  serializeJsonLd,
+} from '@screena/seo'
 
 import { AdSlot } from '../../../_components/ad-slot'
 import { SectionTitle } from '../../../_components/ds'
@@ -318,6 +324,10 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
     personJsonLd.birthPlace = { '@type': 'Place', name: view.placeOfBirth }
   }
   if (view.metaDescription !== null) personJsonLd.description = view.metaDescription
+  // O retrato do topo da pagina (auditoria de SEO, 3.5: `Person` saia sem
+  // `image`, com o retrato na tela).
+  const images = schemaImageUrls([view.profile?.src], SITE_URL)
+  if (images.length > 0) personJsonLd.image = images
   const sameAs = buildSameAs(externalIds, 'person')
   if (sameAs.length > 0) personJsonLd.sameAs = sameAs
 

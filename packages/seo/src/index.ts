@@ -27,6 +27,8 @@ export * from "./sitemap-ceiling.js";
 export * from "./entity-quality-gates.js";
 export * from "./social-metadata.js";
 export * from "./factual-description.js";
+export * from "./schema-fields.js";
+export * from "./site-identity.js";
 
 export * from './article-technical-seo.js'
 export * from './news-sitemap.js'

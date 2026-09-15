@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { organizationId, publicHomeUrl, serializeJsonLd, websiteId } from '@screena/seo'
 
 import { HomeLike } from '../_components/home-like'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
@@ -76,11 +76,16 @@ const HOME_TITLE = 'Cinerie — filmes, séries, pessoas e notícias'
 const HOME_DESCRIPTION =
   'Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação da Cinerie.'
 
+// UM no por identidade, com `@id`, e a MESMA URL publica — a home canonica — na
+// Organization, no WebSite e no `publisher` das materias. Ate 11/09/2026 eram tres
+// enderecos (`/pt/`, `/` e a origem sem barra) e nenhum `@id` (auditoria de SEO,
+// M7). A regra vive em `@screena/seo` (`site-identity.ts`).
 const HOME_ORGANIZATION_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
+  '@id': organizationId(SITE_URL),
   name: 'Cinerie',
-  url: `${SITE_URL}/pt/`,
+  url: publicHomeUrl(SITE_URL),
   // A marca-mãe em PNG (672x163, entregue em 2026-09-11): raster e acima dos
   // 112 px mínimos que o Google pede para logo de Organization. O SVG anterior
   // era texto com fonte não embutida, 78 px de altura.
@@ -95,8 +100,11 @@ const HOME_ORGANIZATION_JSONLD = {
 const HOME_WEBSITE_JSONLD = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
+  '@id': websiteId(SITE_URL),
   name: 'Cinerie',
-  url: `${SITE_URL}/`,
+  url: publicHomeUrl(SITE_URL),
+  inLanguage: 'pt-BR',
+  publisher: { '@id': organizationId(SITE_URL) },
 }
 
 async function getHomeData() {

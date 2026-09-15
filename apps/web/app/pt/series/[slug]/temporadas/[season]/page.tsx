@@ -156,11 +156,13 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
+    // A trilha VISIVEL do topo, degrau por degrau: `Séries / série / temporada`.
+    // O "Início" que so existia aqui fazia o schema contar uma trilha que a
+    // pagina nao mostra (auditoria de SEO, 11/09/2026).
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
-      { '@type': 'ListItem', position: 2, name: 'Séries', item: `${SITE_URL}${SERIES_INDEX_PATH}` },
-      { '@type': 'ListItem', position: 3, name: view.seriesTitle, item: seriesUrl },
-      { '@type': 'ListItem', position: 4, name: view.seasonTitle, item: canonicalUrl },
+      { '@type': 'ListItem', position: 1, name: 'Séries', item: `${SITE_URL}${SERIES_INDEX_PATH}` },
+      { '@type': 'ListItem', position: 2, name: view.seriesTitle, item: seriesUrl },
+      { '@type': 'ListItem', position: 3, name: view.seasonTitle, item: canonicalUrl },
     ],
   }
 
@@ -176,7 +178,9 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
   }
   if (view.overview !== null) seasonJsonLd.description = view.overview
   if (view.episodeCount !== null) seasonJsonLd.numberOfEpisodes = view.episodeCount
-  if (view.airYear !== null) seasonJsonLd.datePublished = String(view.airYear)
+  // Data completa quando existe; o ano so na falta dela.
+  const seasonDate = view.airDateIso ?? (view.airYear !== null ? String(view.airYear) : null)
+  if (seasonDate !== null) seasonJsonLd.datePublished = seasonDate
 
   return (
     <main data-vertical="series">

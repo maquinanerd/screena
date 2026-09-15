@@ -187,12 +187,13 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
+    // A trilha VISIVEL do topo: `Séries / série / temporada / episódio`, sem o
+    // "Início" que so o schema tinha (ver a nota gemea na pagina de temporada).
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
-      { '@type': 'ListItem', position: 2, name: 'Séries', item: `${SITE_URL}${SERIES_INDEX_PATH}` },
-      { '@type': 'ListItem', position: 3, name: view.seriesTitle, item: seriesUrl },
-      { '@type': 'ListItem', position: 4, name: view.seasonTitle, item: seasonUrl },
-      { '@type': 'ListItem', position: 5, name: view.episodeTitle, item: canonicalUrl },
+      { '@type': 'ListItem', position: 1, name: 'Séries', item: `${SITE_URL}${SERIES_INDEX_PATH}` },
+      { '@type': 'ListItem', position: 2, name: view.seriesTitle, item: seriesUrl },
+      { '@type': 'ListItem', position: 3, name: view.seasonTitle, item: seasonUrl },
+      { '@type': 'ListItem', position: 4, name: view.episodeTitle, item: canonicalUrl },
     ],
   }
 
@@ -212,7 +213,9 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
     partOfSeries: { '@type': 'TVSeries', name: view.seriesTitle, url: seriesUrl },
   }
   if (view.overview !== null) episodeJsonLd.description = view.overview
-  if (view.airYear !== null) episodeJsonLd.datePublished = String(view.airYear)
+  // Data completa quando existe; o ano so na falta dela.
+  const episodeDate = view.airDateIso ?? (view.airYear !== null ? String(view.airYear) : null)
+  if (episodeDate !== null) episodeJsonLd.datePublished = episodeDate
   if (view.still !== null) episodeJsonLd.image = view.still.src
 
   /**
