@@ -12,17 +12,12 @@
  *  4. o numero e UM texto, sem os `<!-- -->` que o HTML do servidor intercalava.
  */
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { readSourceWithoutComments } from "../../../../../tests/support/source-text";
 import type { SeriesEpisodeView } from "../../../src/lib/series-presenter";
 import { EpisodeList } from "../episode-list";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
 
 const STILL = { src: "https://image.tmdb.org/t/p/w500/still.jpg", width: 640, height: 360 };
 
@@ -40,7 +35,8 @@ function episode(overrides: Partial<SeriesEpisodeView> = {}): SeriesEpisodeView 
 
 describe("EpisodeList — a lista de episodios da ficha de serie", () => {
   it("(1) e client component: a diretiva e a primeira instrucao do arquivo", () => {
-    const source = readFileSync(path.resolve(here, "../episode-list.tsx"), "utf8");
+    // A diretiva e instrucao, nao comentario: sobrevive a remocao de comentarios.
+    const source = readSourceWithoutComments("apps/web/app/_components/episode-list.tsx");
     expect(source.trimStart().startsWith("'use client'")).toBe(true);
   });
 
