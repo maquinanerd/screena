@@ -1,63 +1,57 @@
 # @screena/admin
 
-Painel interno da Cinerie (operacao editorial e de dados). Diferente do app
-publico `@screena/web`, o admin e uma superficie privada; em fases futuras ele
-podera acionar endpoints internos (sync, ratings, geracao offline de
-`content_blocks`, jobs do entity writer, decisoes de indexabilidade etc.).
-**Na fatia atual, porem, ele e estritamente somente leitura.**
+Painel interno da Cinerie. Duas metades no mesmo app, atrás do mesmo portão:
 
-`@screena/admin` e namespace tecnico legado; a marca publica atual e **Cinerie**.
+- **Painel operacional** (`/`, desde 2026-09-15) — o estado real do catálogo, das
+  filas, das cotas, dos serviços e dos usuários, e o botão de forçar a atualização
+  de um título ou de uma fila sem abrir terminal. Contrato:
+  [`docs/operations/admin-operacional.md`](../../docs/operations/admin-operacional.md).
+- **Painel editorial** (`/editorial` e as telas de revisão) — `content_blocks` e
+  `article_translations`, com escrita editorial atrás de
+  `ADMIN_EDITORIAL_ACTIONS_ENABLED` (desligada por padrão).
 
-## Fronteira de seguranca (INEGOCIAVEL)
+`@screena/admin` é namespace técnico legado; a marca pública é **Cinerie**.
+Implantação: [`docs/operations/admin-deploy.md`](../../docs/operations/admin-deploy.md).
 
-- O **admin futuro** podera acionar endpoints internos e processos offline.
-  A fatia atual **nao** aciona endpoints internos, nao publica, nao edita e nao
-  escreve.
-- A **pagina publica indexavel** (`@screena/web`) **nunca** pode chamar API
-  externa nem Gemini no render — essa regra vale so para o app publico e
-  continua intocada.
-- API keys e segredos vivem apenas em variaveis de ambiente do servidor,
-  nunca no frontend.
-- Todo sync externo gera log (`api_sync_logs`).
+## Telas do painel operacional
 
-> Estado atual (Fase 6A): existe um **admin editorial minimo em modo SOMENTE
-> LEITURA**. Ele apenas visualiza o estado de revisao; nao publica, nao edita,
-> nao escreve no banco. O admin editorial completo (escrita, revisao, decisoes)
-> ainda nao esta funcional.
+| Rota | O que responde |
+| --- | --- |
+| `/` | O que está quebrado agora (em vermelho, com o motivo escrito) + cobertura, filas, cotas e serviços |
+| `/filas`, `/filas/<fila>` | Cadência, teto por ciclo, universo, volta declarada e medida, última execução, próxima, trabalho em `catalog_jobs`, dead-letter por motivo, gasto por dia |
+| `/cotas` | Gasto de hoje (UTC), teto, folga, 30 dias, recusas do fornecedor; alerta de contador subcontando |
+| `/servicos` | No ar, CPU, memória, commit rodando (pela impressão digital do código, não por env var), commits atrás do main, credenciais por nome/presença/formato |
+| `/cobertura` | Por tipo e idioma: título, sinopse, pôster, trailer, nota exibível, indexável; retrato diário e medida ao vivo |
+| `/titulos`, `/titulos/<filme\|serie>/<id>` | Busca e ficha de diagnóstico: ids, sinopse e payload, notas e por que não aparecem, mídia, jobs e posição na fila, indexação |
+| `/usuarios` | Contas, cadastros por dia, ativos, e-mails (na tela, sem exportação), avaliações, listas e o que não existe |
+| `/logs` | `api_sync_logs` e `catalog_jobs` com filtros e cursor |
+| `/acoes`, `/acoes/<id>` | Toda ação do painel, o custo mostrado, o desfecho e o que o job fez depois |
 
-## Fase 6A — Admin editorial read-only
+## Regras que o código trava
 
-App Next.js (App Router) que le o PostgreSQL local **server-side** via
-`@screena/db/server` e renderiza contagens/listagens do estado editorial. Nesta
-fase, tudo e **somente leitura**:
+| Regra | Onde |
+| --- | --- |
+| Todo número mostra fonte e momento; medida que falha diz "não determinado", nunca zero | `src/lib/ops/measure.ts`, `src/components/ops/measured.tsx` |
+| Todo vermelho tem o caso vermelho testado e o controle negativo | `tests/admin/ops-lib.test.ts`, `tests/admin/ops-describe.test.ts` |
+| A ficha dá o MESMO veredito que a página (nota, trailer, imagem, Score) | `tests/governance/admin-visibility-mirror.test.ts` |
+| A cobertura usa os mesmos portões da página | `tests/governance/admin-coverage-mirror.test.ts` |
+| As ações só ENFILEIRAM (INSERT em três tabelas), com auditoria na mesma transação | `tests/admin/ops-actions-guard.test.ts` |
+| Nenhuma escrita Prisma nas páginas e servidores de leitura | `tests/admin/readonly-guard.test.ts` |
+| `"use server"` só em `editorial-actions.ts` e `ops-actions.ts` | `tests/admin/no-server-writes.test.ts`, `no-write-endpoints.test.ts` |
+| Nenhum formulário ou botão em `app/` (a UI de ação mora em `src/components`) | `tests/admin/pages-no-write.test.ts` |
+| `noindex` no HTML, no cabeçalho de toda resposta (inclusive o 401) e no `robots.txt` | `tests/admin/ops-noindex.test.ts` |
+| Sem login/sessão próprios: o portão é o Basic Auth fail-closed | `tests/admin/no-fake-login.test.ts` |
 
-- Sem escrita Prisma (`create`/`update`/`delete`/`upsert`/`*Many` sao proibidos
-  e travados por `tests/admin/readonly-guard.test.ts`).
-- Sem UI de escrita: nenhum `<form>`, botao de publicar/salvar/excluir ou editor
-  (travado por `tests/admin/pages-no-write.test.ts`).
-- Sem API externa/TMDB/Gemini: a unica fonte e o PostgreSQL local.
-- Contagens sao numeros reais (`count`/`groupBy`); banco vazio -> zeros, sem
-  dado ficticio.
+Prova contra PostgreSQL e Next reais: `pnpm --filter @screena/admin validate:ops-panel`
+(exige `pnpm build:admin` antes).
 
-Telas: `/` (dashboard), `/articles`, `/content-blocks`, `/health`. A logica de
-classificacao/agregacao vive pura em `src/lib/editorial-status.ts` (testada) e
-espelha os helpers confiaveis do app publico (trava em
-`tests/admin/editorial-status-mirror.test.ts`). A camada de dados server-only
-vive em `src/server/*`.
+## Fronteira de segurança
 
-## Rotas `/admin/*` planejadas
-
-```
-/admin/entities         -> visao geral de entidades (filmes, series, pessoas...)
-/admin/movies           -> gestao de filmes
-/admin/tv               -> gestao de series, temporadas e episodios
-/admin/people           -> gestao de pessoas
-/admin/sync             -> execucao e auditoria de sync externo (api_sync_logs)
-/admin/ratings          -> external_ratings, fontes e licencas (rating_sources, source_licenses)
-/admin/watch            -> watch_availability / onde assistir
-/admin/content-blocks   -> revisao e publicacao de content_blocks
-/admin/entity-writer    -> fila e logs do entity writer (entity_writer_jobs, entity_writer_logs)
-/admin/indexability     -> page_indexability_decisions (index/noindex/draft/stale/blocked)
-/admin/api-logs         -> api_sync_logs e api_cache
-/admin/news-clusters    -> news_clusters e ligacoes entity_news_links
-```
+- O painel lê o PostgreSQL server-side. Não chama TMDB, OMDb, GitHub nem Gemini:
+  quem fala com fornecedor é o `screen-cron` e o `screen-catalog-worker`.
+- Credencial nunca é exibida: a tela de serviços mostra só nome, se está
+  preenchida e o formato.
+- E-mail de usuário aparece na tela, não vai para URL (busca por POST), não vai
+  para log e não tem exportação.
+- O painel não apaga nada, não muda licença nem `display_allowed`, não altera
+  cadência nem teto de fila, e não para, reinicia nem implanta serviço.

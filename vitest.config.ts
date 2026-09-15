@@ -55,6 +55,14 @@ export default defineConfig({
       '@screena/db/server': fileURLToPath(
         new URL('./packages/db/src/server.ts', import.meta.url),
       ),
+      // Mesmo motivo do `/server`: subcaminho ANTES do pacote, senao o prefixo
+      // `@screena/db` sequestra a resolucao.
+      '@screena/db/service-heartbeat': fileURLToPath(
+        new URL('./packages/db/src/service-heartbeat.ts', import.meta.url),
+      ),
+      '@screena/db/source-fingerprint': fileURLToPath(
+        new URL('./packages/db/src/source-fingerprint.ts', import.meta.url),
+      ),
       '@screena/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
       '@screena/public-contracts': fileURLToPath(
         new URL('./packages/public-contracts/src/index.ts', import.meta.url),

@@ -74,3 +74,12 @@ providers:
     host: n/a
     auth_env: n/a
     summary: "Upstream tecnico de feeds de noticias (RSSPRIME). Pipeline services/news-ingestion e roadmap (README + worker Python Fase 0 stub). Nunca cria entidades: so linka as existentes. en/es nascem draft/noindex."
+
+  - key: github
+    provider_api: github
+    kind: data
+    role: operations
+    status: active
+    host: api.github.com
+    auth_env: CINERIE_GITHUB_TOKEN (opcional; repositorio publico)
+    summary: "Referencia do main para o painel operacional. A fila deploy_reference do screen-cron le os commits do main e a arvore de cada um e grava deploy_main_commits com a impressao digital do codigo. Worker-only, com log em api_sync_logs. Nunca e dado de catalogo nem vai a pagina publica."

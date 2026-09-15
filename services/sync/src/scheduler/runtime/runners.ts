@@ -70,6 +70,21 @@ import {
   selectTrendingRanks,
   type TitleCandidate,
 } from './selection.js'
+import { measureCatalogCoverage, writeCoverageSnapshot } from './coverage.js'
+import {
+  createGithubClient,
+  createPrismaDeployReferenceStore,
+  DEFAULT_GITHUB_REPOSITORY,
+  GITHUB_PROVIDER_API,
+  syncDeployReference,
+} from './deploy-reference.js'
+import { readTitleForRequest } from './force-requests.js'
+import {
+  buildForcedRatingsArgs,
+  buildForcedScoreArgs,
+  summarizeChildOutput,
+  type ForceRequest,
+} from '../force-requests.js'
 
 const HOUR_MS = 60 * 60 * 1000
 const DAY_MS = 24 * HOUR_MS
@@ -118,6 +133,11 @@ export interface RunnerDeps {
    * stale), entao interromper nunca perde nem duplica.
    */
   readonly shutdownSignal?: AbortSignal
+  /**
+   * Leitura do `main` no GitHub (fila `deploy_reference`). O `token` e OPCIONAL: o
+   * repositorio e publico e o token so aumenta o limite. Nunca vai para log.
+   */
+  readonly github?: { readonly token: string | null; readonly repository: string }
 }
 
 /** Um runner de fila. */
@@ -927,8 +947,157 @@ const runSearchProjection: QueueRunner = async (deps) => {
   )
 }
 
+// ---------------------------------------------------------------------------
+// (D) Filas do painel operacional
+// ---------------------------------------------------------------------------
+
+/**
+ * A fila `deploy_reference`: le o `main` no GitHub e grava a impressao digital de
+ * cada commit, para o painel provar QUAL codigo cada servico roda.
+ *
+ * Planejado = a lista + as arvores novas + as comparacoes com a cabeca. Uma arvore
+ * que falha deixa o ciclo `partial`, nunca "concluido": o painel continuaria sem
+ * saber o digest daquele commit, e isso tem de aparecer.
+ */
+const runDeployReference: QueueRunner = async (deps) => {
+  const startedAt = deps.now()
+  if (!deps.apply) {
+    return tally(
+      'deploy_reference',
+      startedAt,
+      deps.now(),
+      { planned: 1, processed: 0, failed: 0, skipped: 1 },
+      [{ code: 'dry_run', detail: 'sem --apply: o GitHub nao foi consultado', count: 1 }],
+      { providerApi: GITHUB_PROVIDER_API, requests: 0 },
+    )
+  }
+  const github = createGithubClient({ token: deps.github?.token ?? null })
+  const report = await syncDeployReference({
+    github,
+    store: createPrismaDeployReferenceStore(deps.prisma),
+    repository: deps.github?.repository ?? DEFAULT_GITHUB_REPOSITORY,
+    now: deps.now,
+  })
+  const planned = 1 + report.treesPlanned + report.comparesPlanned
+  const processed = (report.head === null ? 0 : 1) + report.treesRead + report.comparesRead
+  const reasons = new Map<string, RunReason>()
+  for (const error of report.errors) countReason(reasons, error.code, error.detail)
+  return tally(
+    'deploy_reference',
+    startedAt,
+    deps.now(),
+    { planned, processed, failed: Math.max(0, planned - processed), skipped: 0 },
+    [...reasons.values()],
+    // O custo REAL: requisicoes emitidas, retentativas inclusas.
+    { providerApi: GITHUB_PROVIDER_API, requests: github.requestCount() },
+  )
+}
+
+/**
+ * A fila `catalog_coverage`: mede a cobertura e grava o retrato do dia.
+ *
+ * Derivada: nao consome fornecedor e nao grava `api_sync_logs`. O ultimo sucesso
+ * dela e `MAX(catalog_coverage_snapshots.captured_at)` (ver `facts.ts`).
+ */
+const runCatalogCoverage: QueueRunner = async (deps) => {
+  const startedAt = deps.now()
+  const measurement = await measureCatalogCoverage(deps.prisma, startedAt)
+  if (!deps.apply) {
+    return tally(
+      'catalog_coverage',
+      startedAt,
+      deps.now(),
+      { planned: measurement.rows.length, processed: 0, failed: 0, skipped: measurement.rows.length },
+      [{ code: 'dry_run', detail: 'sem --apply: a cobertura foi medida e nao gravada', count: 1 }],
+    )
+  }
+  const { written, skipped } = await writeCoverageSnapshot(deps.prisma, measurement)
+  return tally(
+    'catalog_coverage',
+    startedAt,
+    deps.now(),
+    { planned: measurement.rows.length, processed: written, failed: 0, skipped },
+    skipped === 0
+      ? []
+      : [{ code: 'already_captured_today', detail: 'o retrato deste dia ja existia', count: skipped }],
+  )
+}
+
+/** O desfecho de um pedido de titulo feito pelo painel. */
+export interface ForcedTitleResult {
+  readonly status: 'done' | 'failed'
+  readonly detail: string
+}
+
+/**
+ * Atende um pedido de TITULO vindo do painel: nota externa (OMDb) ou Cinerie
+ * Score. Roda a MESMA CLI que a fila roda, so que para um titulo.
+ *
+ * `done` so quando a CLI saiu 0 E o resumo dela diz sucesso. A CLI da OMDb sai 0
+ * num ciclo `aborted` por cota — ler so o codigo de saida marcaria como feito um
+ * pedido que a cota barrou.
+ */
+export async function runForcedTitleRequest(
+  deps: RunnerDeps,
+  request: Extract<ForceRequest, { kind: 'title_ratings' | 'title_score' }>,
+): Promise<ForcedTitleResult> {
+  if (!deps.apply) {
+    return {
+      status: 'failed',
+      detail: 'agendador em dry-run (CINERIE_SCHEDULER_APPLY diferente de true): nada foi executado',
+    }
+  }
+  const title = await readTitleForRequest(deps.prisma, request.entityType, request.entityId)
+  if (!title.found) {
+    return {
+      status: 'failed',
+      detail: `o titulo ${request.entityType}:${request.entityId} nao existe mais no catalogo`,
+    }
+  }
+
+  if (request.kind === 'title_ratings') {
+    const args = buildForcedRatingsArgs(request.entityType, title.imdbId)
+    if (args === null) {
+      return { status: 'failed', detail: 'titulo sem imdb_id valido: a OMDb nao alcanca este titulo' }
+    }
+    const result = await runScript(
+      deps.repoRoot,
+      path.join('services', 'ratings', 'bin', 'sync-omdb-ratings.ts'),
+      args,
+      deps.shutdownSignal,
+    )
+    const resumo = summarizeChildOutput(result.stdout)
+    if (result.code !== 0) {
+      return { status: 'failed', detail: describeChildFailure('sync-omdb-ratings --id', result.code, result.stderr) }
+    }
+    if (resumo === null || !resumo.startsWith('status=success')) {
+      return { status: 'failed', detail: resumo ?? 'a CLI terminou sem resumo de status' }
+    }
+    return { status: 'done', detail: resumo }
+  }
+
+  const result = await runScript(
+    deps.repoRoot,
+    path.join('services', 'ratings', 'bin', 'compute-cinerie-score.ts'),
+    buildForcedScoreArgs(request.entityType, request.entityId),
+    deps.shutdownSignal,
+  )
+  if (result.code !== 0) {
+    return {
+      status: 'failed',
+      detail: describeChildFailure('compute-cinerie-score --entity-id', result.code, result.stderr),
+    }
+  }
+  return {
+    status: 'done',
+    detail: summarizeChildOutput(result.stdout) ?? 'a CLI terminou sem resumo',
+  }
+}
+
 /** O registro completo. Fila sem runner e erro de construcao, nao no-op. */
 export const QUEUE_RUNNERS: Readonly<Record<SchedulerQueue, QueueRunner>> = {
+  deploy_reference: runDeployReference,
+  catalog_coverage: runCatalogCoverage,
   discovery: runDiscovery,
   changes: runChanges,
   trending: runTrending,

@@ -153,6 +153,11 @@ const EXPECTED_TABLES = [
   // Fixacao MANUAL do destaque da home. Decisao governada (quem/quando/por que),
   // escrita so por humano; o hero automatico e portao de qualidade em codigo.
   "hero_curation_decisions",
+  // Painel operacional (apps/admin): auditoria das acoes, pedidos ao agendador,
+  // sinal de vida com impressao digital do codigo, commits do main e o retrato
+  // diario de cobertura do catalogo.
+  "admin_action_audits", "scheduler_force_requests", "service_heartbeats",
+  "deploy_main_commits", "catalog_coverage_snapshots",
 ];
 const EXPECTED_ENUMS = [
   "EntityType", "ContentBlockType", "ContentSource", "ReviewStatus", "TranslationStatus",

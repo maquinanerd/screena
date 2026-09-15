@@ -236,13 +236,20 @@ describe('a producao injeta o porto — o guarda de verdade', () => {
     const bin = path.resolve(here, '..', '..', '..', 'bin', 'sync-omdb-ratings.ts')
     const fonte = await readFile(bin, 'utf8')
 
-    // A linha exata do wiring. Se alguem remover o porto, apagar a condicao de
-    // `--id`, ou trocar o adapter, este assert cai.
-    expect(fonte).toMatch(
-      /budget:\s*args\.id === null \? createPrismaOmdbBudget\(prisma, \(\) => new Date\(\)\) : undefined/,
-    )
-    // E o consumidor da fila de fundo tem de ser `seed`: `on_demand` aqui daria
-    // a fila de fundo a reserva do leitor.
-    expect(fonte).toMatch(/consumer:\s*'seed'/)
+    // A linha exata do wiring. Se alguem remover o porto ou trocar o adapter,
+    // este assert cai.
+    //
+    // Desde 2026-09-15 o porto e INCONDICIONAL: o `--id` explicito tambem passa
+    // pela cota. Antes ele pulava o porto ("pedido nominal nao cede a vez a fila
+    // de fundo") e, sem porto, pulava tambem o TETO DO DIA — o que virou risco
+    // quando o painel operacional passou a pedir a nota de um titulo por botao.
+    expect(fonte).toMatch(/budget:\s*createPrismaOmdbBudget\(prisma, \(\) => new Date\(\)\),/)
+    // CONTROLE NEGATIVO da forma antiga: o porto condicionado ao `--id` voltaria
+    // a deixar o pedido nominal passar do teto.
+    expect(fonte).not.toMatch(/budget:\s*args\.id === null/)
+    // E o consumidor: a fila de fundo e `seed` (cede a vez na reserva do leitor);
+    // o pedido nominal e `on_demand` (usa a reserva, para no teto). `on_demand`
+    // para o lote daria a fila de fundo a reserva do leitor.
+    expect(fonte).toMatch(/consumer:\s*args\.id === null \? 'seed' : 'on_demand'/)
   })
 })

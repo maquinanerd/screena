@@ -16,10 +16,24 @@ import type { NextConfig } from "next";
  * FONTE UNICA das transicoes editoriais (`canTransition`). So o nucleo PURO e
  * alcancado — `src/index.ts` nao exporta os adapters Prisma de `src/persistence/`,
  * entao nada de banco atravessa para o bundle por esta porta.
+ *
+ * PAINEL OPERACIONAL (2026-09-15). `@screena/sync` entra pelo mesmo motivo: a
+ * tabela de ritmos, a volta de cada fila e as leituras do agendador sao a FONTE
+ * UNICA do que o painel mostra — reescreve-las aqui divergiria no primeiro status
+ * novo do TMDB. `@screena/ingestion` entra por subcaminhos estreitos (a porta
+ * unica de cobertura e a fila de jobs), usados SO pelo arquivo de acoes do painel,
+ * e `@screena/config` pelas constantes de cota. Tudo roda no servidor: nenhuma
+ * dessas importacoes alcanca componente de cliente.
  */
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  transpilePackages: ["@screena/db", "@screena/news-ingestion"],
+  transpilePackages: [
+    "@screena/db",
+    "@screena/news-ingestion",
+    "@screena/config",
+    "@screena/sync",
+    "@screena/ingestion",
+  ],
   webpack: (config) => {
     config.resolve = config.resolve ?? {};
     config.resolve.extensionAlias = {

@@ -140,6 +140,14 @@ async function main(): Promise<void> {
     let totalDuplicates = 0
     const skippedReasons = new Map<string, number>()
 
+    // UM titulo (`--entity-id`, pedido do painel) ou o escopo inteiro. O id vai
+    // como PARAMETRO, nunca interpolado.
+    const umTitulo = args.entityId !== null
+    const parametros: unknown[] = umTitulo ? [args.entityId] : []
+    if (umTitulo) {
+      console.log(`escopo: um titulo (${String(args.type)}:${String(args.entityId)})`)
+    }
+
     for (const entityType of entityTypes) {
       const table = entityType === 'movie' ? 'movies' : 'tv_shows'
       const limitClause = args.limit === null ? '' : ` LIMIT ${args.limit}`
@@ -149,14 +157,16 @@ async function main(): Promise<void> {
                 rating_scale, rating_count, score_type::text AS score_type,
                 data_usage_decision_id::text AS data_usage_decision_id
            FROM external_ratings
-          WHERE entity_type = '${entityType}' AND display_allowed = true`,
+          WHERE entity_type = '${entityType}' AND display_allowed = true${umTitulo ? ' AND entity_id = $1::bigint' : ''}`,
+        ...parametros,
       )
       const tmdbRows = await prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
         `SELECT id::text AS entity_id, vote_average_tmdb::float8 AS vote_average_tmdb,
                 vote_count_tmdb
            FROM ${table}
-          WHERE vote_average_tmdb IS NOT NULL
+          WHERE vote_average_tmdb IS NOT NULL${umTitulo ? ' AND id = $1::bigint' : ''}
           ORDER BY id${limitClause}`,
+        ...parametros,
       )
 
       const { inputs, skipped } = buildEntityInputs(

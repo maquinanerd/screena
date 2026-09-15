@@ -1,10 +1,15 @@
 /**
- * Guarda de endpoints/server actions do admin editorial.
+ * Guarda de endpoints/server actions do admin.
  *
- * A fatia atual do admin tem uma unica superficie de escrita allowlisted:
- * `apps/admin/src/server/editorial-actions.ts`, travada por feature flag e por
- * testes especificos de allowlist. Todo o resto continua proibido: nenhuma
- * outra Server Action e nenhum route handler de escrita.
+ * O admin tem DUAS superficies de escrita allowlisted, cada uma travada por teste
+ * proprio de allowlist:
+ *   - `apps/admin/src/server/editorial-actions.ts` — revisao editorial, atras de
+ *     feature flag (`editorial-actions-guard.test.ts`);
+ *   - `apps/admin/src/server/ops-actions.ts` — as acoes do painel operacional, que
+ *     so ENFILEIRAM trabalho por `@screena/sync/admin-actions`
+ *     (`ops-actions-guard.test.ts`).
+ * Todo o resto continua proibido: nenhuma outra Server Action e nenhum route
+ * handler de escrita.
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -25,6 +30,7 @@ const FORBIDDEN_PATTERNS: ReadonlyArray<[RegExp, string]> = [
 ];
 const ALLOWED_SERVER_ACTION_FILES = new Set([
   join("apps", "admin", "src", "server", "editorial-actions.ts"),
+  join("apps", "admin", "src", "server", "ops-actions.ts"),
 ]);
 
 interface Violation {
@@ -103,7 +109,7 @@ async function findViolations(): Promise<Violation[]> {
   return violations;
 }
 
-describe("admin editorial nao expoe endpoints ou server actions de escrita", () => {
+describe("admin nao expoe endpoints ou server actions de escrita fora do allowlist", () => {
   let violations: Violation[] = [];
 
   beforeAll(async () => {
@@ -113,7 +119,7 @@ describe("admin editorial nao expoe endpoints ou server actions de escrita", () 
   it('nao contem "use server" fora do allowlist nem handlers POST/PUT/PATCH/DELETE', () => {
     expect(
       violations,
-      `Admin read-only nao pode expor mutacoes. Ocorrencias: ${JSON.stringify(violations, null, 2)}`,
+      `Admin nao pode expor mutacoes fora do allowlist. Ocorrencias: ${JSON.stringify(violations, null, 2)}`,
     ).toEqual([]);
   });
 
@@ -122,5 +128,12 @@ describe("admin editorial nao expoe endpoints ou server actions de escrita", () 
     expect(await pathExists(appDir)).toBe(true);
     const files = await collectCodeFiles(appDir);
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  it("o allowlist tem exatamente os dois arquivos de acao, e os dois existem", async () => {
+    expect(ALLOWED_SERVER_ACTION_FILES.size).toBe(2);
+    for (const file of ALLOWED_SERVER_ACTION_FILES) {
+      expect(await pathExists(resolve(process.cwd(), file))).toBe(true);
+    }
   });
 });

@@ -75,7 +75,7 @@ reprova entrada sem motivo escrito.
 | `watch_offers` | **diario** | tmdb | O dado que mais estraga. Endpoint DEDICADO (`/movie/{id}/watch/providers`), ~2 kB, contra 130,6 kB (filme) / 648,3 kB (serie) do detalhe. |
 | `trending` | **6 h** | tmdb | O sinal de AGORA. 4 requisicoes por ciclo (movie\|tv x day\|week, 1 pagina). O intervalo NAO e numero novo: `discovery-snapshots/index.ts:32` ja declarava TTL de 6 h para trending. |
 | `airing_series` | **diario** | tmdb | Episodio que foi ao ar hoje tem que estar na pagina hoje. So `status` em exibicao/producao. |
-| `title_media` | **diario** (janela de 7 dias, teto proprio de 10.000/ciclo) | tmdb | Trailer, poster e galeria: o que o leitor ve primeiro, e o unico dado do catalogo que muda sem o titulo mudar. Enfileira `sync_media` nos endpoints DEDICADOS (`/images` + `/videos`, 2 requisicoes, SEM `language` — todos os idiomas), nunca o detalhe inteiro. E a REDE do gatilho: a midia entra pela cascata do `/changes`; esta fila pega quem nunca teve midia ou passou de 7 dias. |
+| `title_media` | **diario** (janela de 7 dias, teto proprio de 12.000/ciclo) | tmdb | Trailer, poster e galeria: o que o leitor ve primeiro, e o unico dado do catalogo que muda sem o titulo mudar. Enfileira `sync_media` nos endpoints DEDICADOS (`/images` + `/videos`, 2 requisicoes, SEM `language` — todos os idiomas), nunca o detalhe inteiro. E a REDE do gatilho: a midia entra pela cascata do `/changes`; esta fila pega quem nunca teve midia ou passou de 7 dias. |
 | `discovery` | **diario** | tmdb-exports | Os Daily ID Exports saem uma vez por dia (~08:00 UTC). Arquivo publico: sem token, sem cota. |
 | `changes` | **6 h** | tmdb | A janela do `/changes` e ~24 h (max. 14 dias). 6 h da quatro tentativas dentro de uma janela — tres ciclos podem falhar sem que nada se perca. |
 | `cinerie_score` | **por evento** (teto 24 h) | — | Derivado nao tem ritmo, tem gatilho. O teto existe para que um gatilho perdido nao congele o numero para sempre. |
@@ -85,6 +85,15 @@ reprova entrada sem motivo escrito.
 | `people` | **mensal** | tmdb | Biografia quase nao muda. Quem entra num titulo novo chega pelos CREDITOS, no mesmo request do titulo — nao espera este ciclo. |
 | `title_detail_ended` | **mensal** | tmdb | Filme lancado e serie finalizada nao mudam mais. O que muda neles (a OFERTA) tem fila propria, diaria. |
 | `awards` | **mensal**, **diario na janela** | omdb | Fora da temporada nao acontece nada; dentro dela muda em horas. Janelas em `awards-window.ts`. |
+| `deploy_reference` | **1 h** | github | "O deploy subiu?" muda a qualquer hora (deploy manual). Le os ultimos commits do `main` e a arvore de cada um, e grava `deploy_main_commits` com a impressao digital do codigo — a mesma que cada servico grava em `service_heartbeats`. Sem token: 1 requisicao num ciclo sem commit novo, 16 no pior caso, contra 60/h do GitHub. |
+| `catalog_coverage` | **diario** | — | Derivada: grava o retrato do dia em `catalog_coverage_snapshots` (a serie que diz se a cobertura sobe). Medida pelo ARTEFATO, como `cinerie_score`. |
+
+Desde 2026-09-15 cada tique tambem atende ate 3 **pedidos do painel operacional**
+(`scheduler_force_requests`): um ciclo forcado de fila (com a mesma trava e o mesmo
+registro de um ciclo normal), a nota OMDb de UM titulo (`sync-omdb-ratings --id`,
+como leitor `on_demand`) ou o Score de UM titulo (`compute-cinerie-score
+--entity-id`). Pedido `running` ha mais de 2 h e dado como abandonado. Ver
+[`admin-operacional.md`](./admin-operacional.md).
 
 ### O TETO POR CICLO — e por que ele nao e um numero so
 
@@ -95,7 +104,7 @@ elas nao tem o mesmo limitante:
 | --- | --- | ---: |
 | `ratings_omdb` | **cota** (1.000/dia, reserva de 150 para o leitor) | **700** (proprio) |
 | `watch_offers`, `people`, `airing_series`, `title_detail_*` | relogio + custo do detalhe | 200 (global) |
-| `title_media` | **educacao com o TMDB**, que nao tem cota diaria | **10.000** (proprio) |
+| `title_media` | **educacao com o TMDB**, que nao tem cota diaria | **12.000** (proprio; o comentario de `rhythms.ts` ainda cita 10.000 — vale o valor do codigo) |
 
 > **Ate 2026-08-31 a linha da `ratings_omdb` dizia teto "200 (global)" e a coluna
 > ao lado dizia que o limitante era a COTA. As duas nao podiam estar certas ao
@@ -402,6 +411,10 @@ vermelho ensina o dono a ignorar vermelho.
 | `CINERIE_SCHEDULER_DISCOVERY_LIMIT` | `2000` | **Teto de ids por TIPO em cada descoberta.** `0` = SEM TETO (o universo inteiro: 1,23 M filmes + 228 k series + 4,86 M pessoas) — e nao "nenhum id". Mesma semantica de `CATALOG_WORKER_DISCOVERY_LIMIT`, de proposito. |
 | `CINERIE_SCHEDULER_LOCALE` | `pt-BR` | Locale dos jobs enfileirados. |
 | `CINERIE_SCHEDULER_WORKER_ID` | `scheduler-<pid>` | Aparece no painel e no log. |
+| `CINERIE_GITHUB_TOKEN` | vazio | Opcional. A fila `deploy_reference` le o repositorio publico sem token (60 req/h bastam). Com token o limite sobe; o valor nunca vai para log nem para o painel. |
+| `CINERIE_GITHUB_REPOSITORY` | `maquinanerd/screena` | O repositorio cujo `main` e a referencia de versao. |
+| `CINERIE_SERVICE_KEY` | `screen-cron` | Nome do servico no sinal de vida (`service_heartbeats`). |
+| `CINERIE_HEARTBEAT_DISABLED` | `false` | `true` desliga o sinal de vida (so para validador que mede leitura por requisicao). |
 
 > **ATENCAO ao teto de descoberta.** Ate 21/08/2026 `runDiscovery` mandava
 > `limit: null` HARDCODED, e `null` e o export INTEIRO. Com

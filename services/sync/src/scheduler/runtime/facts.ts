@@ -48,6 +48,7 @@ export function schedulerEndpoint(queue: SchedulerQueue): string {
 const DERIVED_QUEUE_SOURCES: Readonly<Record<string, string>> = {
   cinerie_score: 'SELECT MAX(calculated_at) AS at FROM cinerie_score_calculations',
   search_projection: 'SELECT MAX(updated_at) AS at FROM search_documents',
+  catalog_coverage: 'SELECT MAX(captured_at) AS at FROM catalog_coverage_snapshots',
 }
 
 /**

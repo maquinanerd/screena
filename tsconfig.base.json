@@ -17,6 +17,10 @@
       "@screena/seo": ["packages/seo/src/index.ts"],
       "@screena/ui": ["packages/ui/src/index.ts"],
       "@screena/types": ["packages/types/src/index.ts"],
+      // Subcaminhos SERVER-ONLY do pacote de dados: o sinal de vida dos servicos e
+      // a impressao digital do codigo (painel operacional).
+      "@screena/db/service-heartbeat": ["packages/db/src/service-heartbeat.ts"],
+      "@screena/db/source-fingerprint": ["packages/db/src/source-fingerprint.ts"],
       "@screena/db": ["packages/db/src/index.ts"],
       "@screena/public-contracts": ["packages/public-contracts/src/index.ts"],
       "@screena/cinerie-score": ["packages/cinerie-score/src/index.ts"],

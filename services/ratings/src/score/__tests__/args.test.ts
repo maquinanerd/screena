@@ -28,7 +28,7 @@ describe('parseScoreArgs', () => {
     const r = parseScoreArgs([...INVOCACAO_DO_AGENDADOR])
     expect(r.ok, r.ok ? '' : `o agendador seria recusado: ${r.error}`).toBe(true)
     if (!r.ok) return
-    expect(r.args).toEqual({ apply: true, type: 'all', limit: null })
+    expect(r.args).toEqual({ apply: true, type: 'all', limit: null, entityId: null })
   })
 
   it('(2) aceita TAMBEM a forma separada, como os dois CLIs irmaos', () => {
@@ -36,19 +36,40 @@ describe('parseScoreArgs', () => {
     const r = parseScoreArgs([...FORMA_SEPARADA])
     expect(r.ok, r.ok ? '' : `forma separada recusada: ${r.error}`).toBe(true)
     if (!r.ok) return
-    expect(r.args).toEqual({ apply: true, type: 'all', limit: null })
+    expect(r.args).toEqual({ apply: true, type: 'all', limit: null, entityId: null })
   })
 
   it('(3) as duas formas produzem o MESMO resultado', () => {
     const comIgual = parseScoreArgs(['--type=movie', '--limit=200', '--apply'])
     const separada = parseScoreArgs(['--type', 'movie', '--limit', '200', '--apply'])
     expect(comIgual).toEqual(separada)
-    expect(comIgual.ok && comIgual.args).toEqual({ apply: true, type: 'movie', limit: 200 })
+    expect(comIgual.ok && comIgual.args).toEqual({ apply: true, type: 'movie', limit: 200, entityId: null })
   })
 
   it('(4) default e dry-run em escopo total', () => {
     const r = parseScoreArgs([])
-    expect(r.ok && r.args).toEqual({ apply: false, type: 'all', limit: null })
+    expect(r.ok && r.args).toEqual({ apply: false, type: 'all', limit: null, entityId: null })
+  })
+
+  it('(9) parseia a invocacao EXATA do pedido de UM titulo (painel -> agendador)', () => {
+    // Copia deliberada do que `buildForcedScoreArgs` monta em
+    // `services/sync/src/scheduler/force-requests.ts`, pelo mesmo motivo do (1).
+    const r = parseScoreArgs(['--type', 'movie', '--entity-id', '77', '--apply'])
+    expect(r.ok && r.args).toEqual({ apply: true, type: 'movie', limit: null, entityId: '77' })
+  })
+
+  it('(10) --entity-id sem tipo definido FALHA: o mesmo numero existe em filme e em serie', () => {
+    const r = parseScoreArgs(['--entity-id', '77', '--apply'])
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('--entity-id exige --type')
+  })
+
+  it('(11) --entity-id invalido FALHA, e id grande NAO perde precisao', () => {
+    for (const argv of [['--type=tv', '--entity-id=0'], ['--type=tv', '--entity-id=-1'], ['--type=tv', '--entity-id=abc'], ['--type=tv', '--entity-id']]) {
+      expect(parseScoreArgs(argv).ok, `deveria recusar: ${argv.join(' ')}`).toBe(false)
+    }
+    const grande = parseScoreArgs(['--type=tv', '--entity-id=9007199254740993'])
+    expect(grande.ok && grande.args.entityId).toBe('9007199254740993')
   })
 
   it('(5) flag desconhecida FALHA, e diz qual', () => {

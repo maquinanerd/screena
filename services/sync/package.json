@@ -7,7 +7,12 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./coverage": "./src/scheduler/runtime/coverage.ts",
+    "./facts": "./src/scheduler/runtime/facts.ts",
+    "./panel": "./src/scheduler/runtime/queue-panel.ts",
+    "./admin-action-plan": "./src/scheduler/admin-action-plan.ts",
+    "./admin-actions": "./src/scheduler/runtime/admin-actions.ts"
   },
   "sideEffects": false,
   "license": "UNLICENSED",

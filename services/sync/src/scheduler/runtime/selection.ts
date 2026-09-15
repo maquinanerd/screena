@@ -46,10 +46,16 @@ export interface PersonCandidate {
 
 const STALE_CLAUSE = `(e."stale_after" IS NULL OR e."stale_after" <= $1::timestamptz AT TIME ZONE 'UTC')`
 
-/** Serie encerrada, no vocabulario do TMDB. */
-const ENDED_TV_STATUSES = "('Ended', 'Canceled')"
+/**
+ * Serie encerrada, no vocabulario do TMDB.
+ *
+ * EXPORTADAS (2026-09-15) para o painel operacional contar o UNIVERSO de cada fila
+ * com a MESMA lista que a selecao usa. Duas listas de status divergiriam no
+ * primeiro status novo, e a volta da fila na tela mentiria.
+ */
+export const ENDED_TV_STATUSES = "('Ended', 'Canceled')"
 /** Serie no ar / em producao. */
-const AIRING_TV_STATUSES = "('Returning Series', 'In Production', 'Planned', 'Pilot')"
+export const AIRING_TV_STATUSES = "('Returning Series', 'In Production', 'Planned', 'Pilot')"
 
 function rank<T extends { tmdbId: number }>(rows: readonly T[]): readonly (T & { rank: number })[] {
   return rows.map((row, index) => ({ ...row, rank: index + 1 }))

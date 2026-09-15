@@ -273,6 +273,15 @@ jobs:
           DATABASE_URL: postgresql://build:build@127.0.0.1:1/screena_build
         run: pnpm build:admin
 
+      # PAINEL OPERACIONAL com Next REAL sobre o build acima e PostgreSQL 16
+      # efemero: cada numero confere com o banco e muda quando ele muda, todo
+      # vermelho tem controle negativo, a cobertura em SQL bate com os portoes da
+      # pagina linha a linha, 401 sem credencial e noindex por requisicao, zero
+      # segredo no HTML e no log, e o botao de forcar ENFILEIRA sem colidir com o
+      # agendador.
+      - name: Painel operacional (Next real do admin, PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/admin validate:ops-panel
+
       - name: Validadores descartaveis (PostgreSQL efemero, sem banco remoto)
         run: pnpm --filter @screena/web validate:all
 

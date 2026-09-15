@@ -1,15 +1,18 @@
 /**
- * Guarda das superficies de ESCRITA no servidor do admin editorial (Fase 7A).
+ * Guarda das superficies de ESCRITA no servidor do admin.
  *
- * A partir da Fase 7A o admin tem UMA superficie de escrita: Server Actions no
- * arquivo allowlisted `apps/admin/src/server/editorial-actions.ts`. Esta guarda
- * trava tudo o mais:
+ * O admin tem DUAS superficies de Server Action, cada uma com guarda propria:
+ *   - `apps/admin/src/server/editorial-actions.ts` (Fase 7A) — revisao editorial;
+ *   - `apps/admin/src/server/ops-actions.ts` (painel operacional, 2026-09-15) —
+ *     enfileira trabalho por `@screena/sync/admin-actions`; travada por
+ *     `ops-actions-guard.test.ts`.
+ * Esta guarda trava tudo o mais:
  *
  *  1. Route handlers de escrita: nenhum `route.*` sob `apps/admin/app` pode
  *     exportar POST/PUT/PATCH/DELETE (nao usamos route handlers — a decisao de
  *     projeto foi Server Actions; handlers GET de leitura seriam ok, verbos de
  *     mutacao nunca).
- *  2. Server Actions (`"use server"`): permitido SOMENTE no arquivo allowlisted.
+ *  2. Server Actions (`"use server"`): permitido SOMENTE nos arquivos allowlisted.
  *     Qualquer outra `"use server"` em `apps/admin/app`/`apps/admin/src` e
  *     violacao (paginas e componentes nao viram canal de mutacao).
  *
@@ -27,8 +30,11 @@ const CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 const ROUTE_BASENAMES = new Set(CODE_EXTENSIONS.map((ext) => `route${ext}`));
 const IGNORED_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverage"]);
 
-/** Unico arquivo autorizado a ter `"use server"` (Server Actions). Posix. */
-const USE_SERVER_ALLOWLIST_FILE = "apps/admin/src/server/editorial-actions.ts";
+/** Os UNICOS arquivos autorizados a ter `"use server"` (Server Actions). Posix. */
+const USE_SERVER_ALLOWLIST_FILES: readonly string[] = [
+  "apps/admin/src/server/editorial-actions.ts",
+  "apps/admin/src/server/ops-actions.ts",
+];
 
 /** Verbos HTTP de mutacao proibidos em route handlers do admin. */
 const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"] as const;
@@ -116,11 +122,11 @@ async function findViolations(): Promise<Violation[]> {
     }
   }
 
-  // 2. Diretiva "use server" fora do arquivo allowlisted.
+  // 2. Diretiva "use server" fora dos arquivos allowlisted.
   const scan = [...(await collectCodeFiles(APP_DIR)), ...(await collectCodeFiles(SRC_DIR))];
   for (const file of scan) {
     const rel = relPosix(file);
-    if (rel === USE_SERVER_ALLOWLIST_FILE) continue;
+    if (USE_SERVER_ALLOWLIST_FILES.includes(rel)) continue;
     if (hasUseServerDirective(await readFile(file, "utf-8"))) {
       violations.push({ file: rel, rule: 'diretiva "use server" fora do allowlist' });
     }
@@ -129,7 +135,7 @@ async function findViolations(): Promise<Violation[]> {
   return violations;
 }
 
-describe("admin editorial: superficie de escrita no servidor so no allowlist (Fase 7A)", () => {
+describe("admin: superficie de escrita no servidor so no allowlist", () => {
   let violations: Violation[] = [];
 
   beforeAll(async () => {
@@ -141,18 +147,20 @@ describe("admin editorial: superficie de escrita no servidor so no allowlist (Fa
     expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
   });
 
-  it('so o arquivo allowlisted tem diretiva "use server"', () => {
+  it('so os arquivos allowlisted tem diretiva "use server"', () => {
     const offenders = violations.filter((v) => v.rule.startsWith("diretiva"));
     expect(
       offenders,
-      `"use server" so pode existir em ${USE_SERVER_ALLOWLIST_FILE}. Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
+      `"use server" so pode existir em ${USE_SERVER_ALLOWLIST_FILES.join(" e ")}. Ocorrencias: ${JSON.stringify(offenders, null, 2)}`,
     ).toEqual([]);
   });
 
-  it("o arquivo allowlisted existe e realmente tem `use server` (guarda nao e vacua)", async () => {
-    const abs = resolve(process.cwd(), ...USE_SERVER_ALLOWLIST_FILE.split("/"));
-    expect(await pathExists(abs)).toBe(true);
-    expect(hasUseServerDirective(await readFile(abs, "utf-8"))).toBe(true);
+  it("os arquivos allowlisted existem e realmente tem `use server` (guarda nao e vacua)", async () => {
+    for (const file of USE_SERVER_ALLOWLIST_FILES) {
+      const abs = resolve(process.cwd(), ...file.split("/"));
+      expect(await pathExists(abs), file).toBe(true);
+      expect(hasUseServerDirective(await readFile(abs, "utf-8")), file).toBe(true);
+    }
   });
 
   it("ha codigo real do admin para varrer (guarda nao e vacua)", async () => {
@@ -192,7 +200,7 @@ describe("detectores de escrita no servidor funcionam (nao sao vacuos)", () => {
 
 /**
  * A rota `/security` continua read-only — sem route handler de escrita nem
- * server action (a escrita vive so no arquivo de acoes editoriais).
+ * server action (a escrita vive so nos arquivos de acoes).
  */
 describe("a rota /security nao introduz superficie de escrita", () => {
   const SECURITY_DIR = resolve(process.cwd(), "apps", "admin", "app", "security");

@@ -4,27 +4,27 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 /**
- * Layout raiz do admin editorial interno (@screena/admin).
+ * Layout raiz do painel interno (@screena/admin): operacional + editorial.
  *
- * App SEPARADO do publico @screena/web: nao e uma superficie publica indexavel.
- * Nasce `noindex` (metadata robots) e nao e linkado a partir do site publico.
- * Server component; nenhum acesso a banco/rede acontece aqui — as paginas leem
- * o PostgreSQL local server-side (SOMENTE LEITURA) e renderizam o resultado.
+ * App SEPARADO do publico @screena/web: nao e superficie publica indexavel.
+ * `noindex` em tres camadas — este metadata, o cabecalho `X-Robots-Tag` que o
+ * middleware poe em TODA resposta (inclusive o 401) e o `robots.txt` com
+ * `Disallow: /`. O painel nao tem sitemap.
  *
- * Robots reforcado: alem de `index: false`/`follow: false`, declaramos
- * `noarchive`, `nocache` e `nosnippet` para que, mesmo se o admin vazar para um
- * crawler, nao haja cache, snapshot ou trecho exibido. Todos sao campos
- * suportados pelo tipo `Robots` do Next (Metadata API) — sem cast nem hack.
+ * Robots reforcado: alem de `index: false`/`follow: false`, `noarchive`,
+ * `nocache` e `nosnippet` — mesmo se o painel vazar para um crawler, nao ha
+ * cache, snapshot nem trecho exibido.
  *
- * PROTECAO DE ACESSO (Fase 6B): o acesso ao admin passa por um portao HTTP Basic
- * Auth no middleware (`apps/admin/middleware.ts` + `src/lib/access-protection`),
- * ligado por variavel de ambiente. E protecao operacional MINIMA e stateless:
- * NAO ha usuario, sessao, cookie, login, JWT, OAuth nem permissoes — isso e fase
- * futura. O `noindex` abaixo protege contra indexacao; o Basic Auth protege
- * contra acesso. Nenhum dos dois substitui o outro.
+ * PROTECAO DE ACESSO: portao HTTP Basic Auth no middleware
+ * (`apps/admin/middleware.ts` + `src/lib/access-protection`), fail-closed em
+ * producao. Stateless: sem usuario, login ou permissoes — a credencial e
+ * compartilhada, e as acoes do painel registram isso na auditoria.
+ *
+ * Fundo branco puro em todas as secoes, inclusive o cabecalho (decisao do dono,
+ * 2026-09-15). Server component; nenhum acesso a banco ou rede acontece aqui.
  */
 export const metadata: Metadata = {
-  title: "Admin Editorial | Cinerie (interno)",
+  title: "Painel | Cinerie (interno)",
   robots: {
     index: false,
     follow: false,
@@ -34,27 +34,53 @@ export const metadata: Metadata = {
   },
 };
 
+const OPS_NAV: ReadonlyArray<readonly [string, string]> = [
+  ["/", "Visão geral"],
+  ["/filas", "Filas"],
+  ["/cotas", "Cotas"],
+  ["/servicos", "Serviços"],
+  ["/cobertura", "Cobertura"],
+  ["/titulos", "Títulos"],
+  ["/usuarios", "Usuários"],
+  ["/logs", "Logs"],
+  ["/acoes", "Ações"],
+];
+
+const EDITORIAL_NAV: ReadonlyArray<readonly [string, string]> = [
+  ["/editorial", "Painel editorial"],
+  ["/staging", "Staging"],
+  ["/qa", "QA"],
+  ["/workflow", "Workflow"],
+  ["/review-queue", "Fila de revisão"],
+  ["/articles", "Artigos"],
+  ["/content-blocks", "Content blocks"],
+  ["/health", "Health"],
+  ["/security", "Segurança"],
+];
+
 export default function AdminLayout({ children }: { children: ReactNode }): ReactNode {
   return (
     <html lang="pt-BR">
       <body>
         <header className="admin-header">
-          <h1 className="admin-header__title">Admin Editorial</h1>
-          <span className="admin-header__readonly">Acoes editoriais controladas por ambiente</span>
-          <p className="admin-header__access">
-            Admin protegido por camada de acesso operacional. Escrita editorial so com flag
-            habilitada.
-          </p>
-          <nav className="admin-nav">
-            <a href="/">Dashboard</a>
-            <a href="/staging">Staging</a>
-            <a href="/qa">QA</a>
-            <a href="/workflow">Workflow</a>
-            <a href="/review-queue">Fila de revisao</a>
-            <a href="/articles">Artigos</a>
-            <a href="/content-blocks">Content blocks</a>
-            <a href="/health">Health</a>
-            <a href="/security">Seguranca</a>
+          <div className="admin-header__row">
+            <h1 className="admin-header__title">Cinerie · Painel interno</h1>
+            <span className="admin-header__readonly">Acesso protegido · noindex</span>
+          </div>
+          <nav className="admin-nav" aria-label="Painel operacional">
+            {OPS_NAV.map(([href, label]) => (
+              <a key={href} href={href}>
+                {label}
+              </a>
+            ))}
+          </nav>
+          <nav className="admin-nav admin-nav--secondary" aria-label="Editorial">
+            <span className="admin-nav__caption">Editorial:</span>
+            {EDITORIAL_NAV.map(([href, label]) => (
+              <a key={href} href={href}>
+                {label}
+              </a>
+            ))}
           </nav>
         </header>
         <main className="admin-main">{children}</main>

@@ -48,12 +48,18 @@ importers:
 
   apps/admin:
     dependencies:
+      '@screena/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@screena/db':
         specifier: workspace:*
         version: link:../../packages/db
       '@screena/news-ingestion':
         specifier: workspace:*
         version: link:../../services/news-ingestion
+      '@screena/sync':
+        specifier: workspace:*
+        version: link:../../services/sync
       next:
         specifier: ^15.5.21
         version: 15.5.25(@playwright/test@1.62.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(sass@1.77.4)
@@ -70,6 +76,12 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.2.17
+      embedded-postgres:
+        specifier: 16.14.0-beta.17
+        version: 16.14.0-beta.17
+      tsx:
+        specifier: ^4.19.0
+        version: 4.22.4
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
