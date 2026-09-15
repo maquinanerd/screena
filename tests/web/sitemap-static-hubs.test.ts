@@ -36,6 +36,7 @@ const HUBS: StaticHubDecisions = {
   watch: true,
   anticipated: true,
   watchUpdatedAtIso: '2026-09-10T08:00:00.000Z',
+  authors: [{ path: '/pt/autores/pablo-gameleira/', lastmod: '2026-09-09T12:00:00.000Z' }],
 }
 
 function loc(rotas: ReturnType<typeof eligibleStaticRoutes>, caminho: string) {
@@ -43,10 +44,10 @@ function loc(rotas: ReturnType<typeof eligibleStaticRoutes>, caminho: string) {
 }
 
 describe('hubs do shard estatico', () => {
-  it('(1) sem as decisoes dos hubs (o uso do INDEX), pessoas, onde assistir e em breve ficam de fora', () => {
+  it('(1) sem as decisoes dos hubs (o uso do INDEX), pessoas, onde assistir, em breve e autores ficam de fora', () => {
     const rotas = eligibleStaticRoutes(contagens(100), datas())
     expect(loc(rotas, '/pt/filmes/')).toBeDefined()
-    for (const hub of ['/pt/pessoas/', '/pt/onde-assistir/', '/pt/em-breve/']) {
+    for (const hub of ['/pt/pessoas/', '/pt/onde-assistir/', '/pt/em-breve/', '/pt/autores/']) {
       expect(loc(rotas, hub), hub).toBeUndefined()
     }
   })
@@ -86,5 +87,23 @@ describe('hubs do shard estatico', () => {
     expect(loc(rotas, '/pt/onde-assistir/')?.lastmod).toBe('2026-09-10T08:00:00.000Z')
     expect(loc(rotas, '/pt/pessoas/')?.lastmod).toBeNull()
     expect(loc(rotas, '/pt/em-breve/')?.lastmod).toBeNull()
+  })
+
+  it('(5) autores: a listagem e cada pagina entram, com a data da materia mais recente', () => {
+    const rotas = eligibleStaticRoutes(contagens(100), datas(), {
+      ...HUBS,
+      authors: [
+        { path: '/pt/autores/pablo-gameleira/', lastmod: '2026-09-09T12:00:00.000Z' },
+        { path: '/pt/autores/redacao-cinerie/', lastmod: '2026-09-02T12:00:00.000Z' },
+      ],
+    })
+    expect(loc(rotas, '/pt/autores/')?.lastmod).toBe('2026-09-09T12:00:00.000Z')
+    expect(loc(rotas, '/pt/autores/pablo-gameleira/')?.lastmod).toBe('2026-09-09T12:00:00.000Z')
+    expect(loc(rotas, '/pt/autores/redacao-cinerie/')?.lastmod).toBe('2026-09-02T12:00:00.000Z')
+  })
+
+  it('(6) sem autor com materia no ar, nem a listagem de autores entra (ela e noindex)', () => {
+    const rotas = eligibleStaticRoutes(contagens(100), datas(), { ...HUBS, authors: [] })
+    expect(rotas.some((rota) => rota.loc.includes('/pt/autores/'))).toBe(false)
   })
 })

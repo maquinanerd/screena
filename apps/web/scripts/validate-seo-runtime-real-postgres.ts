@@ -223,6 +223,7 @@ interface Seams {
     watch: boolean;
     anticipated: boolean;
     watchUpdatedAtIso: string | null;
+    authors: readonly { path: string; lastmod: string | null }[];
   }>;
   getNewsArticleData: (slug: string) => Promise<unknown | null>;
   serializeJsonLd: (value: unknown) => string;
@@ -370,9 +371,13 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
     && !statLocs.some((u) => u.endsWith("/pt/series/"))
     && hubConfere("/pt/pessoas/", hubs.people)
     && hubConfere("/pt/onde-assistir/", hubs.watch)
-    && hubConfere("/pt/em-breve/", hubs.anticipated);
-  record(25, "shard estatico = rotas elegiveis; pessoas, onde assistir e em breve seguem a decisao da PROPRIA pagina", statOk,
-    `n=${statLocs.length} pessoas=${hubs.people} onde_assistir=${hubs.watch} em_breve=${hubs.anticipated}`);
+    && hubConfere("/pt/em-breve/", hubs.anticipated)
+    // Autores: a listagem entra quando ha autor com materia no ar, e cada pagina de
+    // autor entra com ela — a MESMA lista que as paginas usam.
+    && hubConfere("/pt/autores/", hubs.authors.length > 0)
+    && hubs.authors.every((author) => statLocs.some((u) => u.endsWith(author.path)));
+  record(25, "shard estatico = rotas elegiveis; pessoas, onde assistir, em breve e autores seguem a decisao da PROPRIA pagina", statOk,
+    `n=${statLocs.length} pessoas=${hubs.people} onde_assistir=${hubs.watch} em_breve=${hubs.anticipated} autores=${hubs.authors.length}`);
 
   const throwing = { $queryRaw: () => { throw new Error("db down"); } };
   const shardFail = await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: LIMIT }, throwing);

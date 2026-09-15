@@ -8,6 +8,7 @@ import {
   buildTwitter,
   resolveCanonical,
   serializeJsonLd,
+  type ArticleSchemaMention,
   type ArticleSeoFacts,
   buildMetaDescription,
 } from '@screena/seo'
@@ -17,9 +18,10 @@ import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-bo
 import { CardBookmark } from '../../../_components/card-bookmark'
 import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
-import type { NewsArticleView } from '../../../../src/lib/news-presenter'
+import { authorHrefOf } from '../../../../src/lib/author-presenter'
+import type { NewsArticleView, NewsRelatedEntityType } from '../../../../src/lib/news-presenter'
 import { CINERIE_SCORE_LOGO } from '../../../../src/lib/brand-logos'
-import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
+import { HOME_PATH, SITE_URL, canonicalPublicUrl, gatePublicRobots } from '../../../../src/lib/site'
 import { brandSocialImage } from '../../../../src/lib/social-metadata'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
 
@@ -95,6 +97,23 @@ export async function generateMetadata({
   return metadata
 }
 
+/** O tipo schema.org de cada entidade citada — o mesmo tipo da ficha dela. */
+const MENTION_SCHEMA_TYPES: Readonly<Record<NewsRelatedEntityType, ArticleSchemaMention['type']>> = {
+  movie: 'Movie',
+  tv: 'TVSeries',
+  person: 'Person',
+}
+
+/**
+ * A pagina de autor da assinatura, absoluta. Toda materia no ar esta na pagina do
+ * seu autor (o mesmo gate — `src/lib/author-presenter.ts`); sem slug nao ha
+ * pagina, e entao nao ha `url`.
+ */
+function authorUrlOf(author: string | null): string | null {
+  const href = authorHrefOf(author)
+  return href === null ? null : canonicalPublicUrl(href)
+}
+
 /**
  * View publica -> fatos de SEO tecnico.
  *
@@ -124,6 +143,13 @@ function seoFactsOf(
     publishedAtIso: view.dateIso,
     updatedAtIso: view.updatedAtIso,
     authorName: view.author,
+    authorUrl: authorUrlOf(view.author),
+    // As entidades dos chips "Entidades citadas nesta materia" — visiveis na pagina.
+    mentions: view.related.map((entity) => ({
+      type: MENTION_SCHEMA_TYPES[entity.entityType],
+      name: entity.title,
+      url: `${SITE_URL}${entity.href}`,
+    })),
     siteName: 'Cinerie',
     locale: 'pt-BR',
     // Materia sem capa leva o cartao da MARCA no compartilhamento (decisao do
@@ -182,6 +208,9 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   // byline so pode mostrar o que existe. `null` quando o nome nao tem letra —
   // ai nao ha circulo nenhum (ver `authorInitials`).
   const initials = view.author === null ? null : authorInitials(view.author)
+  // A assinatura leva a pagina do autor (auditoria de SEO, 11/09/2026: era texto
+  // simples). Nome sem slug fica sem link — nunca um link para 404.
+  const authorHref = authorHrefOf(view.author)
 
   // Ultimo degrau da trilha. Prefere a secao APROVADA; `category` e texto livre
   // da fonte, e feed RSS carimba a categoria do proprio feed — era dai que saia
@@ -300,6 +329,15 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
                 ) : (
                   view.dateLabel
                 )}
+                {/* A contraparte visível do `dateModified` do JSON-LD, só quando a
+                    última gravação cai num dia posterior ao da publicação
+                    (`formatNewsUpdatedLabel`). */}
+                {view.updatedDateLabel !== null && view.updatedAtIso !== null ? (
+                  <>
+                    {' · Atualizada em '}
+                    <time dateTime={view.updatedAtIso}>{view.updatedDateLabel}</time>
+                  </>
+                ) : null}
               </p>
             ) : null}
             <h1 className="art-title">{view.title}</h1>
@@ -318,7 +356,14 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
                       {initials}
                     </span>
                   ) : null}
-                  por <strong>{view.author}</strong>
+                  por{' '}
+                  {authorHref !== null ? (
+                    <a className="art-byline__link" href={authorHref}>
+                      <strong>{view.author}</strong>
+                    </a>
+                  ) : (
+                    <strong>{view.author}</strong>
+                  )}
                 </span>
               ) : null}
               {view.author !== null && view.readTimeLabel !== null ? (

@@ -46,6 +46,7 @@ import {
 } from "@screena/legal/public-credits";
 
 import {
+  AUTHORS_INDEX_PATH,
   EXPLORE_PATH,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
@@ -126,7 +127,10 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     id: "noticias",
     title: "Notícias",
     accent: "neutral",
-    links: [{ label: "Últimas notícias", href: NEWS_INDEX_PATH }],
+    links: [
+      { label: "Últimas notícias", href: NEWS_INDEX_PATH },
+      { label: "Autores", href: AUTHORS_INDEX_PATH },
+    ],
   },
   {
     id: "cinerie",

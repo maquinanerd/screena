@@ -80,9 +80,10 @@ import {
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
 import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
-import { ANTICIPATED_PATH, WATCH_PATH } from "../../lib/routes";
+import { ANTICIPATED_PATH, AUTHORS_INDEX_PATH, WATCH_PATH } from "../../lib/routes";
 import { anticipatedIndexable, getAnticipatedData } from "../anticipated";
 import { getPersonIndexData } from "../entity-indexes";
+import { getAuthorDirectoryData } from "../news-pages";
 import { getWatchBrowseData, watchBrowseIndexable } from "../watch-browse";
 import {
   absentDecisionFor,
@@ -993,6 +994,11 @@ export interface StaticHubDecisions {
   readonly anticipated: boolean;
   /** A data da oferta mais recente do hub de streaming, quando existe. */
   readonly watchUpdatedAtIso: string | null;
+  /**
+   * As paginas de autor com materia no ar, com a data da mais recente de cada uma.
+   * Vazio = nem `/pt/autores/` entra: a listagem sem autor e `noindex`.
+   */
+  readonly authors: readonly { readonly path: string; readonly lastmod: string | null }[];
 }
 
 /**
@@ -1006,16 +1012,21 @@ export interface StaticHubDecisions {
  * de voltar.
  */
 export async function defaultStaticHubDecisions(): Promise<StaticHubDecisions> {
-  const [people, watch, anticipated] = await Promise.all([
+  const [people, watch, anticipated, authorDirectory] = await Promise.all([
     getPersonIndexData(),
     getWatchBrowseData(),
     getAnticipatedData(),
+    getAuthorDirectoryData(),
   ]);
   return {
     people: people.indexability.decision === "index",
     watch: watchBrowseIndexable(watch),
     anticipated: anticipatedIndexable(anticipated),
     watchUpdatedAtIso: watch.updatedAtIso,
+    authors: authorDirectory.authors.map((author) => ({
+      path: author.href,
+      lastmod: author.latestDateIso,
+    })),
   };
 }
 
@@ -1040,9 +1051,10 @@ function latestIso(values: readonly (string | null)[]): string | null {
 /**
  * As rotas estaticas elegiveis, com `lastmod`.
  *
- * Sem `hubs`, os tres hubs que dependem do loader da pagina ficam de fora: e o uso
- * do INDEX, que so precisa saber se o shard existe e nao deve pagar tres leituras
- * a cada visita de crawler. O shard passa `hubs` e lista tudo.
+ * Sem `hubs`, os hubs que dependem do loader da pagina (pessoas, onde assistir,
+ * em breve, autores) ficam de fora: e o uso do INDEX, que so precisa saber se o
+ * shard existe e nao deve pagar essas leituras a cada visita de crawler. O shard
+ * passa `hubs` e lista tudo.
  *
  * `lastmod` so com data real (auditoria de SEO: "static-1 sem lastmod"): o hub de
  * filmes muda quando um filme listavel muda; a home, quando qualquer lista dela
@@ -1086,6 +1098,20 @@ export function eligibleStaticRoutes(
     },
     { path: ANTICIPATED_PATH, changefreq: "daily", priority: 0.6, eligible: hubs?.anticipated === true, lastmod: null },
   ];
+
+  // Autores: a listagem entra quando ha autor com materia no ar (a MESMA regra do
+  // robots dela), e cada pagina de autor entra com a data da materia mais recente.
+  const authors = hubs?.authors ?? [];
+  specs.push({
+    path: AUTHORS_INDEX_PATH,
+    changefreq: "weekly",
+    priority: 0.4,
+    eligible: authors.length > 0,
+    lastmod: latestIso(authors.map((author) => author.lastmod)),
+  });
+  for (const author of authors) {
+    specs.push({ path: author.path, changefreq: "weekly", priority: 0.4, eligible: true, lastmod: author.lastmod });
+  }
 
   const urls: SitemapXmlUrl[] = [];
   for (const spec of specs) {

@@ -7,8 +7,10 @@
  *  - `articleSection` saindo `"news"`, em ingles, num site em pt-BR — o
  *    presenter caia para `category`, que carrega o TIPO de conteudo, nao a
  *    editoria;
- *  - `author.url` ausente — este NAO foi "corrigido", e a ausencia agora e
- *    deliberada e documentada (nao existe pagina de autor para apontar).
+ *  - `author.url` ausente — ficou ausente DE PROPOSITO enquanto nao existia
+ *    pagina de autor. Desde a remediacao da auditoria de SEO de 11/09/2026 a
+ *    pagina existe (`/pt/autores/{slug}/`), e a `url` entra quando o lado publico
+ *    a entrega — e so entao.
  */
 
 import { describe, expect, it } from 'vitest'
@@ -93,16 +95,100 @@ describe('articleSection', () => {
 })
 
 describe('author', () => {
-  it('sai com nome e SEM url — a pagina de autor nao existe', () => {
+  it('com pagina de autor: `@id` e `url` do perfil — o MESMO `@id` da pagina de autor', () => {
+    expect(
+      buildArticleJsonLd({ ...facts, authorUrl: 'https://cinerie.com/pt/autores/redacao-cinerie/' })
+        .author,
+    ).toEqual({
+      '@type': 'Person',
+      '@id': 'https://cinerie.com/pt/autores/redacao-cinerie/#person',
+      name: 'Redação Cinerie',
+      url: 'https://cinerie.com/pt/autores/redacao-cinerie/',
+    })
+  })
+
+  it('sem pagina de autor: nome e SEM url', () => {
     // Emitir `url` para uma pagina inexistente promete perfil verificavel e
-    // entrega 404. A ausencia aqui e decisao, nao esquecimento.
-    expect(buildArticleJsonLd(facts).author).toEqual({
+    // entrega 404. Sem pagina, a ausencia continua sendo a resposta certa.
+    const semUrl = { '@type': 'Person', name: 'Redação Cinerie' }
+    expect(buildArticleJsonLd(facts).author).toEqual(semUrl)
+    expect(buildArticleJsonLd({ ...facts, authorUrl: null }).author).toEqual(semUrl)
+  })
+
+  it('url que nao e absoluta nao entra', () => {
+    expect(buildArticleJsonLd({ ...facts, authorUrl: '/pt/autores/redacao-cinerie/' }).author).toEqual({
       '@type': 'Person',
       name: 'Redação Cinerie',
     })
   })
 
   it('sem autor, a chave nao aparece — autor inventado seria pior', () => {
-    expect(buildArticleJsonLd({ ...facts, authorName: null }).author).toBeUndefined()
+    expect(
+      buildArticleJsonLd({
+        ...facts,
+        authorName: null,
+        authorUrl: 'https://cinerie.com/pt/autores/redacao-cinerie/',
+      }).author,
+    ).toBeUndefined()
+  })
+})
+
+describe('mentions', () => {
+  it('as entidades citadas e visiveis, com a pagina de cada uma', () => {
+    const jsonLd = buildArticleJsonLd({
+      ...facts,
+      mentions: [
+        { type: 'TVSeries', name: 'Ruptura', url: 'https://cinerie.com/pt/series/ruptura/' },
+        { type: 'Person', name: 'Adam Scott', url: 'https://cinerie.com/pt/pessoas/adam-scott/' },
+      ],
+    })
+    expect(jsonLd.mentions).toEqual([
+      { '@type': 'TVSeries', name: 'Ruptura', url: 'https://cinerie.com/pt/series/ruptura/' },
+      { '@type': 'Person', name: 'Adam Scott', url: 'https://cinerie.com/pt/pessoas/adam-scott/' },
+    ])
+  })
+
+  it('uma por URL; sem nome ou sem URL absoluta nao entra', () => {
+    const jsonLd = buildArticleJsonLd({
+      ...facts,
+      mentions: [
+        { type: 'Movie', name: 'Duna', url: 'https://cinerie.com/pt/filmes/duna/' },
+        { type: 'Movie', name: 'Duna de novo', url: 'https://cinerie.com/pt/filmes/duna/' },
+        { type: 'Movie', name: '  ', url: 'https://cinerie.com/pt/filmes/sem-nome/' },
+        { type: 'Movie', name: 'Relativa', url: '/pt/filmes/relativa/' },
+      ],
+    })
+    expect(jsonLd.mentions).toEqual([
+      { '@type': 'Movie', name: 'Duna', url: 'https://cinerie.com/pt/filmes/duna/' },
+    ])
+  })
+
+  it('sem citacao a chave nao aparece — e `about` nunca: o banco nao marca o assunto', () => {
+    expect(buildArticleJsonLd({ ...facts, mentions: [] }).mentions).toBeUndefined()
+    expect(buildArticleJsonLd(facts).mentions).toBeUndefined()
+    expect(
+      buildArticleJsonLd({
+        ...facts,
+        mentions: [{ type: 'Movie', name: 'Duna', url: 'https://cinerie.com/pt/filmes/duna/' }],
+      }).about,
+    ).toBeUndefined()
+  })
+})
+
+describe('dateModified', () => {
+  it('a gravacao posterior a publicacao', () => {
+    expect(
+      buildArticleJsonLd({ ...facts, updatedAtIso: '2026-08-07T09:00:00.000Z' }).dateModified,
+    ).toBe('2026-08-07T09:00:00.000Z')
+  })
+
+  it('nunca anterior a publicacao: materia agendada e gravada antes de ir ao ar', () => {
+    expect(
+      buildArticleJsonLd({ ...facts, updatedAtIso: '2026-08-04T09:00:00.000Z' }).dateModified,
+    ).toBe('2026-08-05T12:00:00.000Z')
+  })
+
+  it('sem gravacao, a publicacao', () => {
+    expect(buildArticleJsonLd(facts).dateModified).toBe('2026-08-05T12:00:00.000Z')
   })
 })

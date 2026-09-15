@@ -18,10 +18,18 @@
 // do mesmo tipo divergem no primeiro estado novo, e o TypeScript nao avisa
 // enquanto os valores coincidirem.
 import type { IndexDecision } from './resolver.js'
-import { organizationId, publicHomeUrl } from './site-identity.js'
+import { organizationId, profilePersonId, publicHomeUrl } from './site-identity.js'
 import { toOpenGraphLocale } from './social-metadata.js'
 
 export type { IndexDecision }
+
+/** Uma obra ou pessoa CITADA na materia, com a pagina publica dela. */
+export interface ArticleSchemaMention {
+  readonly type: 'Movie' | 'TVSeries' | 'Person'
+  readonly name: string
+  /** Absoluta. */
+  readonly url: string
+}
 
 export interface ArticleSeoFacts {
   /** URL canonica DERIVADA de `slugs`/`redirects`. Absoluta. */
@@ -45,6 +53,13 @@ export interface ArticleSeoFacts {
   readonly publishedAtIso: string | null
   readonly updatedAtIso: string | null
   readonly authorName: string | null
+  /**
+   * A pagina de autor, absoluta, quando existe. Ausente ou `null`: a assinatura
+   * nao tem pagina, e o JSON-LD nao promete uma.
+   */
+  readonly authorUrl?: string | null
+  /** Obras e pessoas CITADAS e visiveis na materia ("Entidades citadas"). */
+  readonly mentions?: readonly ArticleSchemaMention[]
   readonly siteName: string
   /** Idioma BCP-47 (`pt-BR`) — o formato do JSON-LD. O Open Graph o converte. */
   readonly locale: string
@@ -200,7 +215,9 @@ export function buildOpenGraph(facts: ArticleSeoFacts): OpenGraphPayload {
     // invalido que a auditoria de SEO achou em toda materia.
     locale: toOpenGraphLocale(facts.locale),
     ...(facts.publishedAtIso === null ? {} : { publishedTime: facts.publishedAtIso }),
-    ...(facts.updatedAtIso === null ? {} : { modifiedTime: facts.updatedAtIso }),
+    ...(facts.updatedAtIso === null
+      ? {}
+      : { modifiedTime: modifiedIsoOf(facts) ?? facts.updatedAtIso }),
     ...(section === '' ? {} : { section }),
     ...(author === '' ? {} : { authors: [author] }),
     ...(facts.imageUrl !== null
@@ -326,15 +343,26 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
   if (facts.publishedAtIso !== null) jsonLd.datePublished = facts.publishedAtIso
   // `dateModified` ausente faz o buscador presumir que a materia nunca mudou.
   // Quando nao ha data de atualizacao, a de publicacao e a verdade disponivel.
-  const modified = facts.updatedAtIso ?? facts.publishedAtIso
+  const modified = modifiedIsoOf(facts)
   if (modified !== null) jsonLd.dateModified = modified
   if (author !== '') {
-    // SEM `url`, e de proposito. O banco publico guarda so `authorName` — nao ha
-    // pagina de autor, nem slug para apontar. Emitir `author.url` para uma
-    // pagina que nao existe e pior que omitir: promete perfil verificavel e
-    // entrega 404. Quando a pagina de autor existir, o campo entra aqui.
-    jsonLd.author = { '@type': 'Person', name: author }
+    // `url` SO com pagina de autor de verdade. Ate a auditoria de SEO de
+    // 11/09/2026 ela nao existia, e omitir era a resposta certa: `url` para uma
+    // pagina inexistente promete perfil verificavel e entrega 404. Quem decide se
+    // a pagina existe e o lado publico; aqui so se recusa URL que nao e absoluta.
+    const authorUrl = absoluteHttpUrl(facts.authorUrl)
+    jsonLd.author =
+      authorUrl === null
+        ? { '@type': 'Person', name: author }
+        : { '@type': 'Person', '@id': profilePersonId(authorUrl), name: author, url: authorUrl }
   }
+
+  // `mentions`: o que a materia CITA e mostra ("Entidades citadas nesta materia").
+  // `about` NAO e emitido: o banco nao marca qual entidade e o ASSUNTO da materia
+  // — a ficha exibida e a da primeira citada, e chamar isso de assunto seria
+  // afirmar o que ninguem declarou.
+  const mentions = mentionsOf(facts.mentions)
+  if (mentions.length > 0) jsonLd.mentions = mentions
 
   /*
    * PUBLISHER — estava AUSENTE, e a ausencia e um defeito de verdade.
@@ -386,6 +414,43 @@ function originOf(href: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * A data de modificacao declarada: a da ultima gravacao, mas NUNCA anterior a da
+ * publicacao. Materia agendada e gravada antes de ir ao ar, e `dateModified`
+ * antes de `datePublished` seria uma contradicao dentro do proprio JSON-LD.
+ */
+function modifiedIsoOf(facts: ArticleSeoFacts): string | null {
+  const published = facts.publishedAtIso
+  const updated = facts.updatedAtIso
+  if (updated === null) return published
+  if (published === null) return updated
+  return Date.parse(updated) < Date.parse(published) ? published : updated
+}
+
+/** http(s) absoluta, com host. Relativa, vazia ou de outro esquema nao passa. */
+const ABSOLUTE_HTTP_URL = /^https?:\/\/[^\s/?#]+(?:[/?#]\S*)?$/i
+
+function absoluteHttpUrl(value: string | null | undefined): string | null {
+  const trimmed = (value ?? '').trim()
+  return ABSOLUTE_HTTP_URL.test(trimmed) ? trimmed : null
+}
+
+/** As citacoes validas, uma por URL, na ordem em que chegaram. */
+function mentionsOf(
+  mentions: readonly ArticleSchemaMention[] | undefined,
+): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const out: Record<string, unknown>[] = []
+  for (const mention of mentions ?? []) {
+    const name = mention.name.trim()
+    const url = absoluteHttpUrl(mention.url)
+    if (name === '' || url === null || seen.has(url)) continue
+    seen.add(url)
+    out.push({ '@type': mention.type, name, url })
+  }
+  return out
 }
 
 /**

@@ -5303,6 +5303,19 @@ a.media-strip__cell {
   color: #fff;
 }
 
+/* Assinatura com pagina de autor: o link herda a cor do nome (escuro na base
+   clara, branco sobre a capa) e sublinha no hover e no foco. */
+.art-byline__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.art-byline__link:hover strong,
+.art-byline__link:focus-visible strong {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .art-byline__sep {
   opacity: 0.5;
 }
@@ -9860,6 +9873,15 @@ h4.art-body__heading {
 .legal-head {
   padding-bottom: 22px;
   border-bottom: 1px solid var(--c-border);
+}
+
+/* Abertura das paginas institucionais (`InstitutionalPage`): o paragrafo que diz
+   do que a pagina trata, logo abaixo do titulo. */
+.legal-head > p {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--c-text-secondary);
+  margin: 14px 0 0;
 }
 
 .legal-title {

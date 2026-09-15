@@ -33,3 +33,13 @@ export function websiteId(origin: string): string {
 export function publicHomeUrl(origin: string): string {
   return `${trimmedOrigin(origin)}${PUBLIC_HOME_PATH}`;
 }
+
+/**
+ * `@id` da PESSOA de uma pagina de perfil (a pagina de autor): a URL do perfil
+ * com fragmento. O MESMO valor vai no `author` de cada materia e no `mainEntity`
+ * da pagina de autor — e assim que o buscador sabe que as duas marcacoes falam da
+ * mesma pessoa.
+ */
+export function profilePersonId(profileUrl: string): string {
+  return `${profileUrl.trim()}#person`;
+}

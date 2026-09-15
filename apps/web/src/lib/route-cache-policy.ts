@@ -383,6 +383,12 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   "/pt/termos": publicDynamic(
     "documento legal sem banco; o robots le a chave propria de RUNTIME — motivo (d)",
   ),
+  "/pt/autores": publicDynamic(
+    "lista de autores: le as materias no ar — DESPUBLICACAO DE EMERGENCIA depende de leitura por requisicao (motivo b)",
+  ),
+  "/pt/autores/[slug]": publicDynamic(
+    "pagina de autor: lista as materias no ar — DESPUBLICACAO DE EMERGENCIA depende de leitura por requisicao (motivo b)",
+  ),
   "/pt/explorar": publicDynamic(
     "busca: a resposta depende de `?q=` — legitimamente por requisicao",
   ),
