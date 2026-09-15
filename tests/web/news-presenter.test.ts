@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildNewsArticleView,
   buildNewsCard as buildNewsCardAt,
+  buildNewsCorrection,
   buildNewsIndexView as buildNewsIndexViewAt,
   buildNewsRelated,
   buildPublishableNewsCards,
@@ -98,6 +99,8 @@ function translation(
     schemaTypeRecommendation: null,
     approvedImageAlt: null,
     translationUpdatedAtIso: null,
+    translationCorrectedAtIso: null,
+    correctionNote: null,
     reviewStatus: "published",
     indexStatus: "index",
     translationPublishedAtIso: "2026-06-30T12:00:00.000Z",
@@ -243,6 +246,42 @@ describe("formatNewsUpdatedLabel", () => {
 
     const intacta = buildNewsArticleView({ facts: facts(), translation: translation(), related: [] });
     expect(intacta.updatedDateLabel).toBeNull();
+  });
+});
+
+describe("buildNewsCorrection", () => {
+  it("so com a data E o texto que a redacao registrou — o texto sai como veio, aparado", () => {
+    expect(buildNewsCorrection("2026-07-02T08:00:00.000Z", "  Corrigido o nome do diretor.  ")).toEqual({
+      dateIso: "2026-07-02T08:00:00.000Z",
+      dateLabel: "2 de julho de 2026",
+      note: "Corrigido o nome do diretor.",
+    });
+  });
+
+  it("sem um dos dois campos, ou com data invalida, nao ha nota", () => {
+    expect(buildNewsCorrection(null, "Texto da correcao.")).toBeNull();
+    expect(buildNewsCorrection("2026-07-02T08:00:00.000Z", null)).toBeNull();
+    expect(buildNewsCorrection("2026-07-02T08:00:00.000Z", "   ")).toBeNull();
+    expect(buildNewsCorrection("nao-e-data", "Texto da correcao.")).toBeNull();
+  });
+
+  it("chega a view do artigo com as quebras de linha do CMS; sem correcao, nenhuma nota", () => {
+    const corrigida = buildNewsArticleView({
+      facts: facts(),
+      translation: translation({
+        translationCorrectedAtIso: "2026-07-02T08:00:00.000Z",
+        correctionNote: "Linha um.\nLinha dois.",
+      }),
+      related: [],
+    });
+    expect(corrigida.correction).toEqual({
+      dateIso: "2026-07-02T08:00:00.000Z",
+      dateLabel: "2 de julho de 2026",
+      note: "Linha um.\nLinha dois.",
+    });
+
+    const intacta = buildNewsArticleView({ facts: facts(), translation: translation(), related: [] });
+    expect(intacta.correction).toBeNull();
   });
 });
 
