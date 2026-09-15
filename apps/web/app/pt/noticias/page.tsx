@@ -21,6 +21,9 @@ import { getNewsIndexData } from '../../../src/server/news-pages'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Notícias'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Notícias" (ver a
+// nota gemea em /pt/filmes/).
+const META_TITLE = 'Notícias de cinema e séries'
 const DESCRIPTION =
   'Últimas notícias e análises editoriais da Cinerie sobre cinema e séries, em português.'
 
@@ -28,11 +31,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
-    ...socialMetadata({ type: 'website', title: TITLE, description: DESCRIPTION, canonicalUrl }),
+    ...socialMetadata({ type: 'website', title: META_TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 

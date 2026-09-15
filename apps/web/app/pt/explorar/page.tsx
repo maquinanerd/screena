@@ -55,6 +55,9 @@ import { foldSearchTerm, getSearchPageData } from '../../../src/server/search-pa
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Explorar'
+// O <title> da rota BASE diz o que a pagina tem; o H1 e a trilha continuam
+// "Explorar" (ver a nota gemea em /pt/filmes/).
+const META_TITLE = 'Explorar: estreias, em alta e populares'
 const DESCRIPTION =
   'Explore estreias, títulos em alta e populares da Cinerie, e continue de onde você parou.'
 /**
@@ -152,13 +155,13 @@ export async function generateMetadata({
   const { indexability } = await getExploreData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalPublicUrl(EXPLORE_PATH) },
     ...socialMetadata({
       type: 'website',
-      title: TITLE,
+      title: META_TITLE,
       description: DESCRIPTION,
       canonicalUrl: canonicalPublicUrl(EXPLORE_PATH),
     }),

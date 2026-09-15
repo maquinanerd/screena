@@ -54,18 +54,22 @@ import { socialMetadata } from "../../../src/lib/social-metadata";
 export const dynamic = 'force-dynamic'
 
 const TITLE = "Pessoas";
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Pessoas" (ver a nota
+// gemea em /pt/filmes/). A descricao, que aparece tambem na tela, ganha os acentos
+// que faltavam.
+const META_TITLE = "Pessoas: atores, diretores e equipe";
 const DESCRIPTION =
-  "Explore as pessoas catalogadas na Cinerie - atores, diretores e equipe, com paginas editoriais em portugues.";
+  "Explore as pessoas catalogadas na Cinerie — atores, diretores e equipe, com páginas editoriais em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getPersonIndexData();
   const shouldIndex = indexability.decision === "index";
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
-    ...socialMetadata({ type: "website", title: TITLE, description: DESCRIPTION, canonicalUrl }),
+    ...socialMetadata({ type: "website", title: META_TITLE, description: DESCRIPTION, canonicalUrl }),
   };
 }
 

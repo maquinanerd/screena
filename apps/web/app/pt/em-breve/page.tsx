@@ -51,20 +51,23 @@ import { anticipatedIndexable, getAnticipatedData } from '../../../src/server/an
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Mais Aguardados'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Mais Aguardados"
+// (ver a nota gemea em /pt/filmes/).
+const META_TITLE = 'Mais aguardados: próximas estreias de filmes e séries'
 const DESCRIPTION =
   'Próximas estreias de filmes, séries, temporadas e episódios já confirmadas no catálogo da Cinerie.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const data = await getAnticipatedData()
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     // A MESMA regra decide se o hub entra no sitemap (`anticipatedIndexable`).
     robots: publicRobots(anticipatedIndexable(data)),
     alternates: { canonical: canonicalPublicUrl(ANTICIPATED_PATH) },
     ...socialMetadata({
       type: 'website',
-      title: TITLE,
+      title: META_TITLE,
       description: DESCRIPTION,
       canonicalUrl: canonicalPublicUrl(ANTICIPATED_PATH),
     }),

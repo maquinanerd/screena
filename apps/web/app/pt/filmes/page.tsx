@@ -68,17 +68,21 @@ import { getNewsIndexData } from '../../../src/server/news-pages'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Filmes'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Filmes". Com 16
+// caracteres ("Filmes | Cinerie"), o titulo antigo so nomeava a secao (auditoria
+// de SEO, 11/09/2026: titulos de listagem entre 16 e 25 caracteres).
+const META_TITLE = 'Filmes: fichas, elenco e notícias'
 const DESCRIPTION = 'Explore os filmes catalogados na Cinerie, com páginas editoriais em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
-    ...socialMetadata({ type: 'website', title: TITLE, description: DESCRIPTION, canonicalUrl }),
+    ...socialMetadata({ type: 'website', title: META_TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 
