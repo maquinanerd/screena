@@ -97,3 +97,38 @@ Levantado pela auditoria e conferido nos mapas de código desta remediação:
 - `?utm_source` canonicaliza para a URL limpa;
 - `robots.txt` do app emite **um único** grupo `User-agent: *` (os dois grupos
   vistos ao vivo vêm do bloco gerenciado da Cloudflare, não do código).
+
+---
+
+## 5. Resultado ao fim da remediação (15/09/2026)
+
+Mesmo lugar (cópia em `C:`) e mesmo Node do baseline, sobre o HEAD da branch.
+
+| Etapa | Baseline (11/09) | Final (15/09) |
+|---|---|---|
+| `pnpm typecheck` | 0 | 0 |
+| `pnpm typecheck:apps` | 0 | 0 |
+| `pnpm lint` | 1 — arquivo de scratch nunca versionado (2.1) | 0 |
+| `pnpm test` | 577 arquivos, todos passando | **602 arquivos, todos passando** |
+| `pnpm --filter @screena/web build` | 0 | 0 |
+| `pnpm audit:invariants` · `pnpm audit:render` | — | PASSOU · PASSOU |
+
+Validadores contra PostgreSQL real: `seo-runtime` 48/48, `decision-robots` 27/27,
+`news-pages` 21/21, `entity-indexes` 21/21, `route-cache` 27/27.
+
+**O que §4 lista como "não pode regredir" continua de pé**, conferido pelo
+`seo:audit` contra o build local: temporada, episódio e galeria fora do sitemap;
+nenhum `AggregateRating`; HTML com `lang="pt-BR"`, um H1 por página e nenhuma
+`<img>` sem `alt` nas páginas amostradas; um grupo `User-agent: *` no app.
+
+**Os dois números estruturais de §3**, com a ressalva de que o baseline é de
+produção e o final é de laboratório local:
+
+- ficha a 412 px: em produção, `scrollWidth` de **1.816 px**; no build desta
+  branch, a mesma medida dá **412 px** (`perf:lab`);
+- fotos de elenco: `tmdbSize: "original"` deu lugar ao tamanho pela área exibida
+  (`tmdb-thumbnail-sizes.test.ts`). O peso servido só se mede em produção, depois
+  do deploy.
+
+O detalhe item a item está em
+[`AUDITORIA-SEO-2026-09-11-RESOLVIDA.md`](AUDITORIA-SEO-2026-09-11-RESOLVIDA.md).
