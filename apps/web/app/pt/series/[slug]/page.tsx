@@ -28,13 +28,14 @@ import { HERO_SYNOPSIS_MAX_CHARS, heroGenreChips } from '../../../../src/lib/det
 import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { SimilarTitles } from '../../../_components/similar-titles'
 import { TrailerModal } from '../../../_components/trailer-modal'
+import { EpisodeList } from '../../../_components/episode-list'
 
 import {
   buildSectionAbsence,
   decideSection,
   type SectionDecision,
 } from '../../../../src/lib/section-absence'
-import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
+import type { SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
 import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getSeriesPageData } from '../../../../src/server/series-page'
@@ -132,58 +133,6 @@ function seasonNumberFromQuery(value: string | string[] | undefined): number | n
   return Number.isSafeInteger(seasonNumber) ? seasonNumber : null
 }
 
-function EpisodeRow({
-  episode,
-  seasonNumber,
-}: {
-  episode: SeriesEpisodeView
-  seasonNumber: number
-}): ReactNode {
-  const episodeMeta = [
-    episode.airYear !== null ? String(episode.airYear) : null,
-    episode.runtimeLabel,
-  ].filter((item): item is string => item !== null)
-
-  return (
-    <li>
-      <article className="episode-row">
-        <div className="episode-row__media">
-          <span className="episode-row__num">
-            T{seasonNumber} · E{episode.episodeNumber}
-          </span>
-          {episode.still !== null ? (
-            <img
-              alt=""
-              height={episode.still.height}
-              loading="lazy"
-              src={episode.still.src}
-              width={episode.still.width}
-            />
-          ) : null}
-        </div>
-        <div>
-          {episode.title !== null ? (
-            <h4 className="episode-row__title" style={{ letterSpacing: '-0.01em', textTransform: 'none' }}>
-              {episode.title}
-            </h4>
-          ) : null}
-          {episode.overview !== null ? (
-            <p className="episode-row__synopsis">{episode.overview}</p>
-          ) : null}
-          {episodeMeta.length > 0 ? (
-            <p className="episode-row__meta">{episodeMeta.join(' · ')}</p>
-          ) : null}
-        </div>
-        <span aria-hidden="true" className="episode-row__chevron">
-          <svg fill="none" height="22" viewBox="0 0 24 24" width="22">
-            <path d="m10 6 6 6-6 6" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-          </svg>
-        </span>
-      </article>
-    </li>
-  )
-}
-
 function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
   const seasonMeta = [
     season.episodeCountLabel,
@@ -203,15 +152,10 @@ function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
       </div>
       {season.overview !== null ? <p className="synopsis-body" style={{ marginTop: 8 }}>{season.overview}</p> : null}
       {season.episodes.length > 0 ? (
-        <ol className="episode-list" style={{ marginTop: 6 }}>
-          {season.episodes.map((episode) => (
-            <EpisodeRow
-              key={episode.episodeNumber}
-              episode={episode}
-              seasonNumber={season.seasonNumber}
-            />
-          ))}
-        </ol>
+        // Client component DE PROPOSITO: o payload RSC leva os dados de cada
+        // episodio, e nao a arvore de elementos de cada linha (ver o cabecalho
+        // de `EpisodeList`). O HTML do servidor e o mesmo.
+        <EpisodeList episodes={season.episodes} seasonNumber={season.seasonNumber} />
       ) : (
         <p className="muted">Nenhum episódio publicado nesta temporada.</p>
       )}
