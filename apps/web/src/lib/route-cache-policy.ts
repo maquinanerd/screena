@@ -254,6 +254,9 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   "/robots.txt": publicDynamic("gate de indexacao por ambiente — fora de escopo"),
   "/sitemap.xml": publicDynamic("sitemap paginado no banco (#241/#242) — fora de escopo"),
   "/sitemaps/[shard]": publicDynamic("shard paginado no banco (#241/#242) — fora de escopo"),
+  // A MESMA chave de ambiente do robots.txt, lida por request: um arquivo assado
+  // no build ignoraria o kill switch de indexacao (auditoria de SEO, 2026-09-11).
+  "/llms.txt": publicDynamic("indice do site para ferramentas de IA; gate de indexacao por ambiente"),
 
   // ----------------------------------------------------- aliases de entrada
   "/filmes": publicStatic(BUILD_PRERENDERED, "alias que redireciona para /pt/filmes/"),
