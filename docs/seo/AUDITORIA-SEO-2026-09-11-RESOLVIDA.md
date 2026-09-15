@@ -164,7 +164,7 @@ Tudo rodou na cópia de trabalho em `C:` (o worktree em `E:` não comporta
 
 | Etapa | Resultado |
 |---|---|
-| `pnpm test` | **602 arquivos de teste, todos passando** (baseline: 577) |
+| `pnpm test` | **602 arquivos de teste, todos passando** (baseline: 577). Depois do merge de `main` (#279, uma linha de CSS): 601 passando e 1 vermelho por **timeout** — `apps/cms/src/__tests__/easypanel-runtime.test.ts` levou 5.245 ms contra o limite de 5 s, com quatro leituras paralelas disputando o disco; rodado isolado, 3/3 em 8 ms. O teste só lê `Dockerfile.cms`, que a merge não tocou |
 | `pnpm typecheck` | 0 |
 | `pnpm typecheck:apps` | 0 (web, admin, cms) |
 | `pnpm --filter @screena/web build` | 0 — as rotas novas saem `ƒ`; `/filmes`, `/series` e `/_not-found` seguem `○` |
