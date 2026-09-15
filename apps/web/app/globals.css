@@ -11034,6 +11034,14 @@ main[data-vertical='series'] .score-card__label {
   color: var(--c-text-muted-aa);
 }
 
+/* "Como é calculado": leva a metodologia (/pt/cinerie-score/). A cor e a da linha
+   de composicao; o sublinhado e o que diz que e link. */
+.score-card__method {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Os DOIS botoes do topo (Minha lista / Avaliar) + seletor de nota. */
 .hero-actions__row {
   display: flex;

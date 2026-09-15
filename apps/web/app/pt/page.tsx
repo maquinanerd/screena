@@ -1,6 +1,12 @@
 import type { Metadata } from 'next'
 
-import { organizationId, publicHomeUrl, serializeJsonLd, websiteId } from '@screena/seo'
+import {
+  organizationId,
+  publicHomeUrl,
+  publishingPrinciplesUrl,
+  serializeJsonLd,
+  websiteId,
+} from '@screena/seo'
 
 import { HomeLike } from '../_components/home-like'
 import type { EntityCard } from '../../src/lib/entity-index-presenter'
@@ -86,6 +92,9 @@ const HOME_ORGANIZATION_JSONLD = {
   '@id': organizationId(SITE_URL),
   name: 'Cinerie',
   url: publicHomeUrl(SITE_URL),
+  // Como a organizacao publica: a Politica editorial (auditoria de SEO de
+  // 11/09/2026, secao 3.6 — a pagina nao existia).
+  publishingPrinciples: publishingPrinciplesUrl(SITE_URL),
   // A marca-mãe em PNG (672x163, entregue em 2026-09-11): raster e acima dos
   // 112 px mínimos que o Google pede para logo de Organization. O SVG anterior
   // era texto com fonte não embutida, 78 px de altura.

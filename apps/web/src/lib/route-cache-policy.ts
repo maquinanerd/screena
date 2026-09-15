@@ -13,8 +13,10 @@
  * em `next/dist/server/lib/cache-control.js` devolve exatamente essa string
  * quando `revalidate === 0`, e devolve `s-maxage=<n>` quando ha revalidacao.
  * A prova executada esta em `validate-route-cache-real-postgres.ts`: a MESMA
- * instalacao do Next emite `s-maxage=31536000` para `/pt/termos/` (estatica) e
- * `no-store` para `/pt/` (dinamica), sem uma linha nossa de `Cache-Control`.
+ * instalacao do Next emite `s-maxage=31536000` para uma rota prerenderizada e
+ * `no-store` para `/pt/` (dinamica), sem uma linha nossa de `Cache-Control`. A
+ * rota de prova era `/pt/termos/`; desde 15/09/2026 — motivo (d) abaixo — e o
+ * alias `/filmes/`, medido nesse dia: `308 s-maxage=31536000`.
  *
  * Ou seja: nao ha "header global para remover". Ha rota dinamica para deixar de
  * ser dinamica. O header e CONSEQUENCIA, e este registro e o lugar unico onde a
@@ -382,6 +384,20 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   ),
   "/pt/termos": publicDynamic(
     "documento legal sem banco; o robots le a chave propria de RUNTIME — motivo (d)",
+  ),
+  // Paginas institucionais (auditoria de SEO de 11/09/2026, secao 3.6): texto
+  // fixo, sem banco — e dinamicas pelo MESMO motivo (d) dos documentos legais.
+  "/pt/cinerie-score": publicDynamic(
+    "metodologia do Cinerie Score, sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/contato": publicDynamic(
+    "pagina institucional sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/politica-editorial": publicDynamic(
+    "pagina institucional sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/sobre": publicDynamic(
+    "pagina institucional sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
   ),
   "/pt/autores": publicDynamic(
     "lista de autores: le as materias no ar — DESPUBLICACAO DE EMERGENCIA depende de leitura por requisicao (motivo b)",

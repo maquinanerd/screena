@@ -51,6 +51,8 @@ describe('publisher', () => {
       // A marca-mae raster: o Google pede logo de publisher em formato de
       // imagem indexavel. Mesma origem da canonical, nunca caminho relativo.
       logo: { '@type': 'ImageObject', url: 'https://cinerie.com/brand/cinerie-logo.png' },
+      // A Politica editorial publica: o mesmo `publishingPrinciples` do no da home.
+      publishingPrinciples: 'https://cinerie.com/pt/politica-editorial/',
     })
   })
 

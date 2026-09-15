@@ -43,3 +43,14 @@ export function publicHomeUrl(origin: string): string {
 export function profilePersonId(profileUrl: string): string {
   return `${profileUrl.trim()}#person`;
 }
+
+/**
+ * A Politica editorial publica. O `publishingPrinciples` do no `Organization` — na
+ * home e no `publisher` de cada materia — aponta para ela. A rota e a MESMA de
+ * `EDITORIAL_POLICY_PATH` (apps/web), amarrada por teste.
+ */
+export const PUBLIC_EDITORIAL_POLICY_PATH = "/pt/politica-editorial/";
+
+export function publishingPrinciplesUrl(origin: string): string {
+  return `${trimmedOrigin(origin)}${PUBLIC_EDITORIAL_POLICY_PATH}`;
+}

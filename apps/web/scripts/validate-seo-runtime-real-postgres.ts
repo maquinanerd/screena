@@ -375,7 +375,11 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
     // Autores: a listagem entra quando ha autor com materia no ar, e cada pagina de
     // autor entra com ela — a MESMA lista que as paginas usam.
     && hubConfere("/pt/autores/", hubs.authors.length > 0)
-    && hubs.authors.every((author) => statLocs.some((u) => u.endsWith(author.path)));
+    && hubs.authors.every((author) => statLocs.some((u) => u.endsWith(author.path)))
+    // Paginas institucionais: texto fixo, sempre no shard.
+    && ["/pt/sobre/", "/pt/politica-editorial/", "/pt/cinerie-score/", "/pt/contato/"].every(
+      (sufixo) => statLocs.some((u) => u.endsWith(sufixo)),
+    );
   record(25, "shard estatico = rotas elegiveis; pessoas, onde assistir, em breve e autores seguem a decisao da PROPRIA pagina", statOk,
     `n=${statLocs.length} pessoas=${hubs.people} onde_assistir=${hubs.watch} em_breve=${hubs.anticipated} autores=${hubs.authors.length}`);
 

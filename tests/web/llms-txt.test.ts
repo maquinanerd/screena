@@ -42,6 +42,19 @@ describe('llms.txt', () => {
     expect(txt).not.toMatch(/treinamento|training|permitid|allowed/i)
   })
 
+  it('(6) as paginas institucionais estao listadas, com URL absoluta', () => {
+    expect(txt).toContain('## Sobre a Cinerie')
+    for (const url of [
+      'https://cinerie.com/pt/sobre/',
+      'https://cinerie.com/pt/politica-editorial/',
+      'https://cinerie.com/pt/cinerie-score/',
+      'https://cinerie.com/pt/autores/',
+      'https://cinerie.com/pt/contato/',
+    ]) {
+      expect(txt).toContain(`(${url})`)
+    }
+  })
+
   it('(5) ambiente que nao indexa (este, de teste) nao se apresenta: 404', async () => {
     const resposta = GET()
     expect(resposta.status).toBe(404)

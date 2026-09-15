@@ -106,4 +106,15 @@ describe('hubs do shard estatico', () => {
     const rotas = eligibleStaticRoutes(contagens(100), datas(), { ...HUBS, authors: [] })
     expect(rotas.some((rota) => rota.loc.includes('/pt/autores/'))).toBe(false)
   })
+
+  it('(7) paginas institucionais: no shard, sem lastmod; fora do uso do INDEX', () => {
+    const INSTITUCIONAIS = ['/pt/sobre/', '/pt/politica-editorial/', '/pt/cinerie-score/', '/pt/contato/']
+    const shard = eligibleStaticRoutes(contagens(100), datas(), HUBS)
+    for (const pagina of INSTITUCIONAIS) {
+      expect(loc(shard, pagina), pagina).toBeDefined()
+      expect(loc(shard, pagina)?.lastmod, pagina).toBeNull()
+    }
+    const indice = eligibleStaticRoutes(contagens(100), datas())
+    for (const pagina of INSTITUCIONAIS) expect(loc(indice, pagina), pagina).toBeUndefined()
+  })
 })

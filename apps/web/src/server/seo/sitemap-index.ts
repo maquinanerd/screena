@@ -80,7 +80,15 @@ import {
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
 import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
-import { ANTICIPATED_PATH, AUTHORS_INDEX_PATH, WATCH_PATH } from "../../lib/routes";
+import {
+  ABOUT_PATH,
+  ANTICIPATED_PATH,
+  AUTHORS_INDEX_PATH,
+  CONTACT_PATH,
+  EDITORIAL_POLICY_PATH,
+  SCORE_METHODOLOGY_PATH,
+  WATCH_PATH,
+} from "../../lib/routes";
 import { anticipatedIndexable, getAnticipatedData } from "../anticipated";
 import { getPersonIndexData } from "../entity-indexes";
 import { getAuthorDirectoryData } from "../news-pages";
@@ -1111,6 +1119,17 @@ export function eligibleStaticRoutes(
   });
   for (const author of authors) {
     specs.push({ path: author.path, changefreq: "weekly", priority: 0.4, eligible: true, lastmod: author.lastmod });
+  }
+
+  // Paginas institucionais: texto fixo, sem banco, `index` sempre que o ambiente
+  // indexa (o gate de ambiente e o mesmo das demais). Entram so no SHARD, como os
+  // hubs acima — o INDEX decide a existencia do shard pelas contagens, e a prova
+  // de fail-closed (banco fora = index sem entradas) continua valendo. Sem
+  // `lastmod`: um texto sem registro de mudanca nao tem data honesta.
+  if (hubs !== undefined) {
+    for (const path of [ABOUT_PATH, EDITORIAL_POLICY_PATH, SCORE_METHODOLOGY_PATH, CONTACT_PATH]) {
+      specs.push({ path, changefreq: "monthly", priority: 0.3, eligible: true, lastmod: null });
+    }
   }
 
   const urls: SitemapXmlUrl[] = [];

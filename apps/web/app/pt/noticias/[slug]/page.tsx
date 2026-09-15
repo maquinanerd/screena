@@ -19,6 +19,7 @@ import { CardBookmark } from '../../../_components/card-bookmark'
 import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
 import { authorHrefOf } from '../../../../src/lib/author-presenter'
+import { AI_ASSISTED_ARTICLE_NOTE } from '../../../../src/lib/editorial-disclosure'
 import type { NewsArticleView, NewsRelatedEntityType } from '../../../../src/lib/news-presenter'
 import { CINERIE_SCORE_LOGO } from '../../../../src/lib/brand-logos'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, gatePublicRobots } from '../../../../src/lib/site'
@@ -534,8 +535,8 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
         {view.aiAssisted ? (
           <p className="art-note" role="note">
-            Conteúdo produzido pela equipe editorial da Cinerie, com apoio de ferramentas de
-            inteligência artificial.
+            {/* A MESMA nota que a Política editorial cita (`editorial-disclosure.ts`). */}
+            {AI_ASSISTED_ARTICLE_NOTE}
             {showsImage ? ' Imagens meramente ilustrativas.' : null}
           </p>
         ) : null}

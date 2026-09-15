@@ -26,6 +26,7 @@ Next e mede as duas respostas na mesma instalacao —
 | --- | --- | --- |
 | `/pt/` | dinamica | `private, no-cache, no-store, max-age=0, must-revalidate` |
 | `/pt/termos/` (ate 15/09/2026) | prerenderizada | `s-maxage=31536000` |
+| `/filmes/` (alias, desde 15/09/2026) | prerenderizada, responde 308 | `s-maxage=31536000` |
 | `/pt/filmes/{slug}/` | ISR | `s-maxage=3600, stale-while-revalidate=31532400` |
 
 **Desde 15/09/2026 os documentos legais sao dinamicos** — motivo (d) de

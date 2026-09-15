@@ -18,7 +18,12 @@
 // do mesmo tipo divergem no primeiro estado novo, e o TypeScript nao avisa
 // enquanto os valores coincidirem.
 import type { IndexDecision } from './resolver.js'
-import { organizationId, profilePersonId, publicHomeUrl } from './site-identity.js'
+import {
+  organizationId,
+  profilePersonId,
+  publicHomeUrl,
+  publishingPrinciplesUrl,
+} from './site-identity.js'
 import { toOpenGraphLocale } from './social-metadata.js'
 
 export type { IndexDecision }
@@ -390,6 +395,8 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
           // amarrado por teste. Sem origem nao ha logo absoluto: o publisher
           // degrada inteiro, nunca aponta para caminho relativo.
           logo: { '@type': 'ImageObject', url: `${publisherUrl}/brand/cinerie-logo.png` },
+          // Como a organizacao publica — o mesmo valor do no da home.
+          publishingPrinciples: publishingPrinciplesUrl(publisherUrl),
         }),
   }
 
