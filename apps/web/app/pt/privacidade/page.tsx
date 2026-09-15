@@ -66,6 +66,20 @@ import { socialMetadata } from '../../../src/lib/social-metadata'
  * tests/governance/legal-docs-indexing.test.ts.
  */
 
+/**
+ * `force-dynamic` — o `<meta robots>` desta página lê a chave de indexação do
+ * AMBIENTE (`legalDocRobots()`), e essa chave só existe em RUNTIME: o release
+ * constrói sem env pública (ver o `Dockerfile`).
+ *
+ * Prerenderizada no build, a página saía com o robots do BUILD — `noindex,
+ * nofollow` — e nenhuma env de runtime o alcançava: a chave própria dos
+ * documentos legais ficava inerte. Medido em 15/09/2026 no HTML que o build
+ * gravou em `.next/server/app/pt/privacidade.html`. Sem banco, renderizar por
+ * requisição custa pouco. Travado por
+ * `tests/web/prerendered-routes-robots-runtime.test.ts`.
+ */
+export const dynamic = 'force-dynamic'
+
 const TITLE = 'Política de Privacidade'
 const DESCRIPTION =
   'Como a Cinerie trata dados pessoais: o que coletamos, com que finalidade, ' +

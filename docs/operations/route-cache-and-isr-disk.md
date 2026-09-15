@@ -25,8 +25,16 @@ Next e mede as duas respostas na mesma instalacao —
 | rota | modo de render | `Cache-Control` emitido |
 | --- | --- | --- |
 | `/pt/` | dinamica | `private, no-cache, no-store, max-age=0, must-revalidate` |
-| `/pt/termos/` | prerenderizada | `s-maxage=31536000` |
+| `/pt/termos/` (ate 15/09/2026) | prerenderizada | `s-maxage=31536000` |
 | `/pt/filmes/{slug}/` | ISR | `s-maxage=3600, stale-while-revalidate=31532400` |
+
+**Desde 15/09/2026 os documentos legais sao dinamicos** — motivo (d) de
+`route-cache-policy.ts`: o `<meta robots>` deles le a chave de indexacao de
+RUNTIME, e prerenderizados eles gravavam o robots do BUILD (`noindex, nofollow`,
+medido no HTML de `.next/server/app/pt/termos.html`), porque o release constroi
+sem env publica. A rota prerenderizada que o validador mede passou a ser o alias
+`/filmes/`, que responde 308 — medido sem seguir o redirect. Travado por
+`tests/web/prerendered-routes-robots-runtime.test.ts`.
 
 **Consequencia pratica:** nao existe "header global para remover". Para uma rota
 parar de emitir `no-store`, ela precisa parar de ser dinamica.
@@ -177,8 +185,9 @@ qualquer cache.
 
 ## 7. Cloudflare — o que ela faz, e o que ela NAO faz
 
-Medido em 2026-08-28: `/pt/termos/` responde `s-maxage=31536000` da origem e
-mesmo assim volta com `cf-cache-status: DYNAMIC`. O CSS estatico volta `HIT`.
+Medido em 2026-08-28, quando `/pt/termos/` ainda era prerenderizada: ela respondia
+`s-maxage=31536000` da origem e mesmo assim voltava com `cf-cache-status: DYNAMIC`.
+O CSS estatico volta `HIT`.
 
 **A Cloudflare nao cacheia HTML por padrao, nem com cabecalho permissivo.** Fazer
 isso exige uma **Cache Rule** no painel — que e configuracao de borda e decisao

@@ -43,12 +43,18 @@
  *                       janela do `revalidate` (ISR).
  *  - `public-dynamic` — publica, renderizada A CADA requisicao. Nao vaza dado
  *                       pessoal; simplesmente nao pode (ou nao deve) ser
- *                       guardada. Tres motivos distintos aparecem hoje, e cada
+ *                       guardada. Quatro motivos distintos aparecem hoje, e cada
  *                       entrada diz qual e o seu:
  *                         (a) a resposta depende de `searchParams` (`/pt/explorar`);
  *                         (b) envelhecer e proibido (despublicacao editorial);
  *                         (c) o RELEASE NAO CONSEGUE PRERENDERIZAR o caminho —
- *                             ver abaixo.
+ *                             ver abaixo;
+ *                         (d) o `<meta robots>` le a chave de indexacao de
+ *                             RUNTIME, e o release constroi sem env publica:
+ *                             prerenderizada, a pagina gravaria o robots do BUILD
+ *                             (`noindex, nofollow`). Medido em 15/09/2026 nos
+ *                             documentos legais; travado por
+ *                             `tests/web/prerendered-routes-robots-runtime.test.ts`.
  *
  * ============================================================================
  * (c) POR QUE A HOME E AS LISTAGENS FICARAM DINAMICAS, MEDIDO
@@ -148,11 +154,16 @@ export const CATALOG_SURFACE_REVALIDATE_SECONDS = 3600;
 export const EDITORIAL_SURFACE_REVALIDATE_SECONDS = 300;
 
 /**
- * Paginas SEM banco: o documento legal e os dois aliases de entrada.
+ * Paginas SEM banco e SEM env de runtime: os dois aliases de entrada, a casca do
+ * 404 e os harnesses de desenvolvimento.
  *
- * Elas ja eram prerenderizadas no build antes desta leva e continuam sendo — nao
- * leem PostgreSQL, entao o build sem `DATABASE_URL` as alcanca. O Next as serve
- * com `s-maxage` de um ano, e a revalidacao aqui e o proprio deploy.
+ * Prerenderizadas no build — nao leem PostgreSQL, entao o build sem
+ * `DATABASE_URL` as alcanca. O Next as serve com `s-maxage` de um ano, e a
+ * revalidacao aqui e o proprio deploy.
+ *
+ * Os documentos legais MORARAM aqui ate 15/09/2026 e sairam pelo motivo (d): o
+ * robots deles le a env de indexacao, e o que o build grava e o robots do build.
+ * Pagina que le env de runtime nao pertence a esta classe.
  */
 export const BUILD_PRERENDERED = null;
 
@@ -358,11 +369,20 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     CATALOG_SURFACE_REVALIDATE_SECONDS,
     "galeria de fotos da pessoa: midia de catalogo, sem dado pessoal — a mesma classe das galerias de filme, serie e episodio",
   ),
-  "/pt/creditos-de-dados": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
-  "/pt/privacidade": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
-  "/pt/termos": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
 
   // ---------------------------------------------- publica, mas nao cacheavel
+  // Os tres documentos SEM banco estao aqui pelo motivo (d) do cabecalho: o
+  // `<meta robots>` le a chave de indexacao de RUNTIME. Ate 15/09/2026 eram
+  // `public-static` prerenderizados, e o HTML do build saia `noindex, nofollow`.
+  "/pt/creditos-de-dados": publicDynamic(
+    "documento sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/privacidade": publicDynamic(
+    "documento legal sem banco; o robots le a chave propria de RUNTIME — motivo (d)",
+  ),
+  "/pt/termos": publicDynamic(
+    "documento legal sem banco; o robots le a chave propria de RUNTIME — motivo (d)",
+  ),
   "/pt/explorar": publicDynamic(
     "busca: a resposta depende de `?q=` — legitimamente por requisicao",
   ),
