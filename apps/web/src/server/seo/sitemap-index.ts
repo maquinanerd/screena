@@ -80,6 +80,10 @@ import {
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
 import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
+import { ANTICIPATED_PATH, WATCH_PATH } from "../../lib/routes";
+import { anticipatedIndexable, getAnticipatedData } from "../anticipated";
+import { getPersonIndexData } from "../entity-indexes";
+import { getWatchBrowseData, watchBrowseIndexable } from "../watch-browse";
 import {
   absentDecisionFor,
   isDecisionGateArmed,
@@ -380,6 +384,11 @@ const ENTITY_PRIORITY: Readonly<Record<EntitySitemapType, number>> = {
 export interface SitemapXmlResponse {
   xml: string;
   contentType: string;
+  /**
+   * `true` quando o XML e o FAIL-CLOSED de uma falha, e nao a lista do momento.
+   * A rota responde igual, mas manda a borda nao guardar (`sitemap-cache-control.ts`).
+   */
+  degraded?: boolean;
 }
 
 export interface SitemapPageOptions {
@@ -388,6 +397,12 @@ export interface SitemapPageOptions {
    * (limite reduzido) — nunca muda o limite de producao.
    */
   limit?: number;
+  /**
+   * As decisoes dos hubs que dependem do loader da propria pagina. Default =
+   * `defaultStaticHubDecisions` (os MESMOS loaders das paginas). Existe para teste
+   * com banco falso — nunca muda a regra de producao.
+   */
+  staticHubDecisions?: () => Promise<StaticHubDecisions>;
 }
 
 interface Aggregate {
@@ -963,20 +978,84 @@ async function pageSeasonEpisode(
 
 // ---------------------------------------------------------------------------
 // Rotas estaticas: pequena lista fixa (shard proprio, em memoria). O gate usa os
-// MESMOS evaluators das paginas, alimentado pelas CONTAGENS ja calculadas.
+// MESMOS evaluators das paginas, alimentado pelas CONTAGENS ja calculadas — e,
+// para os hubs cuja decisao nao sai dessas contagens, pelo loader da PROPRIA
+// pagina (`StaticHubDecisions`).
 // ---------------------------------------------------------------------------
+
+/** A decisao de `index` dos hubs que NAO sai das contagens do sitemap. */
+export interface StaticHubDecisions {
+  /** `/pt/pessoas/`: a listagem decide pela contagem DELA, nao pela do portao D2. */
+  readonly people: boolean;
+  /** `/pt/onde-assistir/`: indexa quando ha oferta licenciada. */
+  readonly watch: boolean;
+  /** `/pt/em-breve/`: indexa quando ha estreia anunciada. */
+  readonly anticipated: boolean;
+  /** A data da oferta mais recente do hub de streaming, quando existe. */
+  readonly watchUpdatedAtIso: string | null;
+}
+
+/**
+ * As MESMAS perguntas que as paginas fazem para decidir o proprio robots.
+ *
+ * AUDITORIA DE SEO (11/09/2026, secao 3.7): `/pt/pessoas/`, `/pt/onde-assistir/` e
+ * `/pt/em-breve/` diziam `index` na pagina e ficavam fora do shard estatico. A de
+ * pessoas porque o shard decidia pela contagem do SITEMAP de pessoas (o portao
+ * D2), e nao pela da listagem; as outras duas porque nem estavam na lista. Chamar
+ * o loader da pagina, e nao reescrever a regra aqui, e o que impede a divergencia
+ * de voltar.
+ */
+export async function defaultStaticHubDecisions(): Promise<StaticHubDecisions> {
+  const [people, watch, anticipated] = await Promise.all([
+    getPersonIndexData(),
+    getWatchBrowseData(),
+    getAnticipatedData(),
+  ]);
+  return {
+    people: people.indexability.decision === "index",
+    watch: watchBrowseIndexable(watch),
+    anticipated: anticipatedIndexable(anticipated),
+    watchUpdatedAtIso: watch.updatedAtIso,
+  };
+}
 
 interface StaticSpec {
   path: string;
   changefreq: string;
   priority: number;
   eligible: boolean;
+  /** Data real da ultima mudanca do que o hub lista; `null` quando nao ha uma honesta. */
+  lastmod: string | null;
 }
 
-function eligibleStaticRoutes(counts: Record<EntitySitemapType, number>): SitemapXmlUrl[] {
+/** O ISO mais recente da lista, ou `null`. ISO em UTC compara como texto. */
+function latestIso(values: readonly (string | null)[]): string | null {
+  let latest: string | null = null;
+  for (const value of values) {
+    if (value !== null && (latest === null || value > latest)) latest = value;
+  }
+  return latest;
+}
+
+/**
+ * As rotas estaticas elegiveis, com `lastmod`.
+ *
+ * Sem `hubs`, os tres hubs que dependem do loader da pagina ficam de fora: e o uso
+ * do INDEX, que so precisa saber se o shard existe e nao deve pagar tres leituras
+ * a cada visita de crawler. O shard passa `hubs` e lista tudo.
+ *
+ * `lastmod` so com data real (auditoria de SEO: "static-1 sem lastmod"): o hub de
+ * filmes muda quando um filme listavel muda; a home, quando qualquer lista dela
+ * muda. A listagem de pessoas fica sem data: o maximo que o sitemap conhece e o
+ * das pessoas que passam o portao D2, e a listagem mostra todas.
+ */
+export function eligibleStaticRoutes(
+  counts: Record<EntitySitemapType, number>,
+  maxLastmod: Record<EntitySitemapType, Date | null>,
+  hubs?: StaticHubDecisions,
+): SitemapXmlUrl[] {
   const moviesIdx = evaluateEntityIndexIndexability({ itemCount: counts.movies }).decision === "index";
   const seriesIdx = evaluateEntityIndexIndexability({ itemCount: counts.series }).decision === "index";
-  const peopleIdx = evaluateEntityIndexIndexability({ itemCount: counts.people }).decision === "index";
   const newsIdx = evaluateNewsIndexIndexability({ itemCount: counts.news }).decision === "index";
   const homeIdx =
     evaluatePortalIndexability({
@@ -987,13 +1066,25 @@ function eligibleStaticRoutes(counts: Record<EntitySitemapType, number>): Sitema
       populatedSectionCount: countPopulatedSections([counts.movies, counts.series, counts.people, counts.news]),
     }).decision === "index";
 
+  const movies = isoOrNull(maxLastmod.movies);
+  const series = isoOrNull(maxLastmod.series);
+  const news = isoOrNull(maxLastmod.news);
+
   const specs: StaticSpec[] = [
-    { path: HOME_PATH, changefreq: "weekly", priority: 0.8, eligible: homeIdx },
-    { path: MOVIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: moviesIdx },
-    { path: SERIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: seriesIdx },
-    { path: PEOPLE_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: peopleIdx },
-    { path: NEWS_INDEX_PATH, changefreq: "daily", priority: 0.7, eligible: newsIdx },
-    { path: EXPLORE_PATH, changefreq: "weekly", priority: 0.6, eligible: exploreIdx },
+    { path: HOME_PATH, changefreq: "weekly", priority: 0.8, eligible: homeIdx, lastmod: latestIso([movies, series, news]) },
+    { path: MOVIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: moviesIdx, lastmod: movies },
+    { path: SERIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: seriesIdx, lastmod: series },
+    { path: PEOPLE_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: hubs?.people === true, lastmod: null },
+    { path: NEWS_INDEX_PATH, changefreq: "daily", priority: 0.7, eligible: newsIdx, lastmod: news },
+    { path: EXPLORE_PATH, changefreq: "weekly", priority: 0.6, eligible: exploreIdx, lastmod: latestIso([movies, series]) },
+    {
+      path: WATCH_PATH,
+      changefreq: "daily",
+      priority: 0.6,
+      eligible: hubs?.watch === true,
+      lastmod: hubs?.watchUpdatedAtIso ?? null,
+    },
+    { path: ANTICIPATED_PATH, changefreq: "daily", priority: 0.6, eligible: hubs?.anticipated === true, lastmod: null },
   ];
 
   const urls: SitemapXmlUrl[] = [];
@@ -1001,7 +1092,7 @@ function eligibleStaticRoutes(counts: Record<EntitySitemapType, number>): Sitema
     if (!spec.eligible) continue;
     const loc = canonicalPublicUrl(spec.path);
     if (loc === null) continue;
-    urls.push({ loc, lastmod: null, changefreq: spec.changefreq, priority: spec.priority });
+    urls.push({ loc, lastmod: spec.lastmod, changefreq: spec.changefreq, priority: spec.priority });
   }
   return urls;
 }
@@ -1103,10 +1194,13 @@ export async function getSitemapIndexXml(
       }
     }
     // Shard estatico (lista fixa pequena) — um unico shard quando ha rota elegivel.
-    if (eligibleStaticRoutes(counts).length > 0) {
+    // O index decide a EXISTENCIA pelas contagens; os hubs que dependem do loader
+    // da propria pagina so sao consultados ao montar o shard.
+    const staticRoutes = eligibleStaticRoutes(counts, maxLastmod);
+    if (staticRoutes.length > 0) {
       entries.push({
         loc: `${SITE_URL}/sitemaps/${shardId(language, "static", 1)}.xml`,
-        lastmod: null,
+        lastmod: latestIso(staticRoutes.map((route) => route.lastmod ?? null)),
       });
     }
 
@@ -1116,7 +1210,7 @@ export async function getSitemapIndexXml(
     // a cobertura de decisoes. Falha de UM tipo nao chega aqui — ela e isolada em
     // `allEntityCounts`, e teto estourado e isolado pelo relatorio acima.
     console.error("[sitemap] falha ao montar o sitemap index; fail-closed (index vazio):", error);
-    return { xml: renderSitemapIndex([]), contentType: SITEMAP_CONTENT_TYPE };
+    return { xml: renderSitemapIndex([]), contentType: SITEMAP_CONTENT_TYPE, degraded: true };
   }
 }
 
@@ -1167,8 +1261,11 @@ export async function getSitemapShardXml(
 
     if (type === "static") {
       if (page !== 1) return null; // so existe 1 shard estatico
-      const { counts } = await allEntityCounts(prisma, language, coverage);
-      const routes = eligibleStaticRoutes(counts);
+      const [{ counts, maxLastmod }, hubs] = await Promise.all([
+        allEntityCounts(prisma, language, coverage),
+        (opts?.staticHubDecisions ?? defaultStaticHubDecisions)(),
+      ]);
+      const routes = eligibleStaticRoutes(counts, maxLastmod, hubs);
       if (routes.length === 0) return null;
       return { xml: renderUrlset(routes), contentType: SITEMAP_CONTENT_TYPE };
     }

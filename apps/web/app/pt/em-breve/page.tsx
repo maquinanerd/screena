@@ -6,7 +6,8 @@ import { AnticipatedGrid } from '../../_components/anticipated-grid'
 import { EmptyState } from '../../_components/ds'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
-import { getAnticipatedData } from '../../../src/server/anticipated'
+import { ANTICIPATED_PATH } from '../../../src/lib/routes'
+import { anticipatedIndexable, getAnticipatedData } from '../../../src/server/anticipated'
 
 /**
  * Em breve / Mais Aguardados — tela 12 do canônico, estrutura EXATA:
@@ -52,14 +53,14 @@ export const dynamic = 'force-dynamic'
 const TITLE = 'Mais Aguardados'
 const DESCRIPTION =
   'Próximas estreias de filmes, séries, temporadas e episódios já confirmadas no catálogo da Cinerie.'
-const ANTICIPATED_PATH = '/pt/em-breve/'
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { total } = await getAnticipatedData()
+  const data = await getAnticipatedData()
   return {
     title: TITLE,
     description: DESCRIPTION,
-    robots: publicRobots(total > 0),
+    // A MESMA regra decide se o hub entra no sitemap (`anticipatedIndexable`).
+    robots: publicRobots(anticipatedIndexable(data)),
     alternates: { canonical: canonicalPublicUrl(ANTICIPATED_PATH) },
     ...socialMetadata({
       type: 'website',

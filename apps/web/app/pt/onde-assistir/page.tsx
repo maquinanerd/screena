@@ -10,7 +10,7 @@ import { decideRouteSection } from '../../../src/lib/section-absence'
 import { groupBrowseProvidersByBrand } from '../../../src/lib/watch-browse-brands'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
-import { getWatchBrowseData } from '../../../src/server/watch-browse'
+import { getWatchBrowseData, watchBrowseIndexable } from '../../../src/server/watch-browse'
 
 /**
  * Onde assistir — tela 10 do canônico, estrutura EXATA: HERO escuro centrado
@@ -81,12 +81,13 @@ function formatUpdatedAt(iso: string | null): string | null {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { providers } = await getWatchBrowseData()
+  const data = await getWatchBrowseData()
   return {
     title: TITLE,
     description: DESCRIPTION,
-    // Indexa so quando ha conteudo real (listagem vazia = noindex tecnico).
-    robots: publicRobots(providers.length > 0),
+    // Indexa so quando ha conteudo real (listagem vazia = noindex tecnico). A MESMA
+    // regra decide se o hub entra no sitemap (`watchBrowseIndexable`).
+    robots: publicRobots(watchBrowseIndexable(data)),
     alternates: { canonical: canonicalPublicUrl(BROWSE_PATH) },
     ...socialMetadata({
       type: 'website',

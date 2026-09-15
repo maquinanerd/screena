@@ -218,6 +218,12 @@ interface Seams {
   clearRedirectCache: () => void;
   getSitemapIndexXml: (opts?: { limit?: number }, client?: unknown) => Promise<SitemapXml>;
   getSitemapShardXml: (id: string, opts?: { limit?: number }, client?: unknown) => Promise<SitemapXml | null>;
+  defaultStaticHubDecisions: () => Promise<{
+    people: boolean;
+    watch: boolean;
+    anticipated: boolean;
+    watchUpdatedAtIso: string | null;
+  }>;
   getNewsArticleData: (slug: string) => Promise<unknown | null>;
   serializeJsonLd: (value: unknown) => string;
   resetDecisionCoverageMemo: () => void;
@@ -351,12 +357,22 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
 
   const stat = await seams.getSitemapShardXml("sitemap-pt-BR-static-1.xml", { limit: LIMIT });
   const statLocs = stat === null ? [] : locsInXml(stat.xml);
-  const statOk = statLocs.length === 4
-    && statLocs.some((u) => u.endsWith("/pt/filmes/"))
+  // Os hubs que dependem do loader da PROPRIA pagina (pessoas, onde assistir, em
+  // breve) entram no shard exatamente quando a pagina diz `index` — a divergencia
+  // da auditoria de SEO de 11/09/2026 (secao 3.7). A expectativa vem da mesma
+  // funcao que a pagina usa, e nao de um numero fixo desta fixture.
+  const hubs = await seams.defaultStaticHubDecisions();
+  const hubConfere = (sufixo: string, elegivel: boolean): boolean =>
+    statLocs.some((u) => u.endsWith(sufixo)) === elegivel;
+  const statOk = statLocs.some((u) => u.endsWith("/pt/filmes/"))
     && statLocs.some((u) => u.endsWith("/pt/noticias/"))
     && statLocs.some((u) => u.endsWith("/pt/explorar/"))
-    && !statLocs.some((u) => u.endsWith("/pt/series/"));
-  record(25, "shard estatico = rotas elegiveis (home/filmes/noticias/explorar; sem series/pessoas)", statOk, `n=${statLocs.length}`);
+    && !statLocs.some((u) => u.endsWith("/pt/series/"))
+    && hubConfere("/pt/pessoas/", hubs.people)
+    && hubConfere("/pt/onde-assistir/", hubs.watch)
+    && hubConfere("/pt/em-breve/", hubs.anticipated);
+  record(25, "shard estatico = rotas elegiveis; pessoas, onde assistir e em breve seguem a decisao da PROPRIA pagina", statOk,
+    `n=${statLocs.length} pessoas=${hubs.people} onde_assistir=${hubs.watch} em_breve=${hubs.anticipated}`);
 
   const throwing = { $queryRaw: () => { throw new Error("db down"); } };
   const shardFail = await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: LIMIT }, throwing);
@@ -614,7 +630,7 @@ async function main(): Promise<void> {
     const redirectMod = (await import("../src/server/seo/redirect-lookup.ts")) as Pick<Seams, "lookupRedirect" | "clearRedirectCache">;
     const sitemapMod = (await import("../src/server/seo/sitemap-index.ts")) as Pick<
       Seams,
-      "getSitemapIndexXml" | "getSitemapShardXml"
+      "getSitemapIndexXml" | "getSitemapShardXml" | "defaultStaticHubDecisions"
     >;
     const newsMod = (await import("../src/server/news-pages.ts")) as Pick<Seams, "getNewsArticleData">;
     const seoMod = (await import("@screena/seo")) as Pick<Seams, "serializeJsonLd">;
@@ -631,6 +647,7 @@ async function main(): Promise<void> {
       clearRedirectCache: redirectMod.clearRedirectCache,
       getSitemapIndexXml: sitemapMod.getSitemapIndexXml,
       getSitemapShardXml: sitemapMod.getSitemapShardXml,
+      defaultStaticHubDecisions: sitemapMod.defaultStaticHubDecisions,
       getNewsArticleData: newsMod.getNewsArticleData,
       serializeJsonLd: seoMod.serializeJsonLd,
       resetDecisionCoverageMemo: coverageMod.resetDecisionCoverageMemo,

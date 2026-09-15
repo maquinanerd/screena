@@ -32,6 +32,9 @@ export const LISTS_PATH = `/${PT_LOCALE_SEGMENT}/listas/`;
 /** Caminho do hub "Onde assistir" (com barra final). */
 export const WATCH_PATH = `/${PT_LOCALE_SEGMENT}/onde-assistir/`;
 
+/** Caminho de "Mais aguardados" (com barra final). A pagina e o sitemap usam este valor. */
+export const ANTICIPATED_PATH = `/${PT_LOCALE_SEGMENT}/em-breve/`;
+
 /**
  * Documentos legais. Sao os destinos dos dois links do aceite OBRIGATORIO do
  * cadastro (`app/pt/criar-conta/signup-form.tsx`): exigir o aceite e apontar
