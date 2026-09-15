@@ -415,9 +415,12 @@ interface Probe {
   bytes: number;
 }
 
-async function probe(url: string): Promise<Probe> {
+async function probe(url: string, init: { redirect?: "follow" | "manual" } = {}): Promise<Probe> {
   const t0 = process.hrtime.bigint();
-  const res = await fetch(url, { headers: { "user-agent": "cinerie-route-cache-validator" } });
+  const res = await fetch(url, {
+    ...init,
+    headers: { "user-agent": "cinerie-route-cache-validator" },
+  });
   const body = await res.text();
   const ms = Number(process.hrtime.bigint() - t0) / 1e6;
   return {
@@ -577,16 +580,21 @@ async function main(): Promise<void> {
     // O CABECALHO E CONSEQUENCIA. A MESMA instalacao do Next, no MESMO
     // processo, emite os dois valores — e nenhum deles esta escrito no repo.
     const home = await probe(`${base}/pt/`);
-    const termos = await probe(`${base}/pt/termos/`);
+    // A rota PRERENDERIZADA de prova era `/pt/termos/` ate 15/09/2026, quando os
+    // documentos legais passaram a renderizar por requisicao (motivo (d) de
+    // `route-cache-policy.ts`: o robots deles le a env de RUNTIME). As paginas que
+    // continuam prerenderizadas sao os aliases de entrada, que respondem 308 — daí
+    // `redirect: "manual"`: seguir o redirect mediria a listagem, que e dinamica.
+    const alias = await probe(`${base}/filmes/`, { redirect: "manual" });
     record(
       "rota DINAMICA emite `no-store` sem uma linha nossa de Cache-Control",
       (home.cacheControl ?? "").includes("no-store"),
       `/pt/ -> ${home.cacheControl ?? "(ausente)"}`,
     );
     record(
-      "rota ESTATICA emite `s-maxage` na MESMA instalacao — o header segue o modo de render",
-      (termos.cacheControl ?? "").includes("s-maxage"),
-      `/pt/termos/ -> ${termos.cacheControl ?? "(ausente)"}`,
+      "rota PRERENDERIZADA emite `s-maxage` na MESMA instalacao — o header segue o modo de render",
+      (alias.cacheControl ?? "").includes("s-maxage"),
+      `/filmes/ -> ${alias.status} ${alias.cacheControl ?? "(ausente)"}`,
     );
 
     // ------------------------------------------------------------------ (2)
@@ -842,6 +850,16 @@ async function main(): Promise<void> {
       kickerSerie !== null && kickerSerie !== "Mesma coleção",
       `kicker exibido: ${kickerSerie === null ? "(nao encontrado)" : `"${kickerSerie}"`}`,
     );
+
+    // ---------------------------------------------------------------- LABORATORIO
+    // `CINERIE_LAB_HOLD_SECONDS`: mantem o Next e o banco semeado de pe DEPOIS das
+    // provas, para medicao por fora — `seo:audit` e `perf:lab`. Nao muda prova
+    // nenhuma, e sem a variavel o validador termina como sempre terminou.
+    const holdSeconds = Number(process.env.CINERIE_LAB_HOLD_SECONDS ?? "0");
+    if (Number.isFinite(holdSeconds) && holdSeconds > 0) {
+      console.log(`\n[lab] Next de pe em ${base} por ${holdSeconds}s (CINERIE_LAB_HOLD_SECONDS)`);
+      await new Promise((resolve) => setTimeout(resolve, holdSeconds * 1000));
+    }
   } finally {
     server?.kill();
     if (disconnect) await disconnect().catch(() => undefined);

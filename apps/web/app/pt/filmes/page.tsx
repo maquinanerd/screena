@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { HomeLike } from '../../_components/home-like'
 import {
@@ -11,6 +11,8 @@ import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-pre
 import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
 import { RANKING_TABS } from '../../../src/lib/popular-rankings'
 import { MOVIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
+import { railItemListJsonLd } from '../../../src/lib/rail-item-list'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
@@ -66,16 +68,21 @@ import { getNewsIndexData } from '../../../src/server/news-pages'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Filmes'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Filmes". Com 16
+// caracteres ("Filmes | Cinerie"), o titulo antigo so nomeava a secao (auditoria
+// de SEO, 11/09/2026: titulos de listagem entre 16 e 25 caracteres).
+const META_TITLE = 'Filmes: fichas, elenco e notícias'
 const DESCRIPTION = 'Explore os filmes catalogados na Cinerie, com páginas editoriais em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
+    ...socialMetadata({ type: 'website', title: META_TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 
@@ -133,19 +140,14 @@ export default async function MovieCategoryPage() {
     name: TITLE,
     url: index.canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
-  if (index.view.cards.length > 0) {
-    collectionJsonLd.mainEntity = {
-      '@type': 'ItemList',
-      numberOfItems: index.view.cards.length,
-      itemListElement: index.view.cards.map((card, position) => ({
-        '@type': 'ListItem',
-        position: position + 1,
-        url: `${SITE_URL}${card.href}`,
-        name: card.title,
-      })),
-    }
-  }
+  // O ItemList descreve o trilho que a pagina RENDERIZA — os mesmos `movieCards`
+  // passados ao HomeLike abaixo —, e nao a listagem por ano, que a pagina nao
+  // mostra (auditoria de SEO, 3.4). Sem trilho, sem ItemList.
+  const railList = railItemListJsonLd('Filmes em alta', movieCards)
+  if (railList !== null) collectionJsonLd.mainEntity = railList
 
   return (
     <main data-vertical="movie">

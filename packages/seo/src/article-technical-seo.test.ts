@@ -167,6 +167,44 @@ describe('buildTwitter', () => {
   })
 })
 
+describe('previa de imagem e cartao da materia (auditoria de SEO, 2026-09-11)', () => {
+  it('materia que indexa pede previa GRANDE de imagem, nos dois metas', () => {
+    const robots = articleRobots('index')
+    expect(robots['max-image-preview']).toBe('large')
+    expect(robots.googleBot?.['max-image-preview']).toBe('large')
+  })
+
+  it('materia fora do indice nao carrega diretiva de previa', () => {
+    for (const decision of ['noindex', 'draft', 'stale', 'blocked'] as const) {
+      expect(articleRobots(decision)).not.toHaveProperty('max-image-preview')
+    }
+  })
+
+  it('og:locale sai no formato do Open Graph (pt_BR); o JSON-LD segue em BCP-47', () => {
+    expect(buildOpenGraph(facts()).locale).toBe('pt_BR')
+    expect(buildArticleJsonLd(facts()).inLanguage).toBe('pt-BR')
+  })
+
+  it('sem capa, o cartao leva a marca de reserva — o JSON-LD nao', () => {
+    const marca = { url: 'https://cinerie.com/brand/cinerie-social-card.png', alt: 'Cinerie' }
+    const semCapa = facts({ imageUrl: null, imageAlt: null, socialFallbackImage: marca })
+    expect(buildOpenGraph(semCapa).images).toEqual([marca])
+    expect(buildTwitter(semCapa)).toMatchObject({ card: 'summary_large_image', images: [marca.url] })
+    expect(buildArticleJsonLd(semCapa)).not.toHaveProperty('image')
+  })
+
+  it('com capa, a marca de reserva nao entra no cartao', () => {
+    const og = buildOpenGraph(
+      facts({
+        socialFallbackImage: { url: 'https://cinerie.com/brand/cinerie-social-card.png', alt: 'Cinerie' },
+      }),
+    )
+    expect(og.images).toEqual([
+      { url: 'https://cinerie.com/media/cartaz.jpg', alt: 'Cartaz oficial da serie' },
+    ])
+  })
+})
+
 describe('resolveSchemaType', () => {
   it('aceita NewsArticle e Article', () => {
     expect(resolveSchemaType('NewsArticle')).toMatchObject({ type: 'NewsArticle', accepted: true })

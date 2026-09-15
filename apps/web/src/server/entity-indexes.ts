@@ -60,7 +60,7 @@ import {
   type PersonListItemInput,
   type SeriesListItemInput,
 } from "../lib/entity-index-presenter";
-import type { IndexabilityResult } from "@screena/seo";
+import { DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES, type IndexabilityResult } from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
 const MOVIE_INDEX_PATH = "/pt/filmes/";
@@ -216,8 +216,34 @@ const SERIES_COUNT_SQL = `
 `;
 
 /**
- * Pessoa nao tem ano: o presenter ordena so pelo nome exibivel (traducao ou
- * `name`). O SQL reproduz exatamente essa chave.
+ * Perfil APTO a abrir a listagem de pessoas: biografia com texto E liberada para
+ * exibicao (invariante 6) E foto — os dois predicados de CONTEUDO do portao de
+ * pessoa (`evaluatePersonQualityGate`, decisao do dono D2), com a MESMA lista de
+ * status de `@screena/seo`.
+ *
+ * O terceiro predicado do portao — credito em obra indexavel — NAO entra aqui, e
+ * de proposito: e um EXISTS sobre elenco, equipe e decisoes, que seria avaliado
+ * para CADA pessoa com slug antes do LIMIT. Ele continua decidindo o robots de
+ * cada ficha e o sitemap; a listagem so precisa nao abrir com perfis vazios.
+ *
+ * Os status sao constantes do codigo, nunca entrada de usuario — por isso cabem
+ * interpolados no SQL.
+ */
+const PERSON_LISTING_READY_SQL = `(
+    BTRIM(COALESCE(p.biography, '')) <> ''
+    AND p.biography_source_status::text IN (${DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES.map((status) => `'${status}'`).join(", ")})
+    AND BTRIM(COALESCE(p.profile_path, '')) <> ''
+  )`;
+
+/**
+ * Pessoa nao tem ano. A ordem: primeiro os perfis APTOS
+ * (`PERSON_LISTING_READY_SQL` — decisao do dono D2, "a listagem passa a priorizar
+ * perfis aptos"; a auditoria de SEO de 11/09/2026, M13, achou a primeira pagina
+ * cheia de perfis sem biografia), depois o nome exibivel (traducao ou `name`).
+ *
+ * `COALESCE(..., false)`: um NULL no predicado nao pode subir — em ORDER BY
+ * DESC o PostgreSQL poe NULL PRIMEIRO. O presenter continua montando o card; a
+ * ordem e do banco (`preordered`), e ele nao a refaz.
  */
 const PERSON_PAGE_SQL = `
   SELECT p.id,
@@ -236,7 +262,8 @@ const PERSON_PAGE_SQL = `
     AND s.language_code = $1
     AND s.is_canonical
     AND ${DISPLAY_TITLE_SQL("p.name")} IS NOT NULL
-  ORDER BY ${DISPLAY_TITLE_SQL("p.name")} ASC,
+  ORDER BY COALESCE(${PERSON_LISTING_READY_SQL}, false) DESC,
+           ${DISPLAY_TITLE_SQL("p.name")} ASC,
            p.id ASC
   LIMIT $2
 `;

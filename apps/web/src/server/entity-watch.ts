@@ -111,33 +111,53 @@ export function licensedWatchWhere(now: Date): Prisma.WatchAvailabilityWhereInpu
  * catalogo" sobre linhas que o painel jamais mostraria, e o log passaria a
  * mentir na direcao oposta.
  *
- * CUSTO: uma consulta `findFirst` (indexada, `select id`), e SO quando o painel
- * esta ausente — quem tem oferta nunca paga por ela. `cache()` do React
- * deduplica dentro da mesma renderizacao, entao filme e serie na mesma passada
- * cobram uma consulta, nao duas. Nao ha consulta extra por pagina que renderiza.
+ * CUSTO: duas consultas `findFirst` (indexadas, `select id`), em paralelo, e SO
+ * quando o painel esta ausente — quem tem oferta nunca paga por elas. `cache()`
+ * do React deduplica dentro da mesma renderizacao, por titulo. Nao ha consulta
+ * extra em pagina que renderiza o painel.
  */
 export const watchAbsenceReason = cache(
-  async (prisma: PrismaClient): Promise<SectionAbsenceReason> => {
-    const anyDisplayableOffer = await prisma.watchAvailability.findFirst({
-      where: licensedWatchWhere(new Date()),
-      select: { id: true },
-    });
-    return watchAbsenceReasonFor(anyDisplayableOffer !== null);
+  async (
+    prisma: PrismaClient,
+    entityType: WatchEntityType,
+    entityId: bigint,
+  ): Promise<SectionAbsenceReason> => {
+    const [anyDisplayableOffer, hiddenOfferForEntity] = await Promise.all([
+      prisma.watchAvailability.findFirst({
+        where: licensedWatchWhere(new Date()),
+        select: { id: true },
+      }),
+      // A SEGUNDA SONDA (2026-09-11): este titulo tem oferta que NAO esta
+      // aprovada para exibicao? Sem ela, "ha oferta oculta aqui" e "o titulo nao
+      // esta em lugar nenhum" saiam com o mesmo rotulo — e o primeiro e trabalho
+      // pendente. Mesmo pais da clausula de exibicao, e so linha INVISIVEL.
+      prisma.watchAvailability.findFirst({
+        where: { entityType, entityId, countryCode: "BR", displayAllowed: false },
+        select: { id: true },
+      }),
+    ]);
+    return watchAbsenceReasonFor(anyDisplayableOffer !== null, hiddenOfferForEntity !== null);
   },
 );
 
 /**
- * A DECISAO, separada da consulta: dado se existe alguma oferta exibivel no
- * catalogo, qual e o motivo da ausencia neste titulo.
+ * A DECISAO, separada da consulta: dado o estado do catalogo e deste titulo, qual
+ * e o motivo da ausencia. Tres estados, do mais especifico ao mais geral:
  *
- * Esta em funcao propria para poder ser testada nos dois estados sem banco e
- * sem contexto de renderizacao do React. A consulta acima e a unica coisa que
- * ela nao cobre — e essa e coberta por assercao de fonte (`entity-watch` usa
- * `licensedWatchWhere`, a mesma clausula que decide exibir).
+ *  - o titulo TEM oferta, nenhuma aprovada        -> `offer_hidden_for_entity`
+ *  - ha oferta exibivel em outro titulo, nao aqui -> `no_offer_for_entity`
+ *  - nada exibivel no catalogo inteiro            -> `no_authorized_provider`
+ *
+ * Esta em funcao propria para ser testada sem banco e sem contexto de
+ * renderizacao do React. As consultas acima sao a unica coisa que ela nao cobre —
+ * e a primeira e travada por assercao de fonte (`licensedWatchWhere`, a mesma
+ * clausula que decide exibir).
  */
 export function watchAbsenceReasonFor(
   hasAnyDisplayableOffer: boolean,
+  hasHiddenOfferForEntity = false,
 ): SectionAbsenceReason {
+  if (hasHiddenOfferForEntity) return "offer_hidden_for_entity";
   return hasAnyDisplayableOffer ? "no_offer_for_entity" : "no_authorized_provider";
 }
 

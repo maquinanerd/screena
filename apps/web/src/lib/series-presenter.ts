@@ -40,7 +40,10 @@ const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
 const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
 const BACKDROP_IMAGE_SPEC: LocalImageSpec = { width: 1280, height: 720, tmdbSize: "w1280" };
-const STILL_IMAGE_SPEC: LocalImageSpec = { width: 640, height: 360, tmdbSize: "original" };
+// `w500`, nao `original` (2026-09-11): still 16:9 da lista de episodios. `w300`
+// deixaria o still perto de 1x na linha de episodio; `w500` preserva retina e
+// ainda troca o arquivo de origem por um varias vezes menor.
+const STILL_IMAGE_SPEC: LocalImageSpec = { width: 640, height: 360, tmdbSize: "w500" };
 
 /** Estados de `review_status` que podem aparecer no render publico. */
 export const SERIES_RENDERABLE_REVIEW_STATUSES = [
