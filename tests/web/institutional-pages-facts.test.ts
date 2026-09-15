@@ -76,4 +76,12 @@ describe('as paginas institucionais so repetem o que o controlador publicou', ()
   it('(4) o `publishingPrinciples` do JSON-LD aponta para a rota REAL da Politica editorial', () => {
     expect(PUBLIC_EDITORIAL_POLICY_PATH).toBe(EDITORIAL_POLICY_PATH)
   })
+
+  it('(5) a Politica editorial so promete nota de correcao porque a materia a mostra', () => {
+    const politica = readSourceWithoutComments('apps/web/app/pt/politica-editorial/page.tsx')
+    const materia = readSourceWithoutComments('apps/web/app/pt/noticias/[slug]/page.tsx')
+    expect(politica).toMatch(/nota\s+de\s+corre[çc][ãa]o/i)
+    expect(materia).toContain('view.correction !== null')
+    expect(materia).toContain('className="correction-notice"')
+  })
 })

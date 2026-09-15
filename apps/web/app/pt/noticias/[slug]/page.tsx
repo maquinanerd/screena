@@ -145,6 +145,12 @@ function seoFactsOf(
     updatedAtIso: view.updatedAtIso,
     authorName: view.author,
     authorUrl: authorUrlOf(view.author),
+    // A MESMA correcao que a nota visivel mostra — sem nota na pagina, sem
+    // `correction` no JSON-LD.
+    correction:
+      view.correction === null
+        ? null
+        : { dateIso: view.correction.dateIso, note: view.correction.note },
     // As entidades dos chips "Entidades citadas nesta materia" — visiveis na pagina.
     mentions: view.related.map((entity) => ({
       type: MENTION_SCHEMA_TYPES[entity.entityType],
@@ -477,6 +483,20 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
           <p className="art-source">
             Fonte: <strong>{view.source.name}</strong>
           </p>
+        ) : null}
+
+        {/* Nota de correção — a data e o texto que a redação registrou no CMS
+            ("Corrigida em" + "Nota de correção"), sem reescrita. Fica entre a
+            fonte e a nota de IA, a ordem do handoff de design. Matéria retratada
+            nunca chega aqui: o gate de publicação a devolve como 404. */}
+        {view.correction !== null ? (
+          <aside aria-labelledby="art-correction-title" className="correction-notice">
+            <p className="correction-notice__title" id="art-correction-title">
+              <strong>Correção</strong> ·{' '}
+              <time dateTime={view.correction.dateIso}>{view.correction.dateLabel}</time>
+            </p>
+            <p className="correction-notice__text">{view.correction.note}</p>
+          </aside>
         ) : null}
 
         {/* Entidades citadas (chips) + share — o CMS não tem tags editoriais;

@@ -30,7 +30,10 @@ import { socialMetadata } from '../../../src/lib/social-metadata'
  *  - crédito de fonte no rodapé de toda página (decisão do proprietário de
  *    2026-08-13, travada pelos testes de créditos);
  *  - "Atualizada em" e a página de autor: `formatNewsUpdatedLabel` e
- *    `src/lib/author-presenter.ts`.
+ *    `src/lib/author-presenter.ts`;
+ *  - a nota de correção: a matéria a mostra quando a redação registra a
+ *    correção no CMS (`buildNewsCorrection`) — a frase só existe porque a nota
+ *    existe, e `tests/web/institutional-pages-facts.test.ts` (5) trava o par.
  *
  * `force-dynamic` — motivo (d) de `src/lib/route-cache-policy.ts`: sem banco, mas
  * o robots lê a chave de indexação de RUNTIME.
@@ -129,6 +132,10 @@ export default function EditorialPolicyPage() {
         </p>
 
         <h2>Erros e pedidos</h2>
+        <p>
+          Quando a redação corrige uma matéria já publicada, a matéria passa a mostrar uma nota de
+          correção, com a data e o texto da correção.
+        </p>
         <p>
           Encontrou uma informação errada? Escreva para{' '}
           <a href={`mailto:${GENERAL_CONTACT_EMAIL}`}>{GENERAL_CONTACT_EMAIL}</a> com o endereço da

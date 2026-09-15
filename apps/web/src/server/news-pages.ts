@@ -241,6 +241,11 @@ export const getNewsArticleData = cache(
         indexStatus: true,
         publishedAt: true,
         updatedAt: true,
+        // A correcao que a redacao registrou no CMS ("Corrigida em" + "Nota de
+        // correcao"). Materia retratada grava a data e o motivo aqui tambem, mas
+        // o gate abaixo a devolve como 404 antes de qualquer render.
+        correctedAt: true,
+        correctionNote: true,
         article: {
           select: {
             authorName: true,
@@ -332,6 +337,8 @@ export const getNewsArticleData = cache(
         indexStatus: String(translation.indexStatus),
         translationPublishedAtIso: isoDate(translation.publishedAt),
         translationUpdatedAtIso: isoDate(translation.updatedAt),
+        translationCorrectedAtIso: isoDate(translation.correctedAt),
+        correctionNote: translation.correctionNote,
       },
       related,
       entityCard,

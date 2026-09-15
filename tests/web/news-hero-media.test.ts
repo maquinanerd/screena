@@ -90,6 +90,8 @@ function translation(
     indexStatus: "index",
     translationPublishedAtIso: "2026-07-30T12:00:00.000Z",
     translationUpdatedAtIso: null,
+    translationCorrectedAtIso: null,
+    correctionNote: null,
     ...overrides,
   };
 }

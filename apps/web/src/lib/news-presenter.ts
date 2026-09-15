@@ -136,6 +136,10 @@ export interface ArticleTranslationInput {
   indexStatus: string;
   translationPublishedAtIso: string | null;
   translationUpdatedAtIso: string | null;
+  /** "Corrigida em" do CMS (`article_translations.corrected_at`). */
+  translationCorrectedAtIso: string | null;
+  /** "Nota de correcao" do CMS (`article_translations.correction_note`). */
+  correctionNote: string | null;
 }
 
 /** Item cru da listagem (facts + subset da traducao) para montar um card. */
@@ -271,6 +275,8 @@ export interface NewsArticleView {
    * POSTERIOR ao da publicacao. Ver `formatNewsUpdatedLabel`.
    */
   updatedDateLabel: string | null;
+  /** A nota de correcao registrada pela redacao, ou `null`. Ver `buildNewsCorrection`. */
+  correction: NewsArticleCorrection | null;
   related: NewsRelatedEntity[];
   entityCard: NewsEntityCard | null;
 }
@@ -412,6 +418,41 @@ export function formatNewsUpdatedLabel(
   if (published === null || updated === null) return null;
   if ((updated[1] ?? "") <= (published[1] ?? "")) return null;
   return formatNewsDate(updatedIso);
+}
+
+/** A correcao registrada pela redacao numa materia publicada. */
+export interface NewsArticleCorrection {
+  /** Instante da correcao (ISO), para o `<time dateTime>`. */
+  dateIso: string;
+  /** "2 de julho de 2026". */
+  dateLabel: string;
+  /** O texto da nota, como a redacao o escreveu no CMS. */
+  note: string;
+}
+
+/**
+ * A nota de correcao da materia, ou `null`.
+ *
+ * VEM DO CMS, INTEIRA: "Corrigida em" e "Nota de correcao" sao preenchidos pela
+ * redacao e projetados sem transformacao (`corrected_at`/`correction_note` em
+ * `article_translations`). Nada aqui escreve, resume ou infere correcao — so
+ * apara as bordas do texto. Sem os DOIS campos nao ha nota: o banco ja exige o
+ * par (CHECK `article_translations_correction_pair`), e a funcao repete a regra
+ * para nao depender de quem gravou.
+ *
+ * Materia RETRATADA tambem grava esses campos (a data e o motivo da retratacao),
+ * mas nunca chega aqui: o gate de publicacao a devolve como 404 antes.
+ */
+export function buildNewsCorrection(
+  correctedAtIso: string | null,
+  correctionNote: string | null,
+): NewsArticleCorrection | null {
+  const note = trimToNull(correctionNote);
+  const dateIso = trimToNull(correctedAtIso);
+  if (note === null || dateIso === null) return null;
+  const dateLabel = formatNewsDate(dateIso);
+  if (dateLabel === null) return null;
+  return { dateIso, dateLabel, note };
 }
 
 /** Formata "YYYY-MM-DD..." em pt-BR: "30 de junho de 2026". `null` se invalido. */
@@ -740,6 +781,7 @@ export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArti
     schemaTypeRecommendation: trimToNull(translation.schemaTypeRecommendation),
     updatedAtIso: translation.translationUpdatedAtIso,
     updatedDateLabel: formatNewsUpdatedLabel(publishedIso, translation.translationUpdatedAtIso),
+    correction: buildNewsCorrection(translation.translationCorrectedAtIso, translation.correctionNote),
     related: buildNewsRelated(input.related),
     entityCard: buildNewsEntityCard(input.entityCard ?? null),
   };

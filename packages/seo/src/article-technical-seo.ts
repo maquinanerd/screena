@@ -65,6 +65,11 @@ export interface ArticleSeoFacts {
   readonly authorUrl?: string | null
   /** Obras e pessoas CITADAS e visiveis na materia ("Entidades citadas"). */
   readonly mentions?: readonly ArticleSchemaMention[]
+  /**
+   * A correcao VISIVEL na materia (a nota de correcao da pagina). Ausente ou
+   * `null`: a pagina nao mostra correcao, e o JSON-LD nao declara uma.
+   */
+  readonly correction?: { readonly dateIso: string; readonly note: string } | null
   readonly siteName: string
   /** Idioma BCP-47 (`pt-BR`) — o formato do JSON-LD. O Open Graph o converte. */
   readonly locale: string
@@ -369,6 +374,11 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
   const mentions = mentionsOf(facts.mentions)
   if (mentions.length > 0) jsonLd.mentions = mentions
 
+  // `correction`: SO a correcao que a pagina mostra (a nota de correcao visivel),
+  // como `CorrectionComment` com o texto e a data da redacao, sem reescrita.
+  const correction = correctionOf(facts.correction)
+  if (correction !== null) jsonLd.correction = correction
+
   /*
    * PUBLISHER — estava AUSENTE, e a ausencia e um defeito de verdade.
    *
@@ -458,6 +468,15 @@ function mentionsOf(
     out.push({ '@type': mention.type, name, url })
   }
   return out
+}
+
+/** A correcao visivel como `CorrectionComment`, ou `null` sem texto ou sem data valida. */
+function correctionOf(correction: ArticleSeoFacts['correction']): Record<string, unknown> | null {
+  if (correction === undefined || correction === null) return null
+  const text = correction.note.trim()
+  const datePublished = correction.dateIso.trim()
+  if (text === '' || Number.isNaN(Date.parse(datePublished))) return null
+  return { '@type': 'CorrectionComment', text, datePublished }
 }
 
 /**
