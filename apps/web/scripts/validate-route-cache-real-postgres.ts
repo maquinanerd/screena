@@ -60,6 +60,21 @@ const SLUG = "filme-1";
 const SERIES_SLUG = "serie-1";
 
 /**
+ * Episodios da temporada 1 de `SERIES_SLUG` (semeados por `seedSeasonGuide`): o
+ * guia de temporadas precisa estar NA pagina para que as provas de render da
+ * ficha de serie o medam. Titulo e sinopse saem destas duas funcoes, e o SQL do
+ * seed monta o MESMO texto.
+ */
+const GUIDE_EPISODE_COUNT = 40;
+const GUIDE_TITLE_PREFIX = "Episodio ";
+const GUIDE_TITLE_SUFFIX = " do guia";
+const GUIDE_OVERVIEW_PREFIX = "Sinopse inteira do episodio ";
+const GUIDE_OVERVIEW_SUFFIX = " do guia de temporadas, sem corte.";
+const guideEpisodeTitle = (n: number): string => `${GUIDE_TITLE_PREFIX}${n}${GUIDE_TITLE_SUFFIX}`;
+const guideEpisodeOverview = (n: number): string =>
+  `${GUIDE_OVERVIEW_PREFIX}${n}${GUIDE_OVERVIEW_SUFFIX}`;
+
+/**
  * A colisao de slug entre as verticais, reproduzida do caso real `the-passage`:
  * existe o filme E a serie com esse slug canonico pt-BR em producao.
  *
@@ -206,6 +221,49 @@ async function seedCatalog(sql: Sql): Promise<void> {
   }
 
   await seedRecommendationsAndSlugCollision(sql);
+  await seedSeasonGuide(sql);
+}
+
+/**
+ * A temporada 1 de `SERIES_SLUG`, com `GUIDE_EPISODE_COUNT` episodios.
+ *
+ * POR QUE ISTO PRECISA EXISTIR. O guia de temporadas e a parte PESADA da ficha de
+ * serie: medido em producao em 15/09/2026, cada episodio custava 887 bytes de
+ * HTML e 1.345 bytes de payload RSC. Sem temporada no seed, as provas de render
+ * da ficha de serie passavam com o guia ausente — e nada media o que ele pesa.
+ */
+async function seedSeasonGuide(sql: Sql): Promise<void> {
+  await sql.x(`
+    INSERT INTO seasons (tv_show_id, season_number, name, air_date, episode_count,
+                         created_at, updated_at)
+    SELECT s.entity_id, 1, 'Temporada 1', DATE '2019-01-01', ${GUIDE_EPISODE_COUNT}, now(), now()
+    FROM slugs s
+    WHERE s.entity_type = 'tv' AND s.language_code = ${lit(LANGUAGE)}
+      AND s.slug = ${lit(SERIES_SLUG)}
+  `);
+  await sql.x(`
+    INSERT INTO episodes (season_id, tv_show_id, episode_number, name, overview, air_date,
+                          runtime_minutes, still_path, created_at, updated_at)
+    SELECT se.id, se.tv_show_id, g,
+           ${lit(GUIDE_TITLE_PREFIX)} || g || ${lit(GUIDE_TITLE_SUFFIX)},
+           ${lit(GUIDE_OVERVIEW_PREFIX)} || g || ${lit(GUIDE_OVERVIEW_SUFFIX)},
+           DATE '2019-01-01' + g, 45, '/still-guia-' || g || '.jpg', now(), now()
+    FROM seasons se
+    JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = se.tv_show_id
+      AND s.language_code = ${lit(LANGUAGE)} AND s.slug = ${lit(SERIES_SLUG)}
+    CROSS JOIN generate_series(1, ${GUIDE_EPISODE_COUNT}) AS g
+    WHERE se.season_number = 1
+  `);
+}
+
+/**
+ * O payload RSC que o Next embute no HTML (`self.__next_f.push([1, "..."])`),
+ * decodificado: o texto que o React le para hidratar a pagina.
+ */
+function decodeFlight(html: string): string {
+  return [...html.matchAll(/<script>self\.__next_f\.push\((\[1,[\s\S]*?\])\)<\/script>/g)]
+    .map((match) => (JSON.parse(match[1] ?? '[1,""]') as [number, string])[1])
+    .join("");
 }
 
 /**
@@ -754,6 +812,42 @@ async function main(): Promise<void> {
       "CONTROLE: o criterio acima REPROVA uma ficha inexistente (404, sem titulo)",
       !(inexistente.status === 200 && htmlInexistente.includes("Titulo serie 1")),
       `status=${inexistente.status} — se isto passasse como 200+titulo, as 4 provas acima nao mediriam nada`,
+    );
+
+    // ------------------------------------------------------------------ (6b)
+    // GUIA DE TEMPORADAS: o TEXTO no HTML; no payload, os DADOS — e nao a arvore.
+    //
+    // Medido em producao em 15/09/2026: cada episodio do guia ia DUAS vezes para o
+    // documento — no HTML (887 bytes) e no payload RSC como arvore de elementos
+    // (1.345 bytes). A lista virou client component (`EpisodeList`): o HTML fica
+    // igual e o payload leva so os dados de cada episodio. A prova olha os DOIS
+    // lados do MESMO documento servido pelo Next real.
+    const htmlGuia = await (await fetch(`${base}/pt/series/${SERIES_SLUG}/`)).text();
+    const payloadGuia = decodeFlight(htmlGuia);
+    const linhasNoHtml = (htmlGuia.match(/<article class="episode-row">/g) ?? []).length;
+    const semTexto = Array.from({ length: GUIDE_EPISODE_COUNT }, (_, i) => i + 1).filter(
+      (n) =>
+        !htmlGuia.includes(`>${guideEpisodeTitle(n)}<`) ||
+        !htmlGuia.includes(`>${guideEpisodeOverview(n)}<`),
+    );
+    record(
+      "guia de temporadas: TODO episodio da temporada sai no HTML, com titulo e sinopse inteira",
+      linhasNoHtml === GUIDE_EPISODE_COUNT && semTexto.length === 0,
+      `linhas=${linhasNoHtml}/${GUIDE_EPISODE_COUNT} sem-texto=[${semTexto.join(",")}]`,
+    );
+    // CONTROLE: o payload foi decodificado e traz a ficha e o guia. Sem isto, a
+    // prova seguinte ("nao ha arvore") passaria com um payload vazio.
+    record(
+      "CONTROLE: o payload RSC da ficha de serie foi lido (titulo da serie e dados do guia presentes)",
+      payloadGuia.includes("Titulo serie 1") &&
+        payloadGuia.includes(guideEpisodeOverview(GUIDE_EPISODE_COUNT)),
+      `payload decodificado=${payloadGuia.length} caracteres`,
+    );
+    const linhasComoArvore = (payloadGuia.match(/"className":"episode-row"/g) ?? []).length;
+    record(
+      "guia de temporadas: o payload RSC leva os DADOS de cada episodio, e nao a arvore de elementos de cada linha",
+      linhasComoArvore === 0,
+      `linhas como arvore no payload=${linhasComoArvore} (a lista renderizada no servidor punha uma por episodio)`,
     );
 
     // ------------------------------------------------------------------ (7)
