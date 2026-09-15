@@ -13,6 +13,9 @@
  * Uso:
  *   pnpm --filter @screena/web seo:audit                    # produção
  *   SEO_AUDIT_BASE=http://127.0.0.1:3000 pnpm ... seo:audit # build local
+ *   SEO_AUDIT_CANONICAL_ORIGIN=https://cinerie.com ...      # build local com a
+ *     configuracao de producao: canonical e sitemap apontam para a origem
+ *     publica, e o script os le na base local (ver `toBase`)
  *   SEO_AUDIT_SAMPLE=3 ...                                  # amostra por tipo
  *
  * Saída: relatório legível + código de saída != 0 quando houver violação
@@ -25,6 +28,23 @@ const TIMEOUT_MS = Number(process.env["SEO_AUDIT_TIMEOUT_MS"] ?? "30000");
 const UA =
   process.env["SEO_AUDIT_UA"] ??
   "Mozilla/5.0 (compatible; CinerieSeoAudit/1.0; +https://cinerie.com)";
+
+/**
+ * Origem CANONICA do ambiente auditado, quando difere da origem pedida.
+ *
+ * Existe para a re-auditoria LOCAL: o build local sobe com a configuracao de
+ * producao (origem publica `https://cinerie.com`, indexacao ligada), entao
+ * canonical, og:url e `<loc>` do sitemap apontam para `https://cinerie.com`. Com
+ * `SEO_AUDIT_CANONICAL_ORIGIN=https://cinerie.com` e `SEO_AUDIT_BASE` local, o
+ * script troca essa origem pela local ANTES de pedir e de comparar: nenhuma
+ * requisicao sai para producao, e "canonical autorreferente" continua medido.
+ */
+const CANONICAL_ORIGIN = (process.env["SEO_AUDIT_CANONICAL_ORIGIN"] ?? BASE).replace(/\/$/, "");
+
+/** A URL com a origem canonica trocada pela base pedida. */
+function toBase(url: string): string {
+  return url.startsWith(CANONICAL_ORIGIN) ? `${BASE}${url.slice(CANONICAL_ORIGIN.length)}` : url;
+}
 
 /** Severidade. `fail` derruba o processo; `warn` só aparece no relatório. */
 type Severity = "fail" | "warn";
@@ -73,7 +93,7 @@ async function get(url: string, redirect: RequestRedirect = "follow"): Promise<F
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
+    const response = await fetch(toBase(url), {
       redirect,
       signal: controller.signal,
       headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,*/*" },
@@ -210,7 +230,7 @@ function absolute(href: string): string {
 /** Compara URLs ignorando barra final — a diferença não é semântica aqui. */
 function sameUrl(a: string, b: string): boolean {
   const norm = (value: string): string => value.replace(/\/$/, "").toLowerCase();
-  return norm(absolute(a)) === norm(absolute(b));
+  return norm(absolute(toBase(a))) === norm(absolute(toBase(b)));
 }
 
 // ---------------------------------------------------------------------------
@@ -548,6 +568,12 @@ async function main(): Promise<void> {
     ["/pt/filmes/", { kind: "lista-filmes", indexability: "index", breadcrumb: true }],
     ["/pt/series/", { kind: "lista-series", indexability: "index", breadcrumb: true }],
     ["/pt/noticias/", { kind: "lista-noticias", indexability: "index", breadcrumb: true }],
+    // As paginas institucionais (auditoria de 11/09/2026, secao 3.6): texto fixo,
+    // sempre indexaveis, sempre com trilha.
+    ["/pt/sobre/", { kind: "sobre", indexability: "index", schema: "AboutPage", breadcrumb: true }],
+    ["/pt/politica-editorial/", { kind: "politica-editorial", indexability: "index", breadcrumb: true }],
+    ["/pt/contato/", { kind: "contato", indexability: "index", schema: "ContactPage", breadcrumb: true }],
+    ["/pt/cinerie-score/", { kind: "cinerie-score", indexability: "index", breadcrumb: true }],
   ];
   for (const [path, contract] of fixas) await auditPage(path, contract);
 
@@ -582,10 +608,16 @@ async function main(): Promise<void> {
           ogImage: true,
         },
       ],
+      // A pagina de autor so existe com materia no ar: amostra do sitemap, nao
+      // superficie fixa.
+      [
+        /\/pt\/autores\/[^/]+$/,
+        { kind: "autor", indexability: "index", schema: "ProfilePage", breadcrumb: true },
+      ],
     ];
     for (const [pattern, contract] of grupos) {
       for (const url of sample(sitemap.urls, pattern, SAMPLE_PER_TYPE)) {
-        await auditPage(url.replace(BASE, ""), contract);
+        await auditPage(toBase(url).replace(BASE, ""), contract);
       }
     }
 

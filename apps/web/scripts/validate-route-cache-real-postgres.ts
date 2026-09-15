@@ -850,6 +850,16 @@ async function main(): Promise<void> {
       kickerSerie !== null && kickerSerie !== "Mesma coleção",
       `kicker exibido: ${kickerSerie === null ? "(nao encontrado)" : `"${kickerSerie}"`}`,
     );
+
+    // ---------------------------------------------------------------- LABORATORIO
+    // `CINERIE_LAB_HOLD_SECONDS`: mantem o Next e o banco semeado de pe DEPOIS das
+    // provas, para medicao por fora — `seo:audit` e `perf:lab`. Nao muda prova
+    // nenhuma, e sem a variavel o validador termina como sempre terminou.
+    const holdSeconds = Number(process.env.CINERIE_LAB_HOLD_SECONDS ?? "0");
+    if (Number.isFinite(holdSeconds) && holdSeconds > 0) {
+      console.log(`\n[lab] Next de pe em ${base} por ${holdSeconds}s (CINERIE_LAB_HOLD_SECONDS)`);
+      await new Promise((resolve) => setTimeout(resolve, holdSeconds * 1000));
+    }
   } finally {
     server?.kill();
     if (disconnect) await disconnect().catch(() => undefined);
