@@ -6,7 +6,6 @@ import {
   buildMetaDescription,
   buildSameAs,
   describeSeriesFactually,
-  schemaImageUrls,
   schemaPeople,
   serializeJsonLd,
 } from '@screena/seo'
@@ -20,6 +19,7 @@ import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
   type CinerieScoreView,
@@ -463,7 +463,8 @@ export default async function SeriesPage({
   if (view.metaDescription !== null) seriesJsonLd.description = view.metaDescription
   // O que a ficha MOSTRA (auditoria de SEO, 3.5): a arte, os generos, as
   // contagens de temporada e episodio e o elenco da faixa.
-  const images = schemaImageUrls([view.media.poster?.src, view.media.backdrop?.src], SITE_URL)
+  // A MESMA lista que o shard de sitemap anuncia na URL desta ficha.
+  const images = entityPageImageUrls(view.media, SITE_URL)
   if (images.length > 0) seriesJsonLd.image = images
   if (genres.length > 0) seriesJsonLd.genre = genres
   if (view.seasonsCount !== null) seriesJsonLd.numberOfSeasons = view.seasonsCount
