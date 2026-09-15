@@ -34,6 +34,12 @@
  * eligibility.test.ts` trava que as duas copias continuam identicas — se elas
  * divergirem, o index anuncia N shards que a pagina nao consegue preencher.
  *
+ * IMAGEM (compensacao da decisao do dono D1): a URL de filme e de serie leva
+ * `<image:image>` com a arte que a FICHA exibe — as mesmas colunas, a mesma
+ * licenca (`getImageDisplayAuthorization`, uma leitura por shard) e a mesma lista
+ * (`entityPageImageUrls`) do JSON-LD da ficha. A imagem nao entra no WHERE nem
+ * nas contagens: index, teto por tipo e numero de shards contam URLs.
+ *
  * Invariantes 3/4: zero API externa, zero Gemini; so PostgreSQL local. FAIL-CLOSED
  * em falha de banco. Serializacao XML pura via `@screena/seo`
  * (`renderUrlset`/`renderSitemapIndex`). `planSitemapShards` NAO e o mecanismo de
@@ -54,6 +60,7 @@ import {
   type SitemapIndexXmlEntry,
   type SitemapXmlUrl,
 } from "@screena/seo";
+import type { ImageDisplayAuthorization } from "@screena/public-contracts";
 
 import {
   canonicalPublicUrl,
@@ -80,6 +87,9 @@ import {
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
 import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
+import { entityPageImageUrls } from "../../lib/entity-page-images";
+import { selectMovieMedia } from "../../lib/movie-presenter";
+import { selectSeriesMedia } from "../../lib/series-presenter";
 import {
   ABOUT_PATH,
   ANTICIPATED_PATH,
@@ -91,6 +101,7 @@ import {
 } from "../../lib/routes";
 import { anticipatedIndexable, getAnticipatedData } from "../anticipated";
 import { getPersonIndexData } from "../entity-indexes";
+import { getImageDisplayAuthorization } from "../image-license";
 import { getAuthorDirectoryData } from "../news-pages";
 import { getWatchBrowseData, watchBrowseIndexable } from "../watch-browse";
 import {
@@ -422,6 +433,12 @@ interface Aggregate {
 interface PageRow {
   slug: string;
   lastmod: Date | null;
+  /**
+   * So filme e serie: as colunas de arte da FICHA, lidas na MESMA consulta da
+   * pagina do shard — nenhuma consulta por linha. Ausentes nos demais tipos.
+   */
+  poster_path?: string | null;
+  backdrop_path?: string | null;
 }
 
 function resolveLimit(opts?: SitemapPageOptions): number {
@@ -769,7 +786,8 @@ async function pageEntity(
   const absentPerson = absentDecisionFor(coverage, "person");
   if (type === "movies") {
     return prisma.$queryRaw<PageRow[]>`
-      SELECT s.slug AS slug, m.updated_at AS lastmod
+      SELECT s.slug AS slug, m.updated_at AS lastmod,
+        m.poster_path AS poster_path, m.backdrop_path AS backdrop_path
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
@@ -797,7 +815,8 @@ async function pageEntity(
   }
   if (type === "series") {
     return prisma.$queryRaw<PageRow[]>`
-      SELECT s.slug AS slug, t.updated_at AS lastmod
+      SELECT s.slug AS slug, t.updated_at AS lastmod,
+        t.poster_path AS poster_path, t.backdrop_path AS backdrop_path
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
@@ -883,7 +902,11 @@ async function pageEntity(
     ORDER BY at.id ASC LIMIT ${limit} OFFSET ${offset}`;
 }
 
-function pageRowsToUrls(type: SimpleSitemapType, rows: PageRow[]): SitemapXmlUrl[] {
+function pageRowsToUrls(
+  type: SimpleSitemapType,
+  rows: PageRow[],
+  imageAuthorization: ImageDisplayAuthorization | null,
+): SitemapXmlUrl[] {
   const urls: SitemapXmlUrl[] = [];
   for (const row of rows) {
     const slug = row.slug.trim();
@@ -895,9 +918,50 @@ function pageRowsToUrls(type: SimpleSitemapType, rows: PageRow[]): SitemapXmlUrl
       lastmod: isoOrNull(row.lastmod),
       changefreq: ENTITY_CHANGEFREQ[type],
       priority: ENTITY_PRIORITY[type],
+      images: pageRowImages(type, row, imageAuthorization),
     });
   }
   return urls;
+}
+
+/**
+ * As `<image:image>` da URL de uma ficha de filme ou de serie: EXATAMENTE a arte
+ * que a ficha exibe e declara no JSON-LD. O caminho e o da propria ficha —
+ * `selectMovieMedia`/`selectSeriesMedia` sob a autorizacao de
+ * `getImageDisplayAuthorization`, e `entityPageImageUrls` para a lista —, e por
+ * isso licenca negada, caminho malformado ou coluna vazia tiram a imagem do
+ * sitemap pelo mesmo motivo que a tiram da tela.
+ *
+ * A imagem nao muda CONTAGEM: a URL entra ou sai pelo WHERE, e o index, o teto
+ * por tipo e o numero de shards continuam contando URLs.
+ */
+function pageRowImages(
+  type: SimpleSitemapType,
+  row: PageRow,
+  imageAuthorization: ImageDisplayAuthorization | null,
+): SitemapXmlUrl["images"] {
+  if (imageAuthorization === null) return null;
+  const art = { posterPath: row.poster_path ?? null, backdropPath: row.backdrop_path ?? null };
+  const media =
+    type === "movies"
+      ? selectMovieMedia(art, imageAuthorization)
+      : type === "series"
+        ? selectSeriesMedia(art, imageAuthorization)
+        : null;
+  if (media === null) return null;
+  return entityPageImageUrls(media, SITE_URL).map((loc) => ({ loc }));
+}
+
+/**
+ * A licenca de imagem, lida UMA vez por shard e so nos tipos cuja ficha exibe
+ * arte (filme e serie). E a mesma leitura da ficha, fail-closed: com o banco
+ * negando, a URL continua no shard, sem imagem.
+ */
+async function imageAuthorizationFor(
+  prisma: PrismaClient,
+  type: SimpleSitemapType,
+): Promise<ImageDisplayAuthorization | null> {
+  return type === "movies" || type === "series" ? getImageDisplayAuthorization(prisma) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1343,6 +1407,7 @@ export async function getSitemapShardXml(
           : pageRowsToUrls(
               entityType,
               await pageEntity(prisma, entityType, language, limit, offset, coverage),
+              await imageAuthorizationFor(prisma, entityType),
             );
     return { xml: renderUrlset(urls), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
