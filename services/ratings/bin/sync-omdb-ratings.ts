@@ -310,6 +310,12 @@ async function main(): Promise<void> {
         // `refresh` e o default historico. `coverage` e o modo novo, e o
         // agendador o passa explicitamente — nunca por inferencia.
         mode: args.mode ?? 'refresh',
+        // QUEM consome a cota. O lote de fundo e a semente, que cede a vez quando
+        // o saldo entra na reserva do leitor. Um `--id` explicito e um pedido
+        // NOMINAL — o painel operacional o faz quando o dono pede a nota de um
+        // titulo — e entra como leitor: usa a reserva, e continua barrado quando
+        // o teto do DIA acaba.
+        consumer: args.id === null ? 'seed' : 'on_demand',
       },
       {
         fetchTitle: (imdbId) => client.getByImdbId(imdbId),
@@ -333,10 +339,15 @@ async function main(): Promise<void> {
         requestCount: () => client.getRequestCount(),
         // A COTA, finalmente ligada. `checkOmdbBudget` existia, estava testado e
         // NUNCA era chamado por nada em producao: a fila de fundo gastava o teto
-        // inteiro sem pedir licenca. Com `--id` explicito o porto NAO entra — o
-        // operador pediu UM id nominalmente, e barrar um pedido nominal por
-        // causa da fila de fundo seria o inverso da politica.
-        budget: args.id === null ? createPrismaOmdbBudget(prisma, () => new Date()) : undefined,
+        // inteiro sem pedir licenca.
+        //
+        // Ate 2026-09-15 o `--id` explicito NAO passava por aqui, com o argumento
+        // de que barrar um pedido nominal por causa da fila de fundo seria o
+        // inverso da politica. O argumento era certo e a conclusao nao: sem porto,
+        // o pedido nominal passava tambem pelo TETO DO DIA, e o painel operacional
+        // passou a fazer esse pedido por botao. Agora o `--id` entra como
+        // `on_demand` (acima): nao cede a vez a fila de fundo, e para no teto.
+        budget: createPrismaOmdbBudget(prisma, () => new Date()),
         // A OMDb declara estouro de cota com HTTP 200 — o breaker nunca veria
         // isso sozinho. Quem le o corpo e reconhece a recusa pede a parada aqui.
         tripProviderCircuit: () => {

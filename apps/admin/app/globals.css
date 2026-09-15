@@ -1,35 +1,56 @@
 /*
- * globals.css — Estilo minimo do admin editorial (interno, read-only).
+ * globals.css — Estilo do painel interno (operacional + editorial).
  *
- * Superficie institucional/neutra (governanca: institucional = neutro). Sem
- * framework de CSS, sem fontes externas, sem dependencia nova. Os rotulos de
- * status sempre carregam TEXTO alem da cor (cor nunca e o unico sinal).
+ * FUNDO BRANCO PURO, EM TODA SECAO E NO CABECALHO (decisao do dono, 2026-09-15).
+ * Sem preto, sem escuro, sem creme, sem amarelado de fundo. Estado se diz por
+ * BORDA + TEXTO + ROTULO, nunca por faixa colorida: cor nunca e o unico sinal.
+ *
+ * Filme = vermelho, serie = verde, todo o resto neutro. O vermelho de "quebrado"
+ * vem sempre com a palavra escrita ("QUEBRADO", "PARADA", "VOLTA > 30 DIAS"),
+ * entao nao se confunde com o selo "Filme", que tambem vem escrito.
+ *
+ * Sem framework de CSS, sem fonte externa, sem dependencia nova.
  */
 
 :root {
-  --admin-bg: #f4f4f4;
+  --admin-bg: #ffffff;
   --admin-surface: #ffffff;
-  --admin-border: #d8d8d8;
+  --admin-border: #d9d9d9;
+  --admin-border-strong: #8a8a8a;
   --admin-text: #1a1a1a;
-  --admin-muted: #5f5f5f;
-  --admin-accent: #2a2a2a;
-  --admin-warn-bg: #fdecec;
-  --admin-warn-text: #8a1f1f;
-  --admin-ok-bg: #e8f2e6;
-  --admin-ok-text: #2f5d2a;
-  --admin-hold-bg: #fbf3df;
-  --admin-hold-text: #7a5a12;
-  --admin-info-bg: #e9eef5;
+  --admin-muted: #5c5c5c;
+  /* Borda e texto de enfase. NUNCA fundo. */
+  --admin-accent: #1a1a1a;
+  --admin-warn-bg: #ffffff;
+  --admin-warn-text: #b3261e;
+  --admin-ok-bg: #ffffff;
+  --admin-ok-text: #2f6b2a;
+  --admin-hold-bg: #ffffff;
+  --admin-hold-text: #7a5410;
+  --admin-info-bg: #ffffff;
   --admin-info-text: #2b4a70;
+  /* Verticais. O canonico (#f0443e / #7fa56f) vai na BORDA; o texto usa a
+     variante que passa em contraste AA sobre branco. */
+  --ops-movie-accent: #f0443e;
+  --ops-movie-text: #b3261e;
+  --ops-series-accent: #7fa56f;
+  --ops-series-text: #3d6b30;
+  --ops-red: #b3261e;
+  --ops-green: #2f6b2a;
+  --ops-amber: #7a5410;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  background: #ffffff;
+}
+
 body {
   margin: 0;
-  background: var(--admin-bg);
   color: var(--admin-text);
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
   font-size: 15px;
@@ -41,9 +62,17 @@ a {
 }
 
 .admin-header {
-  background: var(--admin-accent);
-  color: #f5f5f5;
-  padding: 14px 20px;
+  background: #ffffff;
+  color: var(--admin-text);
+  padding: 12px 20px 10px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-header__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
 }
 
 .admin-header__title {
@@ -55,48 +84,65 @@ a {
 .admin-header__readonly {
   display: inline-block;
   margin-top: 6px;
-  padding: 2px 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--admin-border-strong);
   border-radius: 4px;
-  background: var(--admin-hold-bg);
-  color: var(--admin-hold-text);
+  background: #ffffff;
+  color: var(--admin-muted);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 
 .admin-header__access {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   font-size: 12px;
-  color: #cfcfcf;
+  color: var(--admin-muted);
 }
 
 .admin-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  margin-top: 10px;
+  gap: 4px 16px;
+  margin-top: 8px;
   font-size: 14px;
 }
 
 .admin-nav a {
-  color: #dfe6f0;
+  color: var(--admin-text);
   text-decoration: none;
+  font-weight: 600;
 }
 
 .admin-nav a:hover {
   text-decoration: underline;
 }
 
+.admin-nav--secondary {
+  margin-top: 4px;
+  font-size: 12.5px;
+}
+
+.admin-nav--secondary a {
+  color: var(--admin-muted);
+  font-weight: 400;
+}
+
+.admin-nav__caption {
+  color: var(--admin-muted);
+  font-weight: 700;
+}
+
 .admin-main {
-  max-width: 1080px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 24px 20px 48px;
+  padding: 20px 20px 48px;
 }
 
 .admin-notice {
-  border: 1px solid var(--admin-hold-text);
-  background: var(--admin-hold-bg);
-  color: var(--admin-hold-text);
+  border: 1px solid var(--admin-border-strong);
+  background: #ffffff;
+  color: var(--admin-text);
   border-radius: 6px;
   padding: 10px 14px;
   font-size: 13px;
@@ -116,7 +162,7 @@ a {
 }
 
 .admin-card {
-  background: var(--admin-surface);
+  background: #ffffff;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
   padding: 14px 16px;
@@ -137,7 +183,7 @@ a {
   overflow-x: auto;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
 }
 
 table.admin-table {
@@ -156,35 +202,34 @@ table.admin-table {
 }
 
 .admin-table th {
-  background: #efefef;
+  background: #ffffff;
+  border-bottom: 2px solid var(--admin-border-strong);
   font-weight: 700;
 }
 
 .admin-badge {
   display: inline-block;
-  padding: 1px 7px;
+  padding: 0 7px;
+  border: 1px solid currentColor;
   border-radius: 4px;
+  background: #ffffff;
   font-size: 12px;
   font-weight: 700;
 }
 
 .admin-badge--ok {
-  background: var(--admin-ok-bg);
   color: var(--admin-ok-text);
 }
 
 .admin-badge--hold {
-  background: var(--admin-hold-bg);
   color: var(--admin-hold-text);
 }
 
 .admin-badge--blocked {
-  background: var(--admin-warn-bg);
   color: var(--admin-warn-text);
 }
 
 .admin-badge--info {
-  background: var(--admin-info-bg);
   color: var(--admin-info-text);
 }
 
@@ -213,12 +258,11 @@ table.admin-table {
   display: block;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition: border-color 0.12s ease;
 }
 
 .admin-card--link:hover {
   border-color: var(--admin-accent);
-  background: #fbfbfb;
 }
 
 .admin-card__title {
@@ -229,8 +273,6 @@ table.admin-table {
 
 /* ------------------------------------------------------------------ */
 /* Pagina de seguranca (status cards, checklist de env)                */
-/* Superficie institucional/neutra; a cor NUNCA e o unico sinal —      */
-/* cada status carrega texto/rotulo alem da cor.                       */
 /* ------------------------------------------------------------------ */
 
 .admin-security-heading {
@@ -246,7 +288,7 @@ table.admin-table {
   border: 1px solid var(--admin-border);
   border-left-width: 5px;
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   padding: 14px 16px;
   margin: 4px 0 8px;
 }
@@ -261,24 +303,21 @@ table.admin-table {
 
 .admin-security-status--protected {
   border-left-color: var(--admin-ok-text);
-  background: var(--admin-ok-bg);
 }
 
 .admin-security-status--open {
   border-left-color: var(--admin-info-text);
-  background: var(--admin-info-bg);
 }
 
 .admin-security-status--blocked-missing-credentials {
   border-left-color: var(--admin-warn-text);
-  background: var(--admin-warn-bg);
 }
 
 .admin-security-list {
   margin: 0 0 8px;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -314,7 +353,7 @@ table.admin-table {
   padding: 0;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -334,7 +373,7 @@ table.admin-table {
 .admin-env-item__key {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  background: #efefef;
+  background: #ffffff;
   border: 1px solid var(--admin-border);
   border-radius: 4px;
   padding: 1px 6px;
@@ -347,21 +386,17 @@ table.admin-table {
 
 /* ------------------------------------------------------------------ */
 /* Fase 7A — Acoes editoriais: filtros, detalhe, forms, feedback       */
-/* Superficie institucional/neutra; a cor NUNCA e o unico sinal —      */
-/* cada status/acao carrega texto alem da cor.                         */
 /* ------------------------------------------------------------------ */
 
-/* Codigo inline (nomes de enum/campo). */
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
-  background: #efefef;
+  background: #ffffff;
   border: 1px solid var(--admin-border);
   border-radius: 4px;
   padding: 0 5px;
 }
 
-/* --- Flag de acoes editoriais (dashboard) --- */
 .admin-flag {
   display: flex;
   flex-wrap: wrap;
@@ -370,19 +405,17 @@ code {
   border: 1px solid var(--admin-border);
   border-left-width: 5px;
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   padding: 12px 16px;
   margin: 4px 0 18px;
 }
 
 .admin-flag--on {
   border-left-color: var(--admin-ok-text);
-  background: var(--admin-ok-bg);
 }
 
 .admin-flag--off {
   border-left-color: var(--admin-hold-text);
-  background: var(--admin-hold-bg);
 }
 
 .admin-flag__caption {
@@ -398,7 +431,6 @@ code {
   color: var(--admin-muted);
 }
 
-/* --- Filtros de listagem (chips como links) --- */
 .admin-filters {
   display: flex;
   flex-direction: column;
@@ -407,7 +439,7 @@ code {
   padding: 12px 14px;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
 }
 
 .admin-filter-group {
@@ -435,7 +467,7 @@ code {
   padding: 2px 10px;
   border: 1px solid var(--admin-border);
   border-radius: 999px;
-  background: var(--admin-bg);
+  background: #ffffff;
   color: var(--admin-text);
   font-size: 12px;
   text-decoration: none;
@@ -446,13 +478,12 @@ code {
 }
 
 .admin-chip--active {
-  background: var(--admin-accent);
-  border-color: var(--admin-accent);
-  color: #f5f5f5;
+  background: #ffffff;
+  border: 2px solid var(--admin-accent);
+  color: var(--admin-text);
   font-weight: 700;
 }
 
-/* --- Link "Revisar" na tabela --- */
 .admin-link-action {
   display: inline-block;
   padding: 1px 8px;
@@ -465,10 +496,9 @@ code {
 }
 
 .admin-link-action:hover {
-  background: var(--admin-info-bg);
+  text-decoration: underline;
 }
 
-/* --- Pagina de detalhe (lista de dados) --- */
 .admin-detail-heading {
   font-size: 14px;
   font-weight: 700;
@@ -479,7 +509,7 @@ code {
   margin: 0 0 8px;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -510,7 +540,6 @@ code {
   word-break: break-word;
 }
 
-/* --- Preview de conteudo (somente leitura) --- */
 .admin-preview-box {
   margin: 0 0 6px;
   padding: 12px 14px;
@@ -518,14 +547,13 @@ code {
   border-left-width: 4px;
   border-left-color: var(--admin-muted);
   border-radius: 6px;
-  background: #fafafa;
+  background: #ffffff;
   color: var(--admin-text);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
 }
 
-/* --- Formularios de acao editorial --- */
 .admin-action-form {
   margin: 0 0 14px;
 }
@@ -535,7 +563,7 @@ code {
   padding: 12px 14px;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
 }
 
 .admin-action-fieldset:disabled {
@@ -565,14 +593,15 @@ code {
   padding: 6px 8px;
   border: 1px solid var(--admin-border);
   border-radius: 6px;
-  background: #fff;
+  background: #ffffff;
   color: var(--admin-text);
   font-size: 13px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .admin-select:disabled {
-  background: #f0f0f0;
+  background: #ffffff;
+  color: var(--admin-muted);
   cursor: not-allowed;
 }
 
@@ -582,12 +611,11 @@ code {
   color: var(--admin-muted);
 }
 
-/* --- Botoes --- */
 .admin-btn {
   padding: 6px 14px;
-  border: 1px solid var(--admin-border);
+  border: 1px solid var(--admin-border-strong);
   border-radius: 6px;
-  background: var(--admin-bg);
+  background: #ffffff;
   color: var(--admin-text);
   font-size: 13px;
   font-weight: 700;
@@ -599,9 +627,9 @@ code {
 }
 
 .admin-btn--primary {
-  background: var(--admin-accent);
-  border-color: var(--admin-accent);
-  color: #f5f5f5;
+  background: #ffffff;
+  border: 2px solid var(--admin-accent);
+  color: var(--admin-text);
 }
 
 .admin-btn:disabled {
@@ -609,7 +637,6 @@ code {
   opacity: 0.6;
 }
 
-/* --- Banners de feedback e de acoes desativadas --- */
 .admin-feedback {
   border: 1px solid;
   border-left-width: 5px;
@@ -618,24 +645,23 @@ code {
   font-size: 13px;
   font-weight: 700;
   margin: 0 0 16px;
+  background: #ffffff;
 }
 
 .admin-feedback--success {
   border-color: var(--admin-ok-text);
-  background: var(--admin-ok-bg);
   color: var(--admin-ok-text);
 }
 
 .admin-feedback--error {
   border-color: var(--admin-warn-text);
-  background: var(--admin-warn-bg);
   color: var(--admin-warn-text);
 }
 
 .admin-actions-disabled {
   border: 1px solid var(--admin-hold-text);
   border-left-width: 5px;
-  background: var(--admin-hold-bg);
+  background: #ffffff;
   color: var(--admin-hold-text);
   border-radius: 6px;
   padding: 10px 14px;
@@ -644,16 +670,13 @@ code {
 }
 
 .admin-actions-disabled code {
-  background: #fff;
+  background: #ffffff;
 }
 
 /* ------------------------------------------------------------------ */
 /* Fase 7B — Preview publico e fila de revisao                         */
-/* Superficie institucional/neutra; a cor NUNCA e o unico sinal —      */
-/* cada estado carrega texto (badge/rotulo) alem da cor.               */
 /* ------------------------------------------------------------------ */
 
-/* --- Banner de prontidao (preview publico) --- */
 .admin-readiness {
   display: flex;
   flex-wrap: wrap;
@@ -662,29 +685,25 @@ code {
   border: 1px solid var(--admin-border);
   border-left-width: 5px;
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   padding: 12px 16px;
   margin: 4px 0 10px;
 }
 
 .admin-readiness--index_ready {
   border-left-color: var(--admin-ok-text);
-  background: var(--admin-ok-bg);
 }
 
 .admin-readiness--visible_noindex {
   border-left-color: var(--admin-info-text);
-  background: var(--admin-info-bg);
 }
 
 .admin-readiness--review_pending {
   border-left-color: var(--admin-hold-text);
-  background: var(--admin-hold-bg);
 }
 
 .admin-readiness--blocked {
   border-left-color: var(--admin-warn-text);
-  background: var(--admin-warn-bg);
 }
 
 .admin-readiness__flag {
@@ -701,26 +720,24 @@ code {
   color: var(--admin-muted);
 }
 
-/* --- Caixa de URL publica --- */
 .admin-public-url {
   margin: 0 0 8px;
   padding: 8px 12px;
   border: 1px solid var(--admin-border);
   border-radius: 6px;
-  background: #fafafa;
+  background: #ffffff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
   word-break: break-all;
 }
 
-/* --- Lista de problemas --- */
 .admin-issue-list {
   margin: 0 0 10px;
   padding: 0;
   list-style: none;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -735,7 +752,6 @@ code {
   border-bottom: none;
 }
 
-/* --- Fila de revisao --- */
 .admin-queue-section {
   margin: 0 0 22px;
 }
@@ -757,7 +773,7 @@ code {
   padding: 0;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -790,14 +806,12 @@ code {
 
 /* ------------------------------------------------------------------ */
 /* Fase 7C — Workflow editorial e acoes em lote                        */
-/* Superficie institucional/neutra; a cor NUNCA e o unico sinal.       */
 /* ------------------------------------------------------------------ */
 
 .admin-workflow-section {
   margin: 0 0 24px;
 }
 
-/* --- Painel de acao em lote --- */
 .admin-bulk-panel {
   margin: 0 0 12px;
 }
@@ -807,7 +821,7 @@ code {
   padding: 12px 14px;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
 }
 
 .admin-bulk-fieldset:disabled {
@@ -820,14 +834,13 @@ code {
   font-weight: 700;
 }
 
-/* --- Lista de itens selecionaveis --- */
 .admin-bulk-list {
   list-style: none;
   margin: 8px 0;
   padding: 0;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-bg);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -872,7 +885,6 @@ code {
   color: var(--admin-muted);
 }
 
-/* --- Barra de acao (campo + valor + botao) --- */
 .admin-bulk-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -885,8 +897,6 @@ code {
 
 /* ------------------------------------------------------------------ */
 /* Fase 7D — QA editorial dashboard                                    */
-/* Superficie institucional/neutra; a cor NUNCA e o unico sinal —      */
-/* cada severidade carrega texto/rotulo alem da cor.                   */
 /* ------------------------------------------------------------------ */
 
 .admin-qa-score {
@@ -898,7 +908,7 @@ code {
   border-left-width: 6px;
   border-left-color: var(--admin-accent);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   padding: 14px 18px;
   margin: 4px 0 18px;
 }
@@ -914,7 +924,6 @@ code {
   color: var(--admin-muted);
 }
 
-/* Cards de severidade (borda esquerda por gravidade + rotulo textual). */
 .admin-qa-sev {
   border-left-width: 5px;
 }
@@ -935,14 +944,13 @@ code {
   border-left-color: var(--admin-ok-text);
 }
 
-/* Listas de QA. */
 .admin-qa-list {
   list-style: none;
   margin: 0 0 8px;
   padding: 0;
   border: 1px solid var(--admin-border);
   border-radius: 8px;
-  background: var(--admin-surface);
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -968,7 +976,7 @@ code {
   padding: 1px 6px;
   border: 1px solid var(--admin-border);
   border-radius: 4px;
-  background: var(--admin-bg);
+  background: #ffffff;
 }
 
 .admin-qa-item__label {
@@ -983,4 +991,432 @@ code {
   flex: 1 1 200px;
   font-size: 12px;
   color: var(--admin-muted);
+}
+
+/* ================================================================== */
+/* PAINEL OPERACIONAL (2026-09-15)                                     */
+/* Tabelas densas, numeros grandes, grafico so para serie temporal.    */
+/* ================================================================== */
+
+.ops-page-title {
+  margin: 4px 0 2px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.ops-lede {
+  margin: 0 0 14px;
+  color: var(--admin-muted);
+  font-size: 13px;
+  max-width: 980px;
+}
+
+.ops-section {
+  margin: 22px 0 10px;
+}
+
+.ops-section__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ops-section__note {
+  margin: 0 0 8px;
+  color: var(--admin-muted);
+  font-size: 12.5px;
+  max-width: 980px;
+}
+
+/* --- O que esta quebrado agora --- */
+.ops-broken {
+  margin: 8px 0 18px;
+  padding: 10px 14px;
+  border: 2px solid var(--ops-red);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ops-broken__title {
+  margin: 0 0 6px;
+  color: var(--ops-red);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.ops-broken__list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ops-red);
+  font-size: 13.5px;
+}
+
+.ops-broken__list a {
+  color: var(--ops-red);
+  font-weight: 700;
+}
+
+.ops-nothing-broken {
+  margin: 8px 0 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 13.5px;
+}
+
+/* --- Numeros grandes --- */
+.ops-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin: 8px 0 12px;
+}
+
+.ops-stat {
+  padding: 10px 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.ops-stat--red {
+  border: 2px solid var(--ops-red);
+}
+
+.ops-stat__label {
+  font-size: 12px;
+  color: var(--admin-muted);
+  font-weight: 600;
+}
+
+.ops-stat__value {
+  margin: 2px 0;
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-stat--red .ops-stat__value,
+.ops-stat--red .ops-stat__label {
+  color: var(--ops-red);
+}
+
+.ops-stat__sub {
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
+/* --- Carimbo: valor · fonte · momento --- */
+.ops-stamp {
+  display: block;
+  font-size: 11.5px;
+  color: var(--admin-muted);
+  line-height: 1.35;
+}
+
+.ops-stamp__source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.ops-undetermined {
+  color: var(--admin-hold-text);
+  font-weight: 700;
+}
+
+.ops-undetermined__reason {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+/* --- Tabela densa --- */
+.ops-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+table.ops-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+
+.ops-table th,
+.ops-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--admin-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.ops-table th {
+  background: #ffffff;
+  border-bottom: 2px solid var(--admin-border-strong);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ops-table td.num,
+.ops-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-table td.nowrap {
+  white-space: nowrap;
+}
+
+.ops-table tr.ops-row--red td {
+  color: var(--ops-red);
+}
+
+.ops-table tr.ops-row--red td:first-child {
+  box-shadow: inset 4px 0 0 var(--ops-red);
+}
+
+.ops-table td.ops-cell--red {
+  color: var(--ops-red);
+  font-weight: 700;
+}
+
+/* --- Selos (sempre com texto) --- */
+.ops-badge {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ops-badge--red {
+  color: var(--ops-red);
+}
+
+.ops-badge--green {
+  color: var(--ops-green);
+}
+
+.ops-badge--amber {
+  color: var(--ops-amber);
+}
+
+.ops-badge--neutral {
+  color: var(--admin-muted);
+}
+
+.ops-vertical {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid;
+  border-left-width: 4px;
+  border-radius: 4px;
+  background: #ffffff;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ops-vertical--movie {
+  border-color: var(--ops-movie-accent);
+  color: var(--ops-movie-text);
+}
+
+.ops-vertical--tv {
+  border-color: var(--ops-series-accent);
+  color: var(--ops-series-text);
+}
+
+/* --- Grafico de serie temporal (SVG inline) --- */
+.ops-chart {
+  display: block;
+  width: 100%;
+  max-width: 980px;
+  height: auto;
+  background: #ffffff;
+}
+
+.ops-chart__axis {
+  stroke: var(--admin-border-strong);
+  stroke-width: 1;
+}
+
+.ops-chart__grid {
+  stroke: var(--admin-border);
+  stroke-width: 1;
+}
+
+.ops-chart__bar {
+  fill: var(--admin-muted);
+}
+
+.ops-chart__bar--red {
+  fill: var(--ops-red);
+}
+
+.ops-chart__line {
+  fill: none;
+  stroke: var(--admin-text);
+  stroke-width: 2;
+}
+
+.ops-chart__line--limit {
+  stroke: var(--ops-red);
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.ops-chart__label {
+  fill: var(--admin-muted);
+  font-size: 11px;
+}
+
+/* --- Pares chave/valor densos --- */
+.ops-kv {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 1fr;
+  gap: 0;
+  margin: 0 0 10px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.ops-kv dt,
+.ops-kv dd {
+  margin: 0;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.ops-kv dt {
+  color: var(--admin-muted);
+  font-weight: 600;
+}
+
+.ops-kv dd {
+  word-break: break-word;
+}
+
+.ops-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+/* --- Formularios do painel (so em src/components) --- */
+.ops-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 6px 0 14px;
+}
+
+.ops-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--admin-muted);
+  font-weight: 600;
+}
+
+.ops-input,
+.ops-select {
+  min-width: 180px;
+  padding: 5px 8px;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--admin-text);
+  font-size: 13px;
+}
+
+.ops-button {
+  padding: 5px 14px;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ops-button:hover {
+  border-color: var(--admin-accent);
+}
+
+.ops-button--confirm {
+  border: 2px solid var(--admin-accent);
+}
+
+.ops-link-button {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 6px;
+  color: var(--admin-text);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ops-link-button:hover {
+  border-color: var(--admin-accent);
+}
+
+/* --- Custo antes de confirmar --- */
+.ops-cost {
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 13.5px;
+}
+
+.ops-cost--refused {
+  border: 2px solid var(--ops-red);
+  color: var(--ops-red);
+}
+
+.ops-cost__lines {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+
+.ops-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 12px;
+}
+
+.ops-pager {
+  display: flex;
+  gap: 12px;
+  margin: 10px 0;
+  font-size: 13px;
+}
+
+.ops-muted {
+  color: var(--admin-muted);
+}
+
+.ops-red-text {
+  color: var(--ops-red);
+  font-weight: 700;
 }

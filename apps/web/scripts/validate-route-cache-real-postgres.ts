@@ -549,7 +549,11 @@ async function main(): Promise<void> {
     const nextBin = webRequire.resolve("next/dist/bin/next");
     server = spawn("node", [nextBin, "start", "-p", String(appPort), "-H", "127.0.0.1"], {
       cwd: webDir,
-      env: { ...env, NODE_ENV: "production" },
+      // O sinal de vida do screen-app (`instrumentation.ts`) grava UMA linha por
+      // minuto em `service_heartbeats`. Este validador conta linha lida por
+      // requisicao em `pg_stat_statements`: um sinal caindo dentro da janela de
+      // medida entraria na conta sem ter nada a ver com a pagina.
+      env: { ...env, NODE_ENV: "production", CINERIE_HEARTBEAT_DISABLED: "true" },
       stdio: ["ignore", "pipe", "pipe"],
     });
     server.stdout?.on("data", (d: Buffer) => process.stdout.write(`[next] ${d}`));

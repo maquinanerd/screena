@@ -40,14 +40,28 @@ export function middleware(request: NextRequest): NextResponse {
   });
 
   if (decision.outcome === "allow") {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    response.headers.set(ADMIN_ROBOTS_HEADER, ADMIN_ROBOTS_VALUE);
+    return response;
   }
 
   return new NextResponse("Unauthorized", {
     status: 401,
-    headers: buildUnauthorizedHeaders(),
+    headers: { ...buildUnauthorizedHeaders(), [ADMIN_ROBOTS_HEADER]: ADMIN_ROBOTS_VALUE },
   });
 }
+
+/**
+ * `noindex` tambem no CABECALHO, e nas duas saidas (liberada e 401).
+ *
+ * O `<meta name="robots">` do layout so existe em HTML servido. Um 401, um
+ * `robots.txt`, uma resposta de erro ou um arquivo que nao e HTML nao carregam
+ * meta nenhuma — e o painel operacional mostra e-mail de usuario. O cabecalho vale
+ * para qualquer tipo de resposta, e sai daqui porque o middleware e o unico ponto
+ * por onde TODA rota do admin passa.
+ */
+const ADMIN_ROBOTS_HEADER = "X-Robots-Tag";
+const ADMIN_ROBOTS_VALUE = "noindex, nofollow, noarchive";
 
 /**
  * matcher: aplica o middleware a TODAS as rotas do admin (`/`, `/articles`,

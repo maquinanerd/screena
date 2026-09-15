@@ -8,7 +8,11 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./runtime": "./src/composition.ts"
+    "./runtime": "./src/composition.ts",
+    "./coverage-entry": "./src/entity-coverage/entry.ts",
+    "./catalog-job-store": "./src/persistence/catalog-job-store.ts",
+    "./job-idempotency": "./src/catalog-jobs/idempotency.ts",
+    "./job-payload": "./src/catalog-jobs/handlers/schemas.ts"
   },
   "sideEffects": false,
   "license": "UNLICENSED",

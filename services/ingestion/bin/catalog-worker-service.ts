@@ -37,6 +37,7 @@ import { randomUUID } from 'node:crypto'
 
 import { createTmdbClient, createTmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { disconnectPrisma } from '@screena/db/server'
+import { startServiceHeartbeat } from '@screena/db/service-heartbeat'
 
 import { createCatalogHandlerRegistry } from '../src/catalog-jobs/handlers/index.js'
 import { buildIdempotencyKey } from '../src/catalog-jobs/idempotency.js'
@@ -206,6 +207,18 @@ async function main(): Promise<number> {
     fetchText: fetchExportText,
   })
   const registry = createCatalogHandlerRegistry(services)
+
+  // O SINAL DE VIDA com a impressao digital do codigo no disco. O painel
+  // operacional le daqui QUAL commit este container roda (nunca de
+  // CINERIE_BUILD_SHA) e se ele esta vivo mesmo com a fila vazia — o
+  // `heartbeat_at` de `catalog_jobs` so anda com job em voo.
+  const heartbeat = startServiceHeartbeat({
+    db: services.prisma,
+    serviceKey: process.env.CINERIE_SERVICE_KEY?.trim() || 'screen-catalog-worker',
+    credentialEnvNames: ['DATABASE_URL', 'TMDB_READ_ACCESS_TOKEN', 'TMDB_API_KEY'],
+    log: (level, event, fields) => log.log(level, event, fields),
+  })
+
   const metrics = createStructuredLogMetricsSink((line) => {
     process.stdout.write(
       `${JSON.stringify({ metric: line.metric, value: line.value, labels: line.labels })}\n`,
@@ -347,6 +360,7 @@ async function main(): Promise<number> {
   )
 
   for (const timer of timers) clearInterval(timer)
+  heartbeat.stop()
   await health.close()
 
   log.log('info', 'catalog_service_stopped', {

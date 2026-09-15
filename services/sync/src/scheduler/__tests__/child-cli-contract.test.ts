@@ -39,7 +39,9 @@ describe('contrato agendador -> compute-cinerie-score', () => {
     const r = parseScoreArgs(argv)
     expect(r.ok, r.ok ? '' : `o filho recusaria \`${argv.join(' ')}\`: ${r.error}`).toBe(true)
     if (!r.ok) return
-    expect(r.args).toEqual({ apply: false, type: 'all', limit: null })
+    // `entityId: null`: a fila recalcula o catalogo inteiro; o recorte de UM
+    // titulo e o pedido nominal do painel operacional, nunca o da fila.
+    expect(r.args).toEqual({ apply: false, type: 'all', limit: null, entityId: null })
   })
 
   it('o que o agendador monta, o parser do filho ACEITA (--apply)', () => {
@@ -47,7 +49,7 @@ describe('contrato agendador -> compute-cinerie-score', () => {
     const r = parseScoreArgs(argv)
     expect(r.ok, r.ok ? '' : `o filho recusaria \`${argv.join(' ')}\`: ${r.error}`).toBe(true)
     if (!r.ok) return
-    expect(r.args).toEqual({ apply: true, type: 'all', limit: null })
+    expect(r.args).toEqual({ apply: true, type: 'all', limit: null, entityId: null })
   })
 
   it('CONTROLE NEGATIVO: a forma que estava em producao seria pega hoje', () => {

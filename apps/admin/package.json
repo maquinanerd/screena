@@ -9,16 +9,21 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate:ops-panel": "tsx scripts/validate-ops-panel-real-postgres.ts"
   },
   "dependencies": {
     "next": "^15.5.21",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "@screena/config": "workspace:*",
     "@screena/db": "workspace:*",
-    "@screena/news-ingestion": "workspace:*"
+    "@screena/news-ingestion": "workspace:*",
+    "@screena/sync": "workspace:*"
   },
   "devDependencies": {
+    "embedded-postgres": "16.14.0-beta.17",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.0",
     "@types/react": "^19.0.0",
     "@types/node": "^22.0.0"

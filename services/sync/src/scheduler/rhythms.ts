@@ -32,6 +32,8 @@ import { OMDB_BACKGROUND_DAILY_ENVELOPE } from '@screena/config'
 
 /** Um trabalho recorrente com ritmo proprio. */
 export const SCHEDULER_QUEUES = [
+  'deploy_reference',
+  'catalog_coverage',
   'discovery',
   'changes',
   'watch_offers',
@@ -111,6 +113,22 @@ export interface Rhythm {
  * o que estraga mais devagar.
  */
 export const RHYTHMS: readonly Rhythm[] = [
+  {
+    queue: 'deploy_reference',
+    cadence: 'fixed',
+    intervalHours: 1 * HOUR,
+    seasonalIntervalHours: null,
+    providerApi: 'github',
+    label: 'Referencia do main (qual codigo cada servico roda)',
+    rationale:
+      'O deploy desta plataforma e MANUAL (autoDeploy desligado), entao "o deploy subiu?" ' +
+      'pode mudar a qualquer hora do dia e a resposta nao pode esperar um dia. De hora em hora ' +
+      'cabe folgado no limite do GitHub sem token (60 requisicoes por hora): um ciclo sem ' +
+      'commit novo custa 1 requisicao, e o pior caso por ciclo e 16 (MAX_TREES_PER_CYCLE + ' +
+      'MAX_COMPARES_PER_CYCLE + a lista). A resposta que isto alimenta ja mentiu por 38 ' +
+      'commits quando vinha de uma variavel de ambiente.',
+    batchLimit: null,
+  },
   {
     queue: 'watch_offers',
     cadence: 'fixed',
@@ -277,6 +295,21 @@ export const RHYTHMS: readonly Rhythm[] = [
     rationale:
       'Roda ao fim de qualquer lote que mudou alguma coisa. Sem isso a pagina nova existe ' +
       'e ninguem a acha — nem o leitor, nem o buscador.',
+    batchLimit: null,
+  },
+  {
+    queue: 'catalog_coverage',
+    cadence: 'fixed',
+    intervalHours: 1 * DAY,
+    seasonalIntervalHours: null,
+    providerApi: null,
+    label: 'Retrato diario de cobertura do catalogo',
+    rationale:
+      '"O motor esta funcionando?" se responde pela LINHA: quantos titulos tem sinopse, nota ' +
+      'exibivel, trailer e pagina indexavel, dia apos dia. Um retrato por dia e a granularidade ' +
+      'da pergunta; retratar de hora em hora pagaria uma varredura de milhoes de episodios para ' +
+      'desenhar a mesma linha. Nao consome fornecedor: o ultimo sucesso sai do ARTEFATO ' +
+      '(MAX(catalog_coverage_snapshots.captured_at)).',
     batchLimit: null,
   },
   {

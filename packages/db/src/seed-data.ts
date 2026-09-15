@@ -165,6 +165,12 @@ export const API_PROVIDER_SEED: readonly ApiProviderSeed[] = [
   // quem reatribui cada uma a sua fonte editorial e `services/ratings`.
   { key: "omdb", name: "OMDb API", kind: "ratings", homepageUrl: "https://www.omdbapi.com" },
   { key: "streaming_availability", name: "Streaming Availability (RapidAPI)", kind: "streaming", homepageUrl: "https://rapidapi.com" },
+  // github — de onde a fila `deploy_reference` do agendador le os commits do
+  // `main` e a arvore de cada um, para o painel operacional provar QUAL codigo
+  // cada servico roda (pelo conteudo, nunca pela env CINERIE_BUILD_SHA). Nao e
+  // dado de catalogo nem vai a pagina publica. A linha chega ao banco que ja
+  // existe pela migration 20260915120000_admin_operational_panel.
+  { key: "github", name: "GitHub (referencia do main)", kind: "data", homepageUrl: "https://github.com" },
 ];
 
 /**

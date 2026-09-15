@@ -43,6 +43,7 @@
 import process from 'node:process'
 
 import { createPrismaClient, type PrismaClient } from '@screena/db/server'
+import { startServiceHeartbeat, type ServiceHeartbeatHandle } from '@screena/db/service-heartbeat'
 
 import { mapPublicationEvent } from '../src/editorial-event-mapper.js'
 import { parseClaimResponse } from '../src/outbox-claim-response.js'
@@ -413,6 +414,21 @@ async function main(): Promise<void> {
     console.log(`[projecao] health em 0.0.0.0:${String(health.port)} (/healthz, /readyz)`)
   }
 
+  // O SINAL DE VIDA com a impressao digital do codigo, SO no modo continuo (um
+  // `--once` vive segundos). Grava no banco PUBLICO, pela mesma conexao da
+  // projecao: o worker continua sem tocar o banco do CMS (ADR 0015). So NOMES de
+  // credencial saem daqui, com presenca e formato — nunca valor.
+  const heartbeat: ServiceHeartbeatHandle | null = loop
+    ? startServiceHeartbeat({
+        db: prisma,
+        serviceKey: process.env.CINERIE_SERVICE_KEY?.trim() || 'cinerie-publication-worker',
+        credentialEnvNames: ['SCREEN_DATABASE_URL', 'PAYLOAD_INTERNAL_SERVICE_URL', 'PAYLOAD_PROJECTION_API_KEY'],
+        log: (level, event, fields) => {
+          console.log(`[projecao] ${level} ${event} ${JSON.stringify(fields)}`)
+        },
+      })
+    : null
+
   console.log(
     `[projecao] worker=${config.workerId} modo=${loop ? 'loop' : 'once'}${dryRun ? ' (dry-run)' : ''}`,
   )
@@ -468,6 +484,7 @@ async function main(): Promise<void> {
     }
   } finally {
     shutdown = { phase: 'stopped', signalledAtIso: shutdown.signalledAtIso }
+    heartbeat?.stop()
     if (health !== null) await health.close()
     await prisma.$disconnect()
   }

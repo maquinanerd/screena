@@ -476,6 +476,12 @@ export const POLYMORPHIC_TABLES_DELIBERATELY_EXCLUDED: readonly string[] = [
   'entities',
   // auditoria: apagar o registro apagaria a prova
   'entity_reference_orphans',
+  // auditoria do painel operacional: quem forcou a atualizacao de um titulo
+  // continua sendo fato mesmo depois de o titulo sair do catalogo
+  'admin_action_audits',
+  // historico de pedidos ao agendador: um pedido pendente de titulo apagado
+  // termina `failed` com motivo no screen-cron, e o registro fica
+  'scheduler_force_requests',
 ]
 
 /**

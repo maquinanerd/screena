@@ -43,6 +43,15 @@ export interface ScoreArgs {
   readonly type: ScoreArgsType;
   /** Teto de entidades; `null` = sem teto (o CLI aplica o default dele). */
   readonly limit: number | null;
+  /**
+   * UM titulo so (`--entity-id`), com `--type movie|tv` obrigatorio. `null` = o
+   * escopo inteiro do tipo.
+   *
+   * Existe para o pedido "recalcular o Score deste titulo" do painel operacional,
+   * que o agendador atende rodando ESTA CLI — e nao uma segunda implementacao do
+   * calculo que divergiria desta no primeiro ajuste.
+   */
+  readonly entityId: string | null;
 }
 
 /** Resultado do parse: sucesso com args, ou falha com mensagem clara. */
@@ -51,7 +60,7 @@ export type ScoreArgsResult =
   | { readonly ok: false; readonly error: string };
 
 /** Flags que aceitam valor (nas duas formas: `--flag=v` e `--flag v`). */
-const VALUE_FLAGS: ReadonlySet<string> = new Set(['--type', '--limit']);
+const VALUE_FLAGS: ReadonlySet<string> = new Set(['--type', '--limit', '--entity-id']);
 
 function isScoreType(value: string | undefined): value is ScoreArgsType {
   return value === 'movie' || value === 'tv' || value === 'all';
@@ -68,6 +77,7 @@ export function parseScoreArgs(argv: readonly string[]): ScoreArgsResult {
   let apply = false;
   let type: ScoreArgsType = 'all';
   let limit: number | null = null;
+  let entityId: string | null = null;
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]!;
@@ -110,8 +120,25 @@ export function parseScoreArgs(argv: readonly string[]): ScoreArgsResult {
       continue;
     }
 
+    if (name === '--entity-id') {
+      // String de digitos, e nao Number: o id e BIGINT no banco, e um Number
+      // acima de 2^53 perderia precisao em silencio — o calculo sairia para
+      // OUTRO titulo.
+      if (value === undefined || !/^[1-9]\d{0,18}$/.test(value)) {
+        return { ok: false, error: `--entity-id invalido: "${String(value)}" (id interno positivo)` };
+      }
+      entityId = value;
+      continue;
+    }
+
     return { ok: false, error: `argumento desconhecido: "${token}"` };
   }
 
-  return { ok: true, args: { apply, type, limit } };
+  // Um titulo pertence a UM tipo: `--type=all` com um id seria ambiguo (o mesmo
+  // numero existe em `movies` e em `tv_shows`, e sao obras diferentes).
+  if (entityId !== null && type === 'all') {
+    return { ok: false, error: '--entity-id exige --type movie ou --type tv' };
+  }
+
+  return { ok: true, args: { apply, type, limit, entityId } };
 }

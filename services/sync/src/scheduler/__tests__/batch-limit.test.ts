@@ -32,6 +32,7 @@ import {
 } from '@screena/config'
 
 import { backgroundOmdbSlots } from '../quota.js'
+import { lapDays } from '../lap.js'
 
 import {
   effectiveBatchLimit,
@@ -62,11 +63,14 @@ const TITULOS_NO_CATALOGO = 37_554 + 32_983
 /** O teto global default (`CINERIE_SCHEDULER_BATCH_LIMIT`). */
 const TETO_GLOBAL = 200
 
-/** Quantos DIAS a fila leva para dar uma volta completa no seu universo. */
-function diasParaUmaVolta(universo: number, tetoPorCiclo: number, intervaloHoras: number): number {
-  const ciclosPorDia = 24 / intervaloHoras
-  return universo / (tetoPorCiclo * ciclosPorDia)
-}
+/**
+ * Quantos DIAS a fila leva para dar uma volta completa no seu universo.
+ *
+ * A conta mora em `../lap.ts` desde 2026-09-15: o painel operacional mostra a
+ * volta de cada fila, e duas copias da mesma formula (uma aqui, outra na tela)
+ * divergiriam no primeiro ajuste.
+ */
+const diasParaUmaVolta = lapDays
 
 describe('o teto por ciclo respeita a janela que a fila declara', () => {
   it('CONTROLE NEGATIVO: com o teto GLOBAL, title_media levaria mais de 300 dias', () => {

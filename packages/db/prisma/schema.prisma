@@ -1554,6 +1554,9 @@ model CatalogJob {
   @@index([status, priority, availableAt])
   @@index([entityType, externalId])
   @@index([heartbeatAt])
+  // Painel operacional (2026-09-15): o trabalho que cada fila do agendador e cada
+  // pedido do painel produziram (`run_id` que o filho herda), por janela.
+  @@index([runId, createdAt])
   @@map("catalog_jobs")
 }
 
@@ -3012,4 +3015,150 @@ model EditorialMediaAsset {
   @@index([contentHash])
   @@index([licenseStatus])
   @@map("editorial_media_assets")
+}
+
+// ============================================================
+// PAINEL OPERACIONAL (apps/admin)
+// ============================================================
+// Ver docs/operations/admin-operacional.md. CHECKs e o unique PARCIAL de pedido
+// aberto vivem na migration 20260915120000_admin_operational_panel (SQL bruto).
+
+/// Auditoria de TODA acao do painel operacional: quem, quando, o que, o custo
+/// estimado mostrado ANTES da confirmacao e o resultado.
+///
+/// `entity_type`/`entity_id` sao do titulo alvo e NAO tem FK para `entities`:
+/// e historico, e sobrevive ao titulo (ver POLYMORPHIC_TABLES_DELIBERATELY_EXCLUDED).
+model AdminActionAudit {
+  id             BigInt      @id @default(autoincrement())
+  /// force_title_detail | force_title_media | force_title_seasons |
+  /// force_title_ratings | force_title_score | force_queue (CHECK)
+  actionKind     String      @map("action_kind")
+  entityType     EntityType? @map("entity_type")
+  entityId       BigInt?     @map("entity_id")
+  tmdbId         Int?        @map("tmdb_id")
+  queue          String?
+  /// basic_auth_shared | open_development (CHECK)
+  actorKind      String      @map("actor_kind")
+  /// Rotulo NAO secreto (`ADMIN_OPERATOR_LABEL`). Nunca o usuario do Basic Auth.
+  actorLabel     String      @map("actor_label")
+  /// Nonce do formulario de confirmacao: o mesmo formulario confirmado duas
+  /// vezes e UMA acao.
+  requestToken   String      @unique @map("request_token")
+  estimate       Json
+  /// enqueued | already_enqueued | refused | failed (CHECK)
+  outcome        String
+  outcomeDetail  String?     @map("outcome_detail")
+  catalogJobId   BigInt?     @map("catalog_job_id")
+  idempotencyKey String?     @map("idempotency_key")
+  forceRequestId BigInt?     @map("force_request_id")
+  requestedAt    DateTime    @default(now()) @map("requested_at")
+
+  @@index([requestedAt])
+  @@index([entityType, entityId])
+  @@map("admin_action_audits")
+}
+
+/// Pedido ao AGENDADOR (`screen-cron`): rodar uma fila fora do horario, buscar a
+/// nota externa de um titulo, recalcular o Cinerie Score de um titulo.
+///
+/// O painel so ENFILEIRA. Quem executa e o agendador, no proximo tique, pelo
+/// MESMO caminho de execucao das filas. No maximo UM pedido aberto por alvo
+/// (unique parcial na migration).
+model SchedulerForceRequest {
+  id            BigInt      @id @default(autoincrement())
+  /// queue | title_ratings | title_score (CHECK)
+  kind          String
+  queue         String?
+  entityType    EntityType? @map("entity_type")
+  entityId      BigInt?     @map("entity_id")
+  requestedBy   String      @map("requested_by")
+  /// pending | running | done | failed (CHECK)
+  status        String      @default("pending")
+  requestedAt   DateTime    @default(now()) @map("requested_at")
+  claimedAt     DateTime?   @map("claimed_at")
+  claimedBy     String?     @map("claimed_by")
+  finishedAt    DateTime?   @map("finished_at")
+  outcomeDetail String?     @map("outcome_detail")
+
+  @@index([status, requestedAt])
+  @@map("scheduler_force_requests")
+}
+
+/// Sinal de vida de um PROCESSO, com a impressao digital do codigo que ele
+/// carregou (SHA-1 de blob git dos arquivos-fonte no disco do container).
+///
+/// Uma linha por instancia (`hostname:pid`). O digest e medido pelo proprio
+/// processo — nunca lido de CINERIE_BUILD_SHA, que e env estatica e ja mentiu por
+/// 38 commits. `credentials` guarda so NOME, presenca e formato; nunca valor.
+model ServiceHeartbeat {
+  serviceKey          String   @map("service_key")
+  instanceId          String   @map("instance_id")
+  startedAt           DateTime @map("started_at")
+  lastSeenAt          DateTime @map("last_seen_at")
+  digestMethod        String   @map("digest_method")
+  sourceDigest        String?  @map("source_digest")
+  sourceFileCount     Int?     @map("source_file_count")
+  sourceBucketDigests Json?    @map("source_bucket_digests")
+  digestError         String?  @map("digest_error")
+  buildId             String?  @map("build_id")
+  nodeVersion         String   @map("node_version")
+  rssBytes            BigInt?  @map("rss_bytes")
+  heapUsedBytes       BigInt?  @map("heap_used_bytes")
+  cpuPercent          Float?   @map("cpu_percent")
+  credentials         Json?
+
+  @@id([serviceKey, instanceId])
+  @@index([serviceKey, lastSeenAt])
+  @@map("service_heartbeats")
+}
+
+/// Um commit do `main`, lido do GitHub pela fila `deploy_reference`, com a MESMA
+/// impressao digital de `service_heartbeats` calculada sobre a arvore dele.
+///
+/// Mesmo digest = mesmo codigo. `main_position` = posicao na ultima leitura (0 =
+/// cabeca); `null` = saiu da janela lida. `behind_head_by` vem da API de
+/// comparacao do GitHub e vale para a cabeca `behind_head_sha`.
+model DeployMainCommit {
+  commitSha           String   @id @map("commit_sha")
+  committedAt         DateTime @map("committed_at")
+  title               String
+  mainPosition        Int?     @map("main_position")
+  digestMethod        String   @map("digest_method")
+  sourceDigest        String?  @map("source_digest")
+  sourceFileCount     Int?     @map("source_file_count")
+  sourceBucketDigests Json?    @map("source_bucket_digests")
+  treeTruncated       Boolean  @default(false) @map("tree_truncated")
+  behindHeadBy        Int?     @map("behind_head_by")
+  behindHeadSha       String?  @map("behind_head_sha")
+  firstSeenAt         DateTime @default(now()) @map("first_seen_at")
+  positionsReadAt     DateTime @map("positions_read_at")
+
+  @@index([mainPosition])
+  @@index([sourceDigest])
+  @@map("deploy_main_commits")
+}
+
+/// Retrato DIARIO de cobertura do catalogo, gravado pela fila `catalog_coverage`.
+///
+/// Uma linha por (dia, tipo, idioma original). `original_language = '*'` e o
+/// total do tipo; `'?'` = titulo sem idioma. Metrica `null` = NAO SE APLICA ao
+/// tipo (episodio nao tem nota externa) — nunca zero por omissao.
+model CatalogCoverageSnapshot {
+  id                    BigInt   @id @default(autoincrement())
+  capturedOn            DateTime @map("captured_on") @db.Date
+  capturedAt            DateTime @map("captured_at")
+  methodVersion         String   @map("method_version")
+  entityKind            String   @map("entity_kind")
+  originalLanguage      String   @map("original_language")
+  total                 Int
+  withTitle             Int?     @map("with_title")
+  withSynopsis          Int?     @map("with_synopsis")
+  withPoster            Int?     @map("with_poster")
+  withTrailer           Int?     @map("with_trailer")
+  withDisplayableRating Int?     @map("with_displayable_rating")
+  indexable             Int?
+
+  @@unique([capturedOn, entityKind, originalLanguage], map: "catalog_coverage_snapshots_day_kind_language_key")
+  @@index([capturedAt])
+  @@map("catalog_coverage_snapshots")
 }
