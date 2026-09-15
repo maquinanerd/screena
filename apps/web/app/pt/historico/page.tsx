@@ -13,7 +13,7 @@ import { HistoryPanel } from './history-panel'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Meu historico',
+  title: 'Meu histórico',
   robots: { index: false, follow: false },
 }
 
@@ -22,7 +22,7 @@ export default function Pagina() {
     <main data-vertical="account">
       <div className="container">
         <header>
-          <h1>Meu historico</h1>
+          <h1>Meu histórico</h1>
         </header>
         <HistoryPanel />
         <p>
