@@ -26,16 +26,17 @@
 
 | Estado | Itens |
 |---|---|
-| RESOLVIDO | **42** |
+| RESOLVIDO | **43** |
 | VALIDADO | 1 |
 | NÃO APLICÁVEL | 3 |
 | DEPENDÊNCIA EXTERNA DOCUMENTADA | 9 |
-| PENDENTE | 3 |
+| PENDENTE | 2 |
 | **Total** | **58** |
 
-Os três PENDENTES são de desempenho e são refatoração, não ajuste: a folha de CSS
+Os dois PENDENTES são de desempenho e são refatoração, não ajuste: a folha de CSS
 única de 143 KB (§7.6 — a própria auditoria a pôs "fora da caixa de PR pequeno"),
-os 149 KB de HTML da ficha de série e os chunks de JS com 62–67% sem executar (§7.7).
+e os chunks de JS com 62–67% sem executar (§7.7). Os 149 KB de HTML da ficha de
+série (P9) saíram dos pendentes: ver a linha P9.
 
 ---
 
@@ -111,7 +112,7 @@ os 149 KB de HTML da ficha de série e os chunks de JS com 62–67% sem executar
 | P6 | CSS único de 143 KB, bloqueante, 82–90% sem casar | Divisão por rota é refatoração da folha inteira; não cabe nesta leva sem risco de regressão visual | — | — | PENDENTE |
 | P7 | `upgrade-insecure-requests` em CSP report-only | Diretiva inerte removida | `apps/web/middleware.ts` | `security-headers.test.ts` | RESOLVIDO (`3d870f7`) |
 | P8 | Hero da home em `w1280` sem `srcset` | `srcset` com as larguras que a tela usa | `home-hero-carousel.tsx`, `home-hero-presenter.ts` | `home-hero-srcset.test.ts` | RESOLVIDO (`b76b887`) |
-| P9 | Ficha de série com 149 KB de HTML | Guia de temporadas no HTML e no payload RSC; exige mudar o que a ficha entrega no servidor | — | — | PENDENTE |
+| P9 | Ficha de série com 149 KB de HTML | A lista de episódios virou client component (`EpisodeList`): o HTML é o mesmo e o payload RSC leva os DADOS de cada episódio, não a árvore de elementos de cada linha. Medido no laboratório, 40 episódios com still: HTML 126.541 → 86.791 B (−31%), payload 78.169 → 39.379 B (−50%), gzip 11.545 → 10.616 B (−8%) | `app/_components/episode-list.tsx`, `app/pt/series/[slug]/page.tsx` | `episode-list.test.tsx`, `series-canonical-port.test.ts`, `validate:route-cache` (guia inteiro no HTML; payload sem árvore — reprova no build anterior) | RESOLVIDO (`fcf7198`) |
 | P10 | Chunks de JS com 62–67% sem executar | Exige análise de bundle por rota | — | — | PENDENTE |
 
 ## 6. Encontrados durante a remediação
