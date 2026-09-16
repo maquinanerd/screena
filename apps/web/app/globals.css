@@ -3029,33 +3029,6 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 }
 
 /* News cards */
-.news-mosaic {
-  display: grid;
-  grid-template-columns: 1.25fr 1fr;
-  gap: 18px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.news-mosaic__side {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-}
-
-@media (max-width: 1023px) {
-  .news-mosaic {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 767px) {
-  .news-mosaic__side {
-    grid-template-columns: 1fr;
-  }
-}
-
 .news-overlay-card {
   position: relative;
   border-radius: var(--r-card);
@@ -3187,66 +3160,6 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   }
 }
 
-.news-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-@media (max-width: 1023px) {
-  .news-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Trailer card (faixa escura "Em breve") */
-.trailer-card {
-  position: relative;
-  border-radius: var(--r-card);
-  overflow: hidden;
-  background: #16161a;
-}
-
-.trailer-card__media {
-  aspect-ratio: 16 / 10;
-  background: var(--c-bg-dark-band);
-}
-
-.trailer-card__media img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  opacity: 0.92;
-}
-
-.trailer-card__body {
-  padding: 14px 16px 16px;
-  color: #fff;
-}
-
-.trailer-card__title {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0;
-  color: #fff;
-}
-
-.trailer-card__title a::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-}
-
-.trailer-card__meta {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
-  margin: 6px 0 0;
-}
-
 /* ------------------------------------------------------------------ */
 /* Banda escura sancionada (Popular This Week / Em breve)              */
 /*                                                                     */
@@ -3259,86 +3172,7 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 /* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
-/* Botoes                                                              */
-/* ------------------------------------------------------------------ */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  min-height: 44px;
-  padding: 0 22px;
-  border: none;
-  border-radius: var(--r-control);
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--c-text-primary);
-  color: #fff;
-  text-align: center;
-}
-
-.btn:hover {
-  opacity: 0.92;
-}
-
-.btn:disabled {
-  background: var(--c-text-disabled);
-  cursor: not-allowed;
-}
-
-.btn--accent {
-  background: var(--ctx-accent);
-  color: #fff;
-}
-
-[data-vertical='series'] .btn--accent {
-  /* DD-03: branco sobre verde claro falha AA — CTA de serie usa o verde escuro */
-  background: var(--c-accent-series-dark);
-}
-
-.btn--outline {
-  background: var(--c-bg-surface);
-  color: var(--c-text-primary);
-  border: 1px solid var(--c-border);
-}
-
-.btn--outline:hover {
-  border-color: var(--c-border-strong);
-  opacity: 1;
-}
-
-.btn--ghost {
-  background: transparent;
-  color: var(--c-text-primary);
-}
-
-.btn--sm {
-  min-height: 36px;
-  padding: 0 16px;
-  font-size: 13px;
-}
-
-.icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  border: 1px solid var(--c-border);
-  border-radius: 50%;
-  background: var(--c-bg-surface);
-  color: var(--c-text-primary);
-  cursor: pointer;
-}
-
-.icon-btn:hover {
-  border-color: var(--c-border-strong);
-}
-
-/* ------------------------------------------------------------------ */
-/* Chips / tabs / paginacao                                            */
+/* Chips / tabs                                                        */
 /* ------------------------------------------------------------------ */
 
 .chip-row {
@@ -3410,56 +3244,6 @@ a.seg-toggle__opt[aria-current='page'] {
   overflow-x: auto;
 }
 
-.tabs__tab {
-  appearance: none;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  min-height: 44px;
-  padding: 0 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-}
-
-.tabs__tab[aria-selected='true'],
-a.tabs__tab[aria-current='page'] {
-  color: var(--c-text-primary);
-  font-weight: 700;
-  border-bottom-color: var(--ctx-accent);
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 32px;
-}
-
-.pagination a,
-.pagination span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-control);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.pagination [aria-current='page'] {
-  background: var(--c-text-primary);
-  border-color: var(--c-text-primary);
-  color: #fff;
-}
-
 /* ------------------------------------------------------------------ */
 /* Rails (scroll horizontal com snap)                                  */
 /* ------------------------------------------------------------------ */
@@ -3478,10 +3262,6 @@ a.tabs__tab[aria-current='page'] {
 
 .rail > * {
   scroll-snap-align: start;
-}
-
-.rail--wide {
-  grid-auto-columns: minmax(300px, 380px);
 }
 
 /* ------------------------------------------------------------------ */
@@ -3697,35 +3477,6 @@ a.tabs__tab[aria-current='page'] {
   background: var(--c-bg-subtle);
 }
 
-/* Cinerie Score — linha do canonico (numero 47/800 SO com valor real) */
-.score-line {
-  display: flex;
-  align-items: baseline;
-  gap: 13px;
-}
-
-.score-line__value {
-  font-size: 47px;
-  font-weight: 800;
-  color: #12100e;
-  letter-spacing: -0.045em;
-  line-height: 0.82;
-}
-
-.score-line__label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--c-state-danger);
-}
-
-.score-line__note {
-  font-size: 11.5px;
-  color: var(--c-text-muted-aa);
-  margin-top: 4px;
-}
-
 .detail-aside-block {
   margin-top: 22px;
   border-top: 1px solid #e9e3d8;
@@ -3860,14 +3611,6 @@ a.tabs__tab[aria-current='page'] {
   display: block;
   font-weight: 600;
 }
-
-.rating-chips__note,
-.rating-chips__updated {
-  font-size: 11px;
-  color: var(--c-text-muted-aa);
-  margin: 12px 0 0;
-}
-
 
 /* Abaixo de 480px quatro chips lado a lado esmagariam o numero e o credito.
    Duas colunas mantem os dois legiveis; a divisoria vertical vira o proprio
@@ -4498,196 +4241,11 @@ a.media-strip__cell {
   margin: 0;
 }
 
-/* Linha de premios (condicional a dado real) */
-.award-line {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  padding: 26px 0;
-  border-bottom: 1px solid #e4ded3;
-}
-
-/* ------------------------------------------------------------------ */
-/* Detalhe de titulo: top info bar clara (EX-06/07-nohero)             */
-/* ------------------------------------------------------------------ */
-
-.topinfo {
-  border-bottom: 1px solid var(--c-border);
-  background: var(--c-bg-surface);
-  padding-block: 40px 32px;
-}
-
-.topinfo__grid {
-  display: grid;
-  grid-template-columns: 220px 1fr minmax(240px, 300px);
-  gap: 36px;
-  align-items: start;
-}
-
-.topinfo__poster {
-  aspect-ratio: 2 / 3;
-  border-radius: var(--r-media);
-  overflow: hidden;
-  background: var(--c-bg-skeleton);
-  box-shadow: var(--sh-card);
-}
-
-.topinfo__poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.topinfo__poster--empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--c-text-muted);
-  font-size: 32px;
-  font-weight: 800;
-}
-
-.topinfo__title {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.05;
-  margin: 6px 0 0;
-}
-
-.topinfo__original {
-  font-size: 13px;
-  color: var(--c-text-secondary);
-  margin: 6px 0 0;
-}
-
-.topinfo__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  margin: 14px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--c-text-secondary);
-}
-
-.topinfo__meta li + li::before {
-  content: '·';
-  margin-right: 14px;
-  color: var(--c-border-strong);
-}
-
-.topinfo__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 22px;
-}
-
-.topinfo__aside {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-@media (max-width: 1023px) {
-  .topinfo__grid {
-    grid-template-columns: 160px 1fr;
-  }
-  .topinfo__aside {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 767px) {
-  .topinfo__grid {
-    grid-template-columns: 120px 1fr;
-    gap: 20px;
-  }
-  .topinfo__title {
-    font-size: 24px;
-  }
-}
-
 /* As regras `.ratings-panel*` que ficavam aqui foram REMOVIDAS: nenhuma
    marcacao as usava (`.ratings-panel__scale` era de uma versao anterior do
    painel). Alem de mortas, eram perigosas — `__scale` desenhava o denominador
    como sufixo universal, que e exatamente a apresentacao que fazia o
    Tomatometer sair como "84/100". A fileira viva e `.rating-chip*`. */
-
-/* Cinerie Score — 6 estados honestos; NUNCA numero inventado */
-.score-box {
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-card);
-  background: var(--c-bg-subtle);
-  padding: 16px 18px;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.score-box__value {
-  font-size: 47px;
-  font-weight: 800;
-  letter-spacing: -0.045em;
-  line-height: 1;
-}
-
-.score-box__label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--c-text-secondary);
-}
-
-.score-box__state {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text-secondary);
-}
-
-/* Onde assistir (painel governado por licenca) */
-.watch-panel {
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-card);
-  background: var(--c-bg-surface);
-  padding: 16px 18px;
-}
-
-.watch-panel__title {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--c-text-secondary);
-  margin: 0 0 10px;
-}
-
-.watch-panel__group-name {
-  font-size: 12px;
-  font-weight: 700;
-  margin: 10px 0 6px;
-}
-
-.watch-panel__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.watch-panel__note {
-  font-size: 11px;
-  color: var(--c-text-secondary);
-  margin: 12px 0 0;
-}
 
 /* Ficha tecnica */
 .facts {
@@ -4697,101 +4255,7 @@ a.media-strip__cell {
   margin: 0;
 }
 
-.facts__row {
-  margin: 0;
-}
-
-.facts__label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--c-text-secondary);
-}
-
-.facts__value {
-  margin: 4px 0 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--c-text-primary);
-}
-
-/* Elenco */
-.cast-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px 36px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-@media (max-width: 1023px) {
-  .cast-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (max-width: 767px) {
-  .cast-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-.cast-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.cast-card__photo {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: var(--c-bg-muted);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 800;
-  color: var(--c-text-secondary);
-}
-
-.cast-card__photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.cast-card__name {
-  font-size: 14px;
-  font-weight: 700;
-  margin: 0;
-}
-
-.cast-card__name a::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-}
-
-.cast-card__role {
-  font-size: 12px;
-  color: var(--c-text-secondary);
-  margin: 2px 0 0;
-}
-
 /* Temporadas / episodios */
-.season-nav {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 6px;
-}
-
 .episode-list {
   list-style: none;
   margin: 0;
@@ -4889,13 +4353,6 @@ a.media-strip__cell {
   height: 100%;
   object-fit: cover;
   display: block;
-}
-
-.episode-row__code {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  color: var(--ctx-accent-dark);
 }
 
 .episode-row__title {
@@ -6492,20 +5949,6 @@ h4.art-body__heading {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
 }
 
-.watch-hero__all {
-  height: 52px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 18px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-decoration: none;
-}
-
 /* Populares agora — tabs + grade 6 */
 .watch-tabs {
   display: flex;
@@ -7333,31 +6776,6 @@ h4.art-body__heading {
 /* ------------------------------------------------------------------ */
 
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field__label {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.field__hint {
-  font-size: 12px;
-  color: var(--c-text-secondary);
-}
-
-.field__error {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--c-state-danger);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .input,
 .field input[type='text'],
 .field input[type='email'],
@@ -7374,18 +6792,6 @@ h4.art-body__heading {
   color: var(--c-text-primary);
   font-size: 14px;
   width: 100%;
-}
-
-.field input:focus-visible,
-.field select:focus-visible,
-.field textarea:focus-visible {
-  outline: 2px solid var(--c-focus);
-  outline-offset: 1px;
-  border-color: var(--c-focus);
-}
-
-.field [aria-invalid='true'] {
-  border-color: var(--c-state-danger);
 }
 
 /* Switch real: role="switch" + aria-checked; o estado nunca e so cor */
@@ -7505,14 +6911,6 @@ h4.art-body__heading {
 
 .page-header p {
   color: var(--c-text-secondary);
-}
-
-.entity-list {
-  padding-left: 1.25rem;
-}
-
-.entity-list__kind {
-  font-weight: 600;
 }
 
 .entity-links ul {

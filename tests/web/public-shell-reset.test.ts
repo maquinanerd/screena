@@ -47,8 +47,11 @@ describe('shell público — design canônico', () => {
   it('regras de contraste do inventário viram código (DD-02/03/04)', () => {
     // muted nunca vira corpo: existe só como token documentado
     expect(css).toMatch(/--c-text-muted: #9a958c;\s*\/\*[^*]*nunca corpo/i)
-    // CTA de série usa o verde escuro (branco sobre verde claro falha AA)
-    expect(css).toMatch(/\[data-vertical='series'\] \.btn--accent \{[^}]*--c-accent-series-dark/s)
+    // CTA de série usa o verde escuro (branco sobre verde claro falha AA). A trava
+    // mora no CTA que a home renderiza; o `.btn--accent` que ela citava antes não
+    // era escrito por nenhum componente e saiu com o CSS sem uso.
+    expect(css).toMatch(/\.fresh-card__cta \{[^}]*color: #fff/s)
+    expect(css).toMatch(/\.fresh-card--series \.fresh-card__cta \{[^}]*--c-accent-series-dark/s)
     // amarelo editorial carrega texto escuro no ticker
     expect(css).toMatch(/\.ticker \{[^}]*--c-accent-editorial[^}]*--c-text-primary/s)
   })
