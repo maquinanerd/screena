@@ -48,7 +48,16 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { type Cdp, closeChrome, DEFAULT_CHROME, launchChrome, openTab, type Params, sleep } from "./lab/cdp-chrome";
+import {
+  answerPausedRequest,
+  type Cdp,
+  closeChrome,
+  DEFAULT_CHROME,
+  launchChrome,
+  openTab,
+  type Params,
+  sleep,
+} from "./lab/cdp-chrome";
 
 const DEFAULT_PATHS = [
   "/pt/",
@@ -543,10 +552,7 @@ async function capture(): Promise<void> {
     // UM ouvinte, a sessao inteira: a pagina segue pedindo chunk e imagem depois
     // do `load`, e um ouvinte por navegacao responderia a mesma requisicao N vezes.
     cdp.on("Fetch.requestPaused", (params) => {
-      const request = params.request as { url: string };
-      const requestId = String(params.requestId);
-      if (request.url.startsWith(base)) void cdp.send("Fetch.continueRequest", { requestId });
-      else void cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+      answerPausedRequest(cdp, params, (url) => url.startsWith(base));
     });
     // Requisicoes em voo, para a espera por rede ociosa (`settle`).
     const inflight = new Map<string, string>();

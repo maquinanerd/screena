@@ -84,6 +84,31 @@ export class Cdp {
   }
 }
 
+/**
+ * Responde uma requisicao pausada pelo dominio Fetch: segue se `allow(url)`, recusa
+ * se nao. Devolve se seguiu.
+ *
+ * A navegacao seguinte pode cancelar a requisicao antes de a resposta chegar ao
+ * Chrome. Medido: "Invalid InterceptionId" rejeitou a promessa e, sem tratamento,
+ * a rejeicao derrubou uma captura de paridade de 38 rotas no Node 24. Esse caso, e
+ * so ele, e esperado; qualquer outro erro sai como aviso.
+ */
+export function answerPausedRequest(cdp: Cdp, params: Params, allow: (url: string) => boolean): boolean {
+  const url = (params.request as { url: string }).url;
+  const requestId = String(params.requestId);
+  const allowed = allow(url);
+  const reply = allowed
+    ? cdp.send("Fetch.continueRequest", { requestId })
+    : cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+  reply.catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Invalid InterceptionId/i.test(message)) {
+      console.warn(`[aviso] Fetch.${allowed ? "continueRequest" : "failRequest"}: ${message} (${url})`);
+    }
+  });
+  return allowed;
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

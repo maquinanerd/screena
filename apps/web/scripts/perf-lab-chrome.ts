@@ -36,7 +36,7 @@
  * virgula). Sai com codigo 1 quando uma CAUSA estrutural volta.
  */
 
-import { type Cdp, closeChrome, DEFAULT_CHROME, launchChrome, openTab, sleep } from "./lab/cdp-chrome";
+import { answerPausedRequest, type Cdp, closeChrome, DEFAULT_CHROME, launchChrome, openTab, sleep } from "./lab/cdp-chrome";
 
 const BASE = (process.env.PERF_LAB_BASE ?? "").replace(/\/$/, "");
 const CHROME = process.env.PERF_LAB_CHROME ?? DEFAULT_CHROME;
@@ -157,14 +157,7 @@ async function measure(cdp: Cdp, url: string, profile: Profile): Promise<RunResu
   });
   // NADA sai para a rede: o que nao for da base local e recusado aqui.
   cdp.on("Fetch.requestPaused", (params) => {
-    const request = params.request as { url: string };
-    const requestId = String(params.requestId);
-    if (request.url.startsWith(BASE)) {
-      void cdp.send("Fetch.continueRequest", { requestId });
-    } else {
-      blockedExternal += 1;
-      void cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
-    }
+    if (!answerPausedRequest(cdp, params, (url) => url.startsWith(BASE))) blockedExternal += 1;
   });
 
   const loaded = new Promise<void>((resolve, reject) => {
