@@ -21,6 +21,7 @@ import { getHomeUpcomingSeries } from '../../../src/server/home-upcoming'
 import { getPopularRankings } from '../../../src/server/popular-rankings'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
+import '../../_components/home-like.css'
 
 /**
  * Categoria Séries — tela 04 do canônico (EX-04-dual): home-like com a banda

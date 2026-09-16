@@ -30,6 +30,7 @@ import { getHomeHeroSlides } from '../../src/server/home-hero'
 import { getHomeTickerItems } from '../../src/server/home-ticker'
 import { getHomeUpcomingMixed } from '../../src/server/home-upcoming'
 import { getNewsIndexData } from '../../src/server/news-pages'
+import '../_components/home-like.css'
 
 /**
  * Home pública pt-BR — tela 02 do handoff canônico, renderizada pelo template
