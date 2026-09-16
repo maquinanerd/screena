@@ -40,7 +40,10 @@ import { disconnectPrisma } from '@screena/db/server'
 import { startServiceHeartbeat } from '@screena/db/service-heartbeat'
 
 import { createCatalogHandlerRegistry } from '../src/catalog-jobs/handlers/index.js'
-import { buildIdempotencyKey } from '../src/catalog-jobs/idempotency.js'
+import {
+  buildDailyDiscoveryJob,
+  buildIncrementalChangesJob,
+} from '../src/catalog-jobs/producer-jobs.js'
 import { runCatalogWorker } from '../src/catalog-jobs/worker.js'
 import { createStructuredLogMetricsSink } from '../src/metrics/index.js'
 import { createCatalogServices } from '../src/persistence/catalog-services.js'
@@ -95,28 +98,17 @@ async function enqueueDiscovery(
   const day = new Date().toISOString().slice(0, 10)
   for (const kind of config.discoveryKinds) {
     try {
-      await services.store.enqueue({
-        jobType: 'discover_ids',
-        entityType: kind,
-        externalId: null,
-        idempotencyKey: buildIdempotencyKey({
-          jobType: 'discover_ids',
-          entityType: kind,
-          externalId: `daily-exports:${day}`,
-        }),
-        payload: {
-          strategy: 'daily-exports',
-          entityType: kind,
+      // O MESMO builder do agendador: a duplicacao entre os dois produtores so
+      // e inofensiva enquanto a chave for identica, e a prioridade de produtor
+      // (sem ela, 100 — o fim da fila) mora junto.
+      await services.store.enqueue(
+        buildDailyDiscoveryJob({
+          kind,
+          day,
           locale: config.locale,
-          country: null,
           limit: config.discoveryLimit,
-          maxPages: null,
-          ids: null,
-          // A descoberta so vale se cascatear: sem `enqueueDetails` ela
-          // descobriria ids e nao sincronizaria nada.
-          enqueueDetails: true,
-        },
-      })
+        }),
+      )
       log.log('info', 'catalog_service_discovery_enqueued', { kind, day, limit: config.discoveryLimit })
     } catch (error) {
       // Enfileirar e best-effort: uma falha de um tipo nao pode derrubar o
@@ -141,23 +133,9 @@ async function enqueueChanges(
   // A janela e horaria: dois ciclos no mesmo dia sao trabalhos DIFERENTES.
   const slot = new Date().toISOString().slice(0, 13)
   try {
-    await services.store.enqueue({
-      jobType: 'sync_changes',
-      entityType: null,
-      externalId: null,
-      idempotencyKey: buildIdempotencyKey({
-        jobType: 'sync_changes',
-        entityType: null,
-        externalId: `incremental:${slot}`,
-      }),
-      payload: {
-        kinds: config.discoveryKinds,
-        from: null,
-        to: null,
-        maxPages: null,
-        resume: true,
-      },
-    })
+    await services.store.enqueue(
+      buildIncrementalChangesJob({ slot, kinds: config.discoveryKinds }),
+    )
     log.log('info', 'catalog_service_changes_enqueued', { slot, kinds: config.discoveryKinds })
   } catch (error) {
     log.log('warn', 'catalog_service_changes_enqueue_failed', { error: String(error) })

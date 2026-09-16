@@ -59,6 +59,42 @@ export interface NormalizedTvShow {
   readonly countriesPresent: boolean
 }
 
+/**
+ * As temporadas MAIS RECENTES de uma serie: a do ultimo episodio que foi ao ar e
+ * a do proximo anunciado (`last_episode_to_air` / `next_episode_to_air`).
+ *
+ * E o recorte da midia POR EPISODIO na cascata automatica (ver
+ * `EPISODE_MEDIA_SEASONS`, `catalog-jobs/handlers/schemas.ts`). Entram as DUAS, e
+ * nao "a atual", porque entre temporadas elas divergem: a que acabou de terminar
+ * (stills recem-publicados) e a anunciada (episodios que vao estrear). Serie no
+ * meio da temporada: uma so. Serie encerrada: so a ultima. Serie anunciada, sem
+ * episodio exibido: so a proxima.
+ *
+ * VAZIO quando o TMDB nao informa nenhuma das duas. Nao ha o que chamar de
+ * recente, e escolher "a de maior numero" seria decidir por palpite — a lista
+ * `seasons[]` traz temporada anunciada sem episodio e temporada 0 de especiais
+ * em qualquer posicao.
+ *
+ * Ordem: a do ultimo episodio primeiro; sem repeticao.
+ */
+export function extractLatestSeasonNumbers(
+  detail: Pick<TmdbTvDetail, 'last_episode_to_air' | 'next_episode_to_air'> | null | undefined,
+): number[] {
+  const numbers: number[] = []
+  for (const reference of [detail?.last_episode_to_air, detail?.next_episode_to_air]) {
+    const value = reference?.season_number
+    if (
+      typeof value === 'number' &&
+      Number.isInteger(value) &&
+      value >= 0 &&
+      !numbers.includes(value)
+    ) {
+      numbers.push(value)
+    }
+  }
+  return numbers
+}
+
 /** Normaliza uma serie; lanca NormalizationError sem id ou sem nome. */
 export function normalizeTvShow(detail: TmdbTvDetail): NormalizedTvShow {
   if (typeof detail.id !== 'number') {

@@ -30,7 +30,7 @@ import type { CatalogAdmissionRefusal } from '../ports.js'
 import { refusalErrorCode } from './admission.js'
 import { CatalogServiceError, assertImportOk } from '../import/assert-ok.js'
 import { normalizeMovie } from '../normalizers/movie.js'
-import { normalizeTvShow } from '../normalizers/tv.js'
+import { extractLatestSeasonNumbers, normalizeTvShow } from '../normalizers/tv.js'
 import { normalizePerson } from '../normalizers/person.js'
 import {
   extractAlternativeTitles,
@@ -732,6 +732,9 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         seasons: seasonNumbers.length,
         episodes: 0,
         seasonNumbers,
+        // Do MESMO detalhe, sem requisicao a mais: `last_episode_to_air` e
+        // `next_episode_to_air` sao campos de topo de `GET /tv/{id}`.
+        latestSeasonNumbers: extractLatestSeasonNumbers(detail),
         skipped: false,
         skipReason: null,
       }

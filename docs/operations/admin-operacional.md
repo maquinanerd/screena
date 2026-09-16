@@ -95,8 +95,13 @@ mede o trabalho em `catalog_jobs` pelo `run_id = 'scheduler:<fila>'`, que o filh
 herda.
 
 `catalog_jobs` é reivindicado por `priority ASC, available_at ASC`. Faixas:
-sob demanda 10 · `/changes` 50 · temporadas 65 · mídia 70–75 · agendado 80–96 ·
-descoberta 100.
+sob demanda 10 · produtores (`discover_ids`, `sync_changes`) e trending 20 ·
+`/changes` 50 · temporadas 65 · episódios 70 · mídia 70–80 (episódio 80) ·
+agendado 80–96 · descoberta 100.
+
+Até 2026-09-16 os produtores nasciam em 100 (o default do schema) e o "Forçar
+fila" de `discovery`/`changes` caía no fim da fila junto com eles. Ver
+[`fila-represada-2026-09-16.md`](./fila-represada-2026-09-16.md).
 
 ---
 

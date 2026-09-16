@@ -63,6 +63,26 @@ Japones e portugues: dois dos cinco idiomas que a decisao manda **manter**.
 | politica de autoria = conteudo da tabela | `CONTENT_AUTHORING_LOCALES` em `@screena/config` — mesmo conjunto de antes (`pt-BR`, `en`, `es`), agora explicito |
 | descarte silencioso | `readOriginalLanguage` devolve o codigo **recusado**; o backfill conta por codigo e imprime |
 
+### O conserto nao chegou a producao — medido em 16/09/2026
+
+O vocabulario entrava no banco **so pelo seed** (`LANGUAGE_SEED`), e o release
+de producao roda `prisma migrate deploy`, nunca `db:seed`. Em 16/09/2026
+`languages` em producao tinha **3 linhas** (`en`, `es`, `pt-BR`). O codigo, por
+outro lado, ja trabalhava com as 186 do vocabulario: `normalizeOriginalLanguage`
+deixa passar todo codigo dele e presume que a tabela o tenha. Resultado:
+
+- todo idioma do vocabulario fora das tres linhas morria na FK — inclusive `pt`,
+  `ja` e `ko`, tres dos cinco que o recorte mantem;
+- **648** `sync_details` falhados com P2003 (464 em
+  `movies_original_language_fkey`, 184 em `tv_shows_original_language_fkey`).
+
+Todo teste passava porque todo banco de teste roda o seed. O conserto e a
+migration `20260916120000_language_vocabulary`: as 186 linhas, com
+`ON CONFLICT ("code") DO NOTHING` (as tres linhas de producao, com os flags de
+`pt-BR`, ficam como estao) e `is_published`/`index_default` falsos. Travado por
+`tests/governance/language-vocabulary-migration.test.ts`: **codigo novo no
+vocabulario exige migration nova**, e o teste reprova ate ela existir.
+
 > **Por que a politica precisou sair da tabela.** O gate de autoria era
 > `prisma.language.findUnique` — "existe linha?". Com o dicionario completo,
 > `pt` passa a existir; e `CATALOG_WORKER_LOCALE` e variavel de ambiente. Um
@@ -212,6 +232,10 @@ Tudo roda no console do painel (`rss_prime` -> `screen-db` -> `>_` -> aba
 **Bash**), ou no container do worker para os comandos `catalog`.
 
 ### Passo 1 — recuperar o idioma (obrigatorio, primeiro)
+
+**Pre-condicao:** `SELECT count(*) FROM languages` devolve **187 ou mais**. Com 3
+linhas, o `--apply` morre na FK no primeiro titulo em `pt`, `ja` ou `ko` — a
+migration `20260916120000_language_vocabulary` e quem entrega o vocabulario.
 
 ```bash
 pnpm catalog backfill-language --dry-run --json

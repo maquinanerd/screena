@@ -98,6 +98,29 @@ describe('midia e temporadas', () => {
     expect(() => validateJobPayload('sync_seasons', job.payload)).not.toThrow()
   })
 
+  it('o dono pede TODAS as temporadas com midia de episodio — o recorte e da cascata automatica', () => {
+    // Desde 16/09 a cascata automatica busca midia por episodio so das
+    // temporadas recentes (107 mil jobs/dia represaram a fila). O botao nao:
+    // quem clicou pediu a serie inteira, e sem o campo o worker cairia no
+    // recorte barato.
+    const temporadas = planned({ action: 'temporadas', kind: 'tv', tmdbId: 1399, token: TOKEN_B })
+    expect(temporadas.payload).toMatchObject({ episodeMediaSeasons: 'all' })
+    expect((validateJobPayload('sync_seasons', temporadas.payload) as { episodeMediaSeasons: string }).episodeMediaSeasons).toBe('all')
+
+    const detalhe = planned({ action: 'detalhe', kind: 'tv', tmdbId: 1399, token: TOKEN_A })
+    expect(detalhe.payload).toMatchObject({ episodeMediaSeasons: 'all' })
+
+    // CONTROLE: o mesmo titulo pelo agendador leva o recorte.
+    const agendador = buildCoverageJob({
+      kind: 'tv',
+      tmdbId: 1399,
+      locale: 'pt-BR',
+      reason: 'scheduled',
+      scope: 'airing_series:2026-09-16',
+    })
+    expect(agendador.payload).toMatchObject({ episodeMediaSeasons: 'latest' })
+  })
+
   it('temporadas de FILME e recusada com motivo, sem job', () => {
     const plan = planAdminCatalogJob({ action: 'temporadas', kind: 'movie', tmdbId: 603, token: TOKEN_A })
     expect(plan).toEqual({ ok: false, reason: 'filme nao tem temporadas' })

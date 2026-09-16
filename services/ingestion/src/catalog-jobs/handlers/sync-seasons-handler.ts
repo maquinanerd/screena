@@ -7,6 +7,11 @@
  * As temporadas enfileiradas sao as que o provider REPORTOU (`seasonNumbers`),
  * nunca um intervalo 1..N adivinhado: series tem temporada 0 (especiais) e
  * lacunas, e inventar numero geraria job para temporada inexistente.
+ *
+ * TODA temporada reportada ganha o seu `sync_episodes`. O que muda por
+ * temporada e SO a midia por episodio (`enqueueEpisodeMedia`): na cascata
+ * automatica, apenas as temporadas mais recentes a levam. Ver
+ * `EPISODE_MEDIA_SEASONS` em `schemas.ts`.
  */
 
 import { CATALOG_METRIC_NAMES } from '../../metrics/index.js'
@@ -18,7 +23,12 @@ import {
 } from '../idempotency.js'
 import type { CatalogJobStorePort } from '../store-port.js'
 import type { CatalogSeasonsSyncPort } from './ports.js'
-import { JOB_SCOPE_FIELD, validateSyncSeasonsInput, type SyncSeasonsInput } from './schemas.js'
+import {
+  JOB_SCOPE_FIELD,
+  validateSyncSeasonsInput,
+  type EpisodeMediaSeasons,
+  type SyncSeasonsInput,
+} from './schemas.js'
 import { classifySafeError, createEnqueueTally, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_seasons`. */
@@ -36,6 +46,17 @@ export interface SyncSeasonsResult {
    * nenhuma — falha silenciosa.
    */
   readonly seasonNumbers: readonly number[]
+  /** O recorte pedido para a midia por episodio. */
+  readonly episodeMediaSeasons: EpisodeMediaSeasons
+  /**
+   * As temporadas cujo `sync_episodes` saiu com `enqueueEpisodeMedia: true`.
+   *
+   * No resultado para que "por que este episodio nao tem still proprio?" tenha
+   * resposta no proprio job — e para que um adapter que devolva
+   * `latestSeasonNumbers` vazio por defeito apareca como lista vazia em toda
+   * serie, e nao como silencio.
+   */
+  readonly episodeMediaSeasonNumbers: readonly number[]
   readonly skipped: boolean
   readonly skipReason: string | null
 }
@@ -89,6 +110,8 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
         episodes: 0,
         enqueued: 0,
         seasonNumbers: [],
+        episodeMediaSeasons: input.episodeMediaSeasons,
+        episodeMediaSeasonNumbers: [],
         skipped: true,
         skipReason: outcome.skipReason,
       }
@@ -96,9 +119,16 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
 
     let enqueued = 0
     const tally = createEnqueueTally()
+    const latest = new Set(outcome.latestSeasonNumbers)
+    const episodeMediaSeasonNumbers: number[] = []
     if (input.enqueueEpisodes) {
       throwIfAborted(context.signal)
       for (const seasonNumber of outcome.seasonNumbers) {
+        // O RECORTE. Explicito no payload nos dois sentidos: o default de
+        // `sync_episodes` e `true` (a CLI e o reparo manual contam com isso),
+        // entao omitir o campo aqui seria ligar a midia de todas as temporadas.
+        const enqueueEpisodeMedia = input.episodeMediaSeasons === 'all' || latest.has(seasonNumber)
+        if (enqueueEpisodeMedia) episodeMediaSeasonNumbers.push(seasonNumber)
         const result = await this.deps.store.enqueue({
           jobType: 'sync_episodes',
           entityType: 'season',
@@ -113,6 +143,7 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
             tmdbId: input.tmdbId,
             seasonNumber,
             locale: input.locale,
+            enqueueEpisodeMedia,
             ...(input.scope === null ? {} : { [JOB_SCOPE_FIELD]: input.scope }),
           },
           priority: 70,
@@ -182,6 +213,8 @@ export class SyncSeasonsHandler implements CatalogJobHandler<SyncSeasonsInput, S
       episodes: outcome.episodes,
       enqueued,
       seasonNumbers: outcome.seasonNumbers,
+      episodeMediaSeasons: input.episodeMediaSeasons,
+      episodeMediaSeasonNumbers,
       skipped: false,
       skipReason: null,
     }

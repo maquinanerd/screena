@@ -38,6 +38,10 @@
  * checkpoint, e um builder que enfileirasse sozinho tiraria essa escolha dele.
  */
 
+import {
+  EPISODE_MEDIA_SEASONS_FIELD,
+  type EpisodeMediaSeasons,
+} from '../catalog-jobs/handlers/schemas.js'
 import { buildIdempotencyKey } from '../catalog-jobs/idempotency.js'
 import type { EnqueueCatalogJobInput } from '../catalog-jobs/store-port.js'
 
@@ -81,6 +85,27 @@ export const COVERAGE_PRIORITY: Readonly<Record<CoverageReason, number>> = Objec
   scheduled: 80,
   discovery: 100,
 })
+
+/**
+ * De quais temporadas a cascata de uma SERIE busca midia POR EPISODIO, por
+ * motivo. Ver `EPISODE_MEDIA_SEASONS` (`catalog-jobs/handlers/schemas.ts`).
+ *
+ * Mesma leitura da tabela de prioridade — quem esta esperando:
+ *
+ *  - `on_demand` -> `all`: uma PESSOA pediu o titulo inteiro, uma vez, e o custo
+ *    aparece na estimativa antes do clique;
+ *  - `changes`, `scheduled`, `discovery` -> `latest`: ninguem pediu still de
+ *    episodio antigo, e e a cascata que roda TODO DIA sobre centenas de series.
+ *    Medido em 16/09/2026: sem este recorte, 107.266 jobs de midia de episodio
+ *    por dia e 14 dias de fila represada.
+ */
+export const COVERAGE_EPISODE_MEDIA_SEASONS: Readonly<Record<CoverageReason, EpisodeMediaSeasons>> =
+  Object.freeze({
+    on_demand: 'all',
+    changes: 'latest',
+    scheduled: 'latest',
+    discovery: 'latest',
+  })
 
 /**
  * O AJUSTE FINO por popularidade, DENTRO de um motivo.
@@ -242,6 +267,10 @@ export function buildCoverageJob(request: CoverageRequest): EnqueueCatalogJobInp
       // midia e sem temporadas — "parece completo mas nao e" (T0).
       enqueueDependencies: true,
       ...(scope === null ? {} : { window: scope }),
+      // So serie tem temporada. Filme e pessoa ficam com o payload de sempre.
+      ...(request.kind === 'tv'
+        ? { [EPISODE_MEDIA_SEASONS_FIELD]: COVERAGE_EPISODE_MEDIA_SEASONS[request.reason] }
+        : {}),
     },
     priority: COVERAGE_PRIORITY[request.reason] + popularityPriorityOffset(request.rank),
     runId: request.runId ?? null,

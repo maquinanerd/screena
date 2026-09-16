@@ -1131,7 +1131,14 @@ async function runPipelineChecks(prisma: PrismaClient, url: string): Promise<voi
     },
     seasonsSync: {
       async syncSeasons() {
-        return { seasons: 1, episodes: 0, seasonNumbers: [1], skipped: false, skipReason: null }
+        return {
+          seasons: 1,
+          episodes: 0,
+          seasonNumbers: [1],
+          latestSeasonNumbers: [1],
+          skipped: false,
+          skipReason: null,
+        }
       },
     },
     episodesSync: {

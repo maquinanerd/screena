@@ -292,6 +292,11 @@ export interface SyncDetailsInput {
    * o mesmo id descoberto de novo e o mesmo trabalho).
    */
   readonly scope: string | null
+  /**
+   * De quais temporadas a cascata (so `tv`) busca midia POR EPISODIO. Repassado
+   * ao `sync_seasons`. Ver `EPISODE_MEDIA_SEASONS`.
+   */
+  readonly episodeMediaSeasons: EpisodeMediaSeasons
 }
 
 /** Input de `sync_credits`. */
@@ -335,6 +340,59 @@ export function readJobScope(raw: Record<string, unknown>): string | null {
   return readOptionalString(raw, JOB_SCOPE_FIELD)
 }
 
+/**
+ * DE QUAIS TEMPORADAS a cascata de uma serie busca a midia POR EPISODIO.
+ *
+ *   `all`    — de todas. E o pedido de uma PESSOA (botao do painel, motivo
+ *              `on_demand`): ela pediu o titulo inteiro, e a estimativa de custo
+ *              aparece antes do clique.
+ *   `latest` — so das temporadas MAIS RECENTES: a do ultimo episodio exibido e a
+ *              do proximo anunciado (`extractLatestSeasonNumbers`). E a cascata
+ *              AUTOMATICA — agendador, `/changes` e descoberta.
+ *
+ * ============================================================================
+ * O QUE FOI MEDIDO EM PRODUCAO EM 16/09/2026
+ * ============================================================================
+ * Em 24 h a cascata de `airing_series` criou 107.266 `sync_media` de episodio
+ * (prioridade 80, ~2,2 s cada): ~65 das 96 horas-worker do dia. O worker ficou
+ * saturado e a fila global por prioridade parou de chegar no resto — detalhe
+ * agendado (84-96), descoberta (100) e os produtores `sync_changes`/
+ * `discover_ids` (100) ficaram 14 dias represados. O balde de 7 dias da folha
+ * (`coarsenScopeToDays`) nao ajudava: `airing_series` visita 200 series
+ * DIFERENTES por dia, e series em exibicao tem ~400 episodios cada. O custo era
+ * rebuscar, toda semana, o still de cada episodio de 2011 de cada novela.
+ *
+ * O `sync_episodes` de TODAS as temporadas continua saindo nos dois modos: e ele
+ * que traz detalhe, creditos, ids externos e os stills que o append do episodio
+ * ja entrega. O que o recorte corta e so o job EXTRA por episodio (o endpoint
+ * `/images` sem idioma).
+ *
+ * AUSENTE = `latest`. Job enfileirado antes deste campo existir, ou montado a
+ * mao, cai no lado BARATO. O erro nesse sentido custa still de episodio antigo
+ * (paginas de episodio fora do indice desde 27/08, `suspended-pages.ts`); o erro
+ * no outro sentido represou a fila inteira por 14 dias.
+ */
+export const EPISODE_MEDIA_SEASONS = ['all', 'latest'] as const
+
+/** Um recorte de temporadas para a midia por episodio. */
+export type EpisodeMediaSeasons = (typeof EPISODE_MEDIA_SEASONS)[number]
+
+/** O nome do campo no payload de `sync_details` e `sync_seasons`. */
+export const EPISODE_MEDIA_SEASONS_FIELD = 'episodeMediaSeasons'
+
+/** O recorte de quem nao disse qual quer. Ver `EPISODE_MEDIA_SEASONS`. */
+export const DEFAULT_EPISODE_MEDIA_SEASONS: EpisodeMediaSeasons = 'latest'
+
+/** Le o recorte do payload. Ausente => `latest`; valor desconhecido reprova. */
+export function readEpisodeMediaSeasons(raw: Record<string, unknown>): EpisodeMediaSeasons {
+  return readOptionalEnum(
+    raw,
+    EPISODE_MEDIA_SEASONS_FIELD,
+    EPISODE_MEDIA_SEASONS,
+    DEFAULT_EPISODE_MEDIA_SEASONS,
+  )
+}
+
 /** Input de `sync_seasons`. */
 export interface SyncSeasonsInput {
   readonly tmdbId: number
@@ -349,6 +407,11 @@ export interface SyncSeasonsInput {
    * a pagina nao tinha onde buscar trailer.
    */
   readonly enqueueSeasonMedia: boolean
+  /**
+   * De quais temporadas o `sync_episodes` enfileirado leva
+   * `enqueueEpisodeMedia: true`. Ver `EPISODE_MEDIA_SEASONS`.
+   */
+  readonly episodeMediaSeasons: EpisodeMediaSeasons
   /** Escopo HERDADO do pai. Ver `SyncDetailsInput.scope`. */
   readonly scope: string | null
 }
@@ -475,6 +538,7 @@ export function validateSyncDetailsInput(value: unknown): SyncDetailsInput {
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueDependencies: readOptionalBoolean(raw, 'enqueueDependencies', true),
     scope: readJobScope(raw),
+    episodeMediaSeasons: readEpisodeMediaSeasons(raw),
   }
 }
 
@@ -560,6 +624,7 @@ export function validateSyncSeasonsInput(value: unknown): SyncSeasonsInput {
     locale: readOptionalString(raw, 'locale', 'pt-BR') as string,
     enqueueEpisodes: readOptionalBoolean(raw, 'enqueueEpisodes', true),
     enqueueSeasonMedia: readOptionalBoolean(raw, 'enqueueSeasonMedia', true),
+    episodeMediaSeasons: readEpisodeMediaSeasons(raw),
     scope: readJobScope(raw),
   }
 }

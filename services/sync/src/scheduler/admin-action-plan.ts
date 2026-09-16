@@ -43,7 +43,11 @@
 
 import { buildCoverageJob, COVERAGE_PRIORITY } from '@screena/ingestion/coverage-entry'
 import { buildIdempotencyKey, scopedChildDiscriminator } from '@screena/ingestion/job-idempotency'
-import { JOB_SCOPE_FIELD, validateJobPayload } from '@screena/ingestion/job-payload'
+import {
+  EPISODE_MEDIA_SEASONS_FIELD,
+  JOB_SCOPE_FIELD,
+  validateJobPayload,
+} from '@screena/ingestion/job-payload'
 
 import { SCHEDULER_QUEUES, type SchedulerQueue } from './rhythms.js'
 
@@ -199,6 +203,9 @@ export function planAdminCatalogJob(input: {
           locale: ADMIN_FORCE_LOCALE,
           enqueueEpisodes: true,
           enqueueSeasonMedia: true,
+          // O dono pediu AS temporadas: todas, com a midia de cada episodio. O
+          // recorte `latest` e da cascata automatica, nao de quem clicou.
+          [EPISODE_MEDIA_SEASONS_FIELD]: 'all',
           [JOB_SCOPE_FIELD]: scope,
         },
         priority: COVERAGE_PRIORITY.on_demand,

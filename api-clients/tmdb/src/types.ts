@@ -103,6 +103,18 @@ export interface TmdbSeasonSummary {
   poster_path?: string | null
 }
 
+/**
+ * Episodio de referencia no detalhe da serie (`last_episode_to_air` /
+ * `next_episode_to_air`). So os campos que alguem le: o numero da temporada e o
+ * que decide de quais temporadas a cascata automatica busca midia por episodio.
+ */
+export interface TmdbEpisodeToAir {
+  id?: number | null
+  season_number?: number | null
+  episode_number?: number | null
+  air_date?: string | null
+}
+
 /** Detalhe de serie (`GET /tv/{id}`). */
 export interface TmdbTvDetail {
   id: number
@@ -114,6 +126,10 @@ export interface TmdbTvDetail {
   status?: string | null
   number_of_seasons?: number | null
   number_of_episodes?: number | null
+  /** Ultimo episodio que foi ao ar. `null` = nenhum exibido ainda. */
+  last_episode_to_air?: TmdbEpisodeToAir | null
+  /** Proximo episodio anunciado. `null` = nenhum anunciado (ou serie encerrada). */
+  next_episode_to_air?: TmdbEpisodeToAir | null
   popularity?: number | null
   vote_average?: number | null
   vote_count?: number | null

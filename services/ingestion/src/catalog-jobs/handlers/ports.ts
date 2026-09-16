@@ -129,6 +129,16 @@ export interface SeasonsSyncOutcome {
   readonly episodes: number
   /** Numeros de temporada existentes (para enfileirar episodios). */
   readonly seasonNumbers: readonly number[]
+  /**
+   * As temporadas MAIS RECENTES: a do ultimo episodio exibido e a do proximo
+   * anunciado (ver `extractLatestSeasonNumbers`). Vazio quando o provider nao
+   * informa nenhuma das duas.
+   *
+   * OBRIGATORIO de proposito: a cascata automatica so busca midia por episodio
+   * destas temporadas. Um adapter que esquecesse o campo desligaria essa midia
+   * em silencio — obrigatorio, quem esquece nao compila.
+   */
+  readonly latestSeasonNumbers: readonly number[]
   readonly skipped: boolean
   readonly skipReason: string | null
 }
