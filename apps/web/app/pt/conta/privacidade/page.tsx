@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 
 import { PrivacyPanel } from './privacy-panel'
+import '../settings-shell.css'
+import '../settings.css'
 
 /**
  * PRIVACIDADE E MEUS DADOS (C7D) — sub-superfície "Privacidade" da tela 13:

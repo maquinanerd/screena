@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 
 import { isProductionRuntime } from '../../../src/lib/runtime-env'
 import { AdPreviewPanel } from './preview-panel'
+import './ad-preview.css'
 
 export const metadata: Metadata = {
   title: 'Preview técnica — anúncios',

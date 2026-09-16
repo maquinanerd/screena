@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 
 import { ImportPanel } from './import-panel'
+import '../conta/settings-shell.css'
+import './importar.css'
 
 /**
  * Dados e importação (C8) — tela 14 do canônico: sub-nav de configurações
