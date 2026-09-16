@@ -34,7 +34,7 @@
  * Pre-requisito: `pnpm build` (o script sobe `next start` sobre o build atual).
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -118,6 +118,28 @@ function freePort(): Promise<number> {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : 0;
       srv.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Roda um processo filho SEM bloquear o laco de eventos deste processo.
+ *
+ * O Postgres embarcado escreve o log no stderr por um pipe que SO este processo
+ * esvazia (o `embedded-postgres` le por evento `data`). Com `execFileSync` o laco
+ * para, o pipe enche e o backend que for logar trava dentro do `write()`. Medido
+ * em 16/09/2026: a migration `20260716140000` ficou 6 h "active", sem wait_event,
+ * com 0,97 s de CPU. Reproduzido fora do validador: com o laco bloqueado, um
+ * cliente parou em ~100 WARNINGs (~56 KB de log, o buffer do pipe) e nao terminou
+ * em 90 s; com o filho assincrono, 600 WARNINGs passaram em 215 ms.
+ */
+function runChild(command: string, args: readonly string[], options: { env: NodeJS.ProcessEnv; cwd: string }): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} ${args.join(" ")} terminou com ${signal ?? `codigo ${code}`}`));
     });
   });
 }
@@ -492,16 +514,8 @@ async function main(): Promise<void> {
     process.env.DATABASE_URL = url;
     const env = { ...process.env, DATABASE_URL: url };
 
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
-      env,
-      stdio: "inherit",
-      cwd: dbDir,
-    });
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
-      env,
-      stdio: "inherit",
-      cwd: dbDir,
-    });
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], { env, cwd: dbDir });
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], { env, cwd: dbDir });
 
     const dbServer = (await import("@screena/db/server")) as {
       getPrismaClient: () => {
