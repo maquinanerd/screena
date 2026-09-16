@@ -89,15 +89,15 @@ sub-requests), então não há multiplicação além dessa.
 |---|---|---|
 | `sync_episodes` | 1 por temporada | 70 |
 | `sync_media` (`season`) | 1 por temporada | 75 |
-| `sync_media` (`episode`) | **1 por episódio** | 80 |
+| `sync_media` (`episode`) | **1 por episódio** — só das temporadas recentes na cascata automática (ver abaixo) | 80 |
 
 A prioridade é crescente na ordem do valor: o detalhe do episódio POVOA a
 página, o trailer da temporada a enriquece, e a galeria de stills é
 enriquecimento de uma sub-página. **Menor = mais prioritário.**
 
-### Os dois freios
+### Os freios
 
-Ambos default `true`, ambos desligáveis **independentemente**:
+Os dois primeiros são default `true` e desligáveis **independentemente**:
 
 - `sync_seasons` → `enqueueSeasonMedia: false` — corta 1 job e 2 requisições por
   temporada.
@@ -105,6 +105,26 @@ Ambos default `true`, ambos desligáveis **independentemente**:
   requisições**, a dimensão cara. Com ele desligado os stills continuam
   entrando pela cópia do append do detalhe, só que no subconjunto que o filtro
   de idioma deixa passar.
+
+O terceiro decide **de quais temporadas** sai a mídia por episódio
+(`episodeMediaSeasons`, no payload de `sync_details` e `sync_seasons`):
+
+| Valor | Quem usa | Temporadas com mídia por episódio |
+|---|---|---|
+| `all` | pedido de pessoa (motivo `on_demand`, botões do painel) | todas |
+| `latest` (default) | cascata automática: agendador, `/changes`, descoberta | a do último episódio exibido e a do próximo anunciado (`last_episode_to_air` / `next_episode_to_air`) |
+
+Todo `sync_episodes` continua saindo, de **todas** as temporadas: o recorte é só
+do job extra por episódio. O `sync_seasons` escreve `enqueueEpisodeMedia`
+**explícito** (`true` ou `false`) em cada filho, porque o default do
+`sync_episodes` é `true` e omitir o campo religaria tudo.
+
+**Por que existe (medido em 2026-09-16):** em 24 h a cascata automática criou
+**115.980** jobs de mídia de episódio para **108** séries (15,4 temporadas por
+série em média). Só **8.471** (7,3%) eram da temporada de maior número de cada
+série; nas duas maiores, **13.582** (11,7%). A prioridade 80 com o worker
+saturado represou detalhe, descoberta e `/changes` por 14 dias. Ver
+[`fila-represada-2026-09-16.md`](./fila-represada-2026-09-16.md).
 
 ---
 

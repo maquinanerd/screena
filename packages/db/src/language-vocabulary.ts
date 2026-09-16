@@ -34,6 +34,17 @@
  *
  * Nenhuma linha daqui e "idioma publicado". `isPublished`/`indexDefault` sao
  * `false` para o vocabulario inteiro; quem publica e `PUBLISHED_LOCALES`.
+ *
+ * ============================================================================
+ * O SEED NAO CHEGA A PRODUCAO — A MIGRATION CHEGA
+ * ============================================================================
+ * Ate 16/09/2026 este vocabulario so entrava no banco por `db:seed`, e o release
+ * roda `migrate deploy`. Producao ficou com as TRES linhas antigas enquanto o
+ * codigo ja gravava as 186: 648 `sync_details` falharam na FK, com `pt`, `ja` e
+ * `ko` entre os codigos sem linha. A migration
+ * `20260916120000_language_vocabulary` entrega a lista. Acrescentar codigo AQUI
+ * exige migration NOVA — `tests/governance/language-vocabulary-migration.test.ts`
+ * reprova ate ela existir.
  */
 
 /** Uma entrada do dicionario: codigo ISO 639-1 + nome em pt e en. */

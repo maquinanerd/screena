@@ -17,7 +17,12 @@ import { buildIdempotencyKey, scopedChildDiscriminator } from '../idempotency.js
 import type { CatalogJobStorePort, EnqueueCatalogJobInput } from '../store-port.js'
 import type { CatalogDetailSyncPort, SearchReindexPort } from './ports.js'
 import type { DetailWatchOutcome } from '../../watch-providers/from-detail.js'
-import { JOB_SCOPE_FIELD, validateSyncDetailsInput, type SyncDetailsInput } from './schemas.js'
+import {
+  EPISODE_MEDIA_SEASONS_FIELD,
+  JOB_SCOPE_FIELD,
+  validateSyncDetailsInput,
+  type SyncDetailsInput,
+} from './schemas.js'
 import { classifySafeError, createEnqueueTally, throwIfAborted } from './support.js'
 
 /** Resultado serializavel do `sync_details`. */
@@ -232,7 +237,20 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
 
     push('sync_media', { ...base, ...scoped, entityType: input.entityType }, 70)
     if (input.entityType === 'tv') {
-      push('sync_seasons', { ...base, ...scoped, enqueueEpisodes: true }, 65)
+      // O RECORTE da midia por episodio desce com a cascata: sem ele no payload,
+      // o `sync_seasons` cairia no default (`latest`) e um pedido sob demanda
+      // perderia as temporadas antigas no meio do caminho. Ver
+      // `EPISODE_MEDIA_SEASONS`.
+      push(
+        'sync_seasons',
+        {
+          ...base,
+          ...scoped,
+          enqueueEpisodes: true,
+          [EPISODE_MEDIA_SEASONS_FIELD]: input.episodeMediaSeasons,
+        },
+        65,
+      )
     }
 
     // A CHAVE DO FILHO PASSOU A TER O ESCOPO DO PAI (2026-08-28). Antes disso

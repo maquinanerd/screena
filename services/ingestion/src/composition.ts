@@ -78,6 +78,11 @@ export { DEV_SEED_IDS } from './seed-ids.js'
  */
 export { buildIdempotencyKey } from './catalog-jobs/idempotency.js'
 export {
+  buildDailyDiscoveryJob,
+  buildIncrementalChangesJob,
+  PRODUCER_JOB_PRIORITY,
+} from './catalog-jobs/producer-jobs.js'
+export {
   buildCoverageJob,
   buildCoverageJobs,
   COVERAGE_PRIORITY,

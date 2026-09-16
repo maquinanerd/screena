@@ -150,6 +150,8 @@ export interface HandlerFakes {
   setListPages: (pages: readonly { results: unknown[]; page: number; total_pages: number }[]) => void
   /** Define os numeros de temporada devolvidos. */
   setSeasonNumbers: (numbers: readonly number[]) => void
+  /** Define as temporadas MAIS RECENTES que o `syncSeasons` fake reporta. */
+  setLatestSeasonNumbers: (numbers: readonly number[]) => void
   /** Define o resultado do `saveSnapshot`. */
   setSnapshotResult: (result: SaveSnapshotResult) => void
   /** Define as paginas de `/changes` por kind. */
@@ -190,6 +192,7 @@ export function createHandlerFakes(): HandlerFakes {
     { results: [{ id: 1, popularity: 9 }, { id: 2, popularity: 8 }], page: 1, total_pages: 1 },
   ]
   let seasonNumbers: readonly number[] = [1, 2]
+  let latestSeasonNumbers: readonly number[] = [2]
   let snapshotResult: SaveSnapshotResult = { id: 'snap-1', created: true, items: 2 }
   let changesPages: Readonly<Record<string, readonly ChangesPage[]>> = {}
 
@@ -233,6 +236,7 @@ export function createHandlerFakes(): HandlerFakes {
           seasons: seasonNumbers.length,
           episodes: 0,
           seasonNumbers,
+          latestSeasonNumbers,
           skipped: false,
           skipReason: null,
         }
@@ -343,6 +347,9 @@ export function createHandlerFakes(): HandlerFakes {
     },
     setSeasonNumbers: (numbers) => {
       seasonNumbers = numbers
+    },
+    setLatestSeasonNumbers: (numbers) => {
+      latestSeasonNumbers = numbers
     },
     setSnapshotResult: (result) => {
       snapshotResult = result

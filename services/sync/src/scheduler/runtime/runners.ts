@@ -47,7 +47,9 @@ import type { PrismaClient } from '@screena/db/server'
 import { checkOmdbBudget, planOmdbRotation } from '@screena/config'
 import {
   buildCoverageJob,
+  buildDailyDiscoveryJob,
   buildIdempotencyKey,
+  buildIncrementalChangesJob,
   ingestWatchProvidersFromDetail,
 } from '@screena/ingestion/runtime'
 
@@ -258,20 +260,15 @@ const runDiscovery: QueueRunner = async (deps) => {
 
   for (const kind of kinds) {
     try {
-      const result = await deps.services.store.enqueue({
-        jobType: 'discover_ids',
-        entityType: kind,
-        externalId: null,
-        idempotencyKey: buildIdempotencyKey({
-          jobType: 'discover_ids',
-          entityType: kind,
-          externalId: `daily-exports:${day}`,
-        }),
-        payload: {
-          strategy: 'daily-exports',
-          entityType: kind,
+      // O job inteiro (chave, payload e a `priority` que faltava ate 16/09)
+      // vive em `@screena/ingestion` `producer-jobs.ts`, que e puro e TEM teste
+      // — e e o MESMO builder do servico de catalogo, entao a chave dos dois
+      // produtores nao tem como divergir.
+      const result = await deps.services.store.enqueue(
+        buildDailyDiscoveryJob({
+          kind,
+          day,
           locale: deps.locale,
-          country: null,
           // ANTES: `null` HARDCODED, e `null` e o export INTEIRO (1,23 M filmes,
           // 228 k series, 4,86 M pessoas). Com `enqueueDetails: true`, o
           // primeiro ciclo drenado enfileiraria ~6,3 MILHOES de `sync_details`.
@@ -279,13 +276,9 @@ const runDiscovery: QueueRunner = async (deps) => {
           // manda desliga-lo quando o agendador sobe — entao o produtor COM
           // teto saia de cena e o SEM teto ficava. Ver `config.ts`.
           limit: deps.discoveryLimit,
-          maxPages: null,
-          ids: null,
-          // Sem isto a descoberta acharia ids e nao sincronizaria nada.
-          enqueueDetails: true,
-        },
-        runId: 'scheduler:discovery',
-      })
+          runId: 'scheduler:discovery',
+        }) as unknown as Record<string, unknown>,
+      )
       if (result.created) processed += 1
       else {
         skipped += 1
@@ -316,26 +309,15 @@ const runChanges: QueueRunner = async (deps) => {
   let failed = 0
 
   try {
-    const result = await deps.services.store.enqueue({
-      jobType: 'sync_changes',
-      entityType: null,
-      externalId: null,
-      idempotencyKey: buildIdempotencyKey({
-        jobType: 'sync_changes',
-        entityType: null,
-        externalId: `incremental:${slot}`,
-      }),
-      payload: {
+    // Mesmo builder do servico de catalogo (`producer-jobs.ts`): chave,
+    // payload e prioridade de produtor num lugar so, e com teste.
+    const result = await deps.services.store.enqueue(
+      buildIncrementalChangesJob({
+        slot,
         kinds: ['movie', 'tv', 'person'],
-        from: null,
-        to: null,
-        maxPages: null,
-        // O checkpoint so avanca APOS o commit: um ciclo interrompido e refeito,
-        // nunca pulado.
-        resume: true,
-      },
-      runId: 'scheduler:changes',
-    })
+        runId: 'scheduler:changes',
+      }) as unknown as Record<string, unknown>,
+    )
     if (result.created) processed += 1
     else {
       skipped += 1
