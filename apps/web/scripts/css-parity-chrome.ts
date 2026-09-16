@@ -331,15 +331,26 @@ const SETTLE_SCRIPT = `(async () => {
   // Imagem carregando muda largura e altura entre uma foto e outra — medido: logo
   // do rodape em 180px numa foto e 179,578px na seguinte; e, com espera so pelas
   // visiveis, 26px numa captura e 25,78px na outra (lazy, abaixo da dobra). Toda
-  // imagem vira eager e a foto espera todas (ate 5 s): mede-se o estado FINAL, o
-  // mesmo nas duas builds. Imagem externa bloqueada termina em erro, e conta.
+  // imagem vira eager e a foto espera todas: mede-se o estado FINAL, o mesmo nas
+  // duas builds. Imagem externa bloqueada e imagem local em 404 terminam em erro, e
+  // contam. Com 5 s, a maquina carregada ja deixou uma capa em 404 pendente numa
+  // captura e quebrada na outra (0px x 20px): o prazo e 15 s, e o que sobrar volta
+  // na resposta para a captura AVISAR.
   for (const img of document.images) if (img.loading === "lazy") img.loading = "eager";
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline && [...document.images].some((img) => !img.complete)) {
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return JSON.stringify(document.readyState);
+  const pending = () => [...document.images].filter((img) => !img.complete).length;
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline && pending() > 0) await new Promise((r) => setTimeout(r, 100));
+  return JSON.stringify({ readyState: document.readyState, pendingImages: pending() });
 })()`;
+
+/** Espera a pagina assentar e avisa se sobrou imagem sem terminar de carregar. */
+async function settle(cdp: Cdp, label: string): Promise<void> {
+  const state = await evaluateSettled<{ readyState: string; pendingImages: number }>(cdp, SETTLE_SCRIPT);
+  if (state.pendingImages > 0) {
+    process.stdout.write(`  [aviso] ${label}: ${state.pendingImages} imagem(ns) ainda carregando depois de 15 s
+`);
+  }
+}
 
 /** Espera o proximo `load`, ou desiste em `ms`. */
 function nextLoad(cdp: Cdp, ms: number): Promise<void> {
@@ -523,7 +534,7 @@ async function capture(): Promise<void> {
       for (const width of widths) {
         try {
           const status = await load(cdp, `${base}${pagePath}`, width);
-          await evaluateSettled(cdp, SETTLE_SCRIPT);
+          await settle(cdp, `${pagePath} @${width}`);
           if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
           const snapshot = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
           pages.push({ ...snapshot, path: pagePath, width, status });
@@ -567,7 +578,7 @@ async function capture(): Promise<void> {
               // fotos tem de ser da MESMA URL, senao mede de novo.
               for (let attempt = 1; attempt <= 3 && result === null; attempt += 1) {
                 await load(cdp, `${base}${pagePath}`, width);
-                await evaluateSettled(cdp, SETTLE_SCRIPT);
+                await settle(cdp, `acumulo ${pagePath} @${width}`);
                 if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
                 const direct = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
                 await evaluateSettled(cdp, APPEND_SCRIPT(hrefs));
