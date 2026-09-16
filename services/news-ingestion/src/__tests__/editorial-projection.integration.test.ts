@@ -1362,3 +1362,81 @@ describe('nenhuma URL http chega ao banco publico', () => {
     }
   })
 })
+
+/* ------------------------------------------------------------------ */
+/* 8. GALERIA ATRAVESSA A CADEIA INTEIRA                               */
+/* ------------------------------------------------------------------ */
+//
+// O bloco `gallery` existia no CMS, no contrato e no site — e MORRIA NO WORKER.
+// O worker so conhecia `image` e `hero`: nenhum byte da galeria era baixado, o
+// bloco ia para o banco publico com o id interno do CMS em cada item e sem
+// caminho local, e o presenter do site descartava todos os itens. A materia
+// saia no ar sem a galeria, com 200, sem erro e sem uma linha de log.
+//
+// Do outro lado da mesma cadeia, o portao de publicacao do CMS so conferia a
+// licenca de bloco `image`: foto de galeria sem licenca publicava sem ninguem
+// ser avisado.
+
+describe('galeria: do CMS ao corpo publico', () => {
+  it('as fotos da galeria chegam ao banco publico com caminho LOCAL e arquivo real', async () => {
+    const id = await seedArticle('galeria', {
+      body: [
+        {
+          blockType: 'paragraph',
+          blockId: 'b1',
+          text: 'Corpo editorial proprio da Cinerie, escrito para o teste da galeria publica.',
+        },
+        {
+          blockType: 'gallery',
+          blockId: 'g1',
+          items: [
+            { media: mediaId('corpo'), alt: 'Elenco na chegada', credit: 'Foto A' },
+            { media: mediaId('hero-png'), alt: 'Diretora na coletiva' },
+          ],
+          initialIndex: 1,
+        },
+      ],
+    })
+    await moveTo(id, 'published')
+    const { outcomes } = await drain()
+    expect(outcomes).toContain('applied')
+
+    const article = await publicArticle(id)
+    const blocks = (article?.translations[0]?.bodyBlocks ?? []) as unknown as Record<string, unknown>[]
+    const gallery = blocks.find((block) => block.type === 'gallery') as
+      | { items: Record<string, unknown>[]; initialIndex?: number }
+      | undefined
+
+    // AQUI estava o defeito: a galeria chegava, mas sem nenhum caminho.
+    expect(gallery?.items).toHaveLength(2)
+    for (const item of gallery?.items ?? []) {
+      expect(String(item.publicPath)).toMatch(/^\/media\/editorial\/[0-9a-f]{2}\/[0-9a-f]{64}\.(jpg|png)$/)
+      // O id interno do CMS nao vaza para o corpo publico.
+      expect(item).not.toHaveProperty('mediaRef')
+      // O arquivo EXISTE no storage — caminho sem bytes seria imagem quebrada.
+      expect(await storage.exists(String(item.publicPath).replace('/media/', ''))).toBe(true)
+    }
+    // Credito POR FOTO, e a abertura na foto escolhida pelo editor.
+    expect(gallery?.items[0]?.credit).toBe('Foto A')
+    expect(gallery?.items[1]?.credit).toBe('Divulgacao')
+    expect(gallery?.initialIndex).toBe(1)
+  })
+
+  it('foto de galeria sem licenca e recusada JA NO CMS — como a do bloco image', async () => {
+    const id = await seedArticle('galeria-sem-licenca', {
+      body: [
+        {
+          blockType: 'gallery',
+          blockId: 'g1',
+          items: [
+            { media: mediaId('corpo'), alt: 'Foto liberada' },
+            { media: mediaId('licenca-prohibited'), alt: 'Foto sem licenca' },
+          ],
+        },
+      ],
+    })
+    const failure = await tryMoveTo(id, 'published')
+    expect(failure ?? '').toContain('unauthorized_media')
+    expect(await publicArticle(id)).toBeNull()
+  })
+})

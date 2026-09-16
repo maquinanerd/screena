@@ -533,7 +533,13 @@ export function decideProjection(input: DecideProjectionInput): ProjectionDecisi
 
   const { blocks: withMedia, unresolved } = applyMediaToBlocks(content.body, media)
   for (const blockId of unresolved) {
-    warnings.push(`bloco de imagem ${blockId} sem asset projetado`)
+    // `<bloco>#<indice>` e item de GALERIA: a foto caiu, a galeria segue com as
+    // outras. O aviso nomeia qual, para ninguem ter de adivinhar pela pagina.
+    warnings.push(
+      blockId.includes('#')
+        ? `item de galeria ${blockId} sem asset projetado; removido do bloco publico`
+        : `bloco de imagem ${blockId} sem asset projetado`,
+    )
   }
 
   // FONTES. Depois da midia, sobre os mesmos blocos: cada passo troca uma
