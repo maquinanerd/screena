@@ -35,7 +35,7 @@
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -855,10 +855,22 @@ async function main(): Promise<void> {
     // `CINERIE_LAB_HOLD_SECONDS`: mantem o Next e o banco semeado de pe DEPOIS das
     // provas, para medicao por fora — `seo:audit` e `perf:lab`. Nao muda prova
     // nenhuma, e sem a variavel o validador termina como sempre terminou.
+    //
+    // `CINERIE_LAB_STOP_FILE`: o hold termina ANTES do prazo quando esse arquivo
+    // aparece, e o `finally` abaixo derruba o Next e o Postgres. Matar o processo no
+    // lugar disso pula o `finally` — medido: `next start` e `postgres.exe` ficaram
+    // orfaos, segurando as portas e o diretorio de dados.
     const holdSeconds = Number(process.env.CINERIE_LAB_HOLD_SECONDS ?? "0");
     if (Number.isFinite(holdSeconds) && holdSeconds > 0) {
-      console.log(`\n[lab] Next de pe em ${base} por ${holdSeconds}s (CINERIE_LAB_HOLD_SECONDS)`);
-      await new Promise((resolve) => setTimeout(resolve, holdSeconds * 1000));
+      const stopFile = process.env.CINERIE_LAB_STOP_FILE ?? "";
+      console.log(
+        `\n[lab] Next de pe em ${base} por ${holdSeconds}s (CINERIE_LAB_HOLD_SECONDS)` +
+          (stopFile === "" ? "" : ` ou ate existir ${stopFile} (CINERIE_LAB_STOP_FILE)`),
+      );
+      const deadline = Date.now() + holdSeconds * 1000;
+      while (Date.now() < deadline && !(stopFile !== "" && existsSync(stopFile))) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
+      }
     }
   } finally {
     server?.kill();

@@ -142,7 +142,10 @@ Protocol** contra `next start`.
   checagem estática `css:move-check`: nada reescrito, ordem mantida, nenhuma regra que ficou no
   global empatando com uma regra movida que ela vencia por vir depois, exclusividade de bloco.
 
-Como rodar, com o laboratório de pé (`validate:route-cache` com `CINERIE_LAB_HOLD_SECONDS`):
+Como rodar, com o laboratório de pé (`validate:route-cache` com `CINERIE_LAB_HOLD_SECONDS`; com
+`CINERIE_LAB_STOP_FILE=<arquivo>`, criar o arquivo encerra o hold e derruba o Next e o Postgres pelo
+próprio validador — matar o processo deixa os dois órfãos). O ruído (`PARITY_NOISE`) tem de ser uma
+segunda captura do MESMO build e do MESMO CSS injetado da linha de base; a comparação recusa outro.
 
 ```text
 DATABASE_URL=<postgres do laboratório> pnpm --filter @screena/web css:parity:seed
