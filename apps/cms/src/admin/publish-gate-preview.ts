@@ -59,19 +59,34 @@ export function relationIds(value: unknown): readonly string[] {
 }
 
 /**
- * Ids de midia citados DENTRO dos blocos de imagem do corpo.
+ * Ids de midia que o CORPO exibe: bloco `image` e cada foto de bloco `gallery`.
  *
- * O gate do servidor conta estes junto com capa e galeria: uma materia cujo
- * corpo aponta para midia proibida e recusada. A previsao precisa olhar o mesmo
- * conjunto, senao anunciaria "pode publicar" e o servidor recusaria.
+ * O gate do servidor conta estes junto com capa e "imagens de apoio": uma
+ * materia cujo corpo aponta para midia proibida e recusada.
+ *
+ * PORTA UNICA. `hooks/articles.ts` IMPORTA esta funcao em vez de manter a
+ * propria copia. Havia duas, identicas, e as duas esqueciam a galeria do mesmo
+ * jeito — o que so nao aparecia porque a galeria morria no worker e nenhuma foto
+ * dela chegava ao site. Duas copias de uma regra de licenca sao duas chances de
+ * a barra do editor dizer "pode publicar" enquanto o servidor recusa, ou o
+ * contrario.
  */
 export function bodyMediaIds(body: unknown): readonly string[] {
   if (!Array.isArray(body)) return []
   return body.flatMap((raw) => {
     if (raw === null || typeof raw !== 'object') return []
     const block = raw as Record<string, unknown>
-    if (String(block.blockType ?? block.type ?? '') !== 'image') return []
-    return relationIds(block.media)
+    const type = String(block.blockType ?? block.type ?? '')
+    if (type === 'image') return relationIds(block.media)
+    if (type === 'gallery') {
+      const items = Array.isArray(block.items) ? block.items : []
+      return items.flatMap((item) =>
+        item !== null && typeof item === 'object'
+          ? relationIds((item as Record<string, unknown>).media)
+          : [],
+      )
+    }
+    return []
   })
 }
 

@@ -28,6 +28,7 @@ import type {
 import { APIError } from 'payload'
 
 import { toActor } from '../actor.js'
+import { bodyMediaIds } from '../admin/publish-gate-preview.js'
 import {
   AUTOMATION_PUBLISHER_FORBIDDEN_FIELDS,
   HUMAN_FORBIDDEN_FIELDS,
@@ -138,10 +139,16 @@ function isImageBlock(raw: unknown): raw is Record<string, unknown> {
   return String(block.blockType ?? block.type ?? '') === 'image'
 }
 
-function bodyMediaIds(body: unknown): string[] {
-  if (!Array.isArray(body)) return []
-  return body.flatMap((raw) => (isImageBlock(raw) ? idsOf(raw.media) : []))
+function isGalleryBlock(raw: unknown): raw is Record<string, unknown> {
+  if (raw === null || typeof raw !== 'object') return false
+  const block = raw as Record<string, unknown>
+  return String(block.blockType ?? block.type ?? '') === 'gallery'
 }
+
+// `bodyMediaIds` vem de `admin/publish-gate-preview.ts` — PORTA UNICA com a
+// previsao da interface. A copia local que existia aqui esquecia as fotos de
+// `gallery` exatamente como a da previsao, e manter duas e o que permite que
+// elas voltem a divergir.
 
 /**
  * Blocos de imagem do corpo que NAO tem relacao de midia verificavel.
@@ -162,7 +169,25 @@ function bodyMediaIds(body: unknown): string[] {
  */
 function unverifiableBodyMediaCount(body: unknown): number {
   if (!Array.isArray(body)) return 0
-  return body.filter((raw) => isImageBlock(raw) && idsOf(raw.media).length === 0).length
+  return body.reduce((count: number, raw) => {
+    if (isImageBlock(raw)) return count + (idsOf(raw.media).length === 0 ? 1 : 0)
+    // Mesma FK `ON DELETE set null` em `articles_blocks_gallery_items.media_id`:
+    // apagar a midia deixa a FOTO da galeria apontando para nada — e ela
+    // publicaria normal se so os blocos `image` fossem contados.
+    if (isGalleryBlock(raw)) {
+      const items = Array.isArray(raw.items) ? raw.items : []
+      return (
+        count +
+        items.filter(
+          (item) =>
+            item !== null &&
+            typeof item === 'object' &&
+            idsOf((item as Record<string, unknown>).media).length === 0,
+        ).length
+      )
+    }
+    return count
+  }, 0)
 }
 
 async function countUnauthorizedMedia(
@@ -242,7 +267,7 @@ export async function assemblePublishGateInput(
         req,
         heroIds[0] ?? null,
         idsOf(doc.gallery),
-        bodyMediaIds(doc.body),
+        [...bodyMediaIds(doc.body)],
       )) + unverifiableBodyMediaCount(doc.body),
     legalHold: doc.legalHold === true,
   }
