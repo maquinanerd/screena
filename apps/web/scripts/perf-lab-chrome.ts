@@ -36,15 +36,10 @@
  * virgula). Sai com codigo 1 quando uma CAUSA estrutural volta.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import net from "node:net";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { type Cdp, closeChrome, DEFAULT_CHROME, launchChrome, openTab, sleep } from "./lab/cdp-chrome";
 
 const BASE = (process.env.PERF_LAB_BASE ?? "").replace(/\/$/, "");
-const CHROME =
-  process.env.PERF_LAB_CHROME ?? "C:/Program Files/Google/Chrome/Application/chrome.exe";
+const CHROME = process.env.PERF_LAB_CHROME ?? DEFAULT_CHROME;
 const RUNS = Math.max(1, Number(process.env.PERF_LAB_RUNS ?? "3"));
 const PATHS = (process.env.PERF_LAB_PATHS ?? "/pt/,/pt/filmes/filme-1/,/pt/series/serie-1/")
   .split(",")
@@ -84,123 +79,7 @@ const PROFILES: readonly Profile[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Cliente minimo do DevTools Protocol (WebSocket nativo do Node)
-// ---------------------------------------------------------------------------
-
-type Params = Record<string, unknown>;
-
-class Cdp {
-  private nextId = 1;
-  private readonly pending = new Map<
-    number,
-    { readonly resolve: (value: Params) => void; readonly reject: (error: Error) => void }
-  >();
-  private readonly listeners = new Map<string, Array<(params: Params) => void>>();
-
-  private constructor(private readonly socket: WebSocket) {
-    socket.addEventListener("message", (event: MessageEvent) => {
-      const message = JSON.parse(String(event.data)) as {
-        id?: number;
-        result?: Params;
-        error?: { message: string };
-        method?: string;
-        params?: Params;
-      };
-      if (message.id !== undefined) {
-        const waiter = this.pending.get(message.id);
-        if (waiter === undefined) return;
-        this.pending.delete(message.id);
-        if (message.error !== undefined) waiter.reject(new Error(message.error.message));
-        else waiter.resolve(message.result ?? {});
-        return;
-      }
-      if (message.method === undefined) return;
-      for (const listener of this.listeners.get(message.method) ?? []) listener(message.params ?? {});
-    });
-  }
-
-  static async connect(url: string): Promise<Cdp> {
-    const socket = new WebSocket(url);
-    await new Promise<void>((resolve, reject) => {
-      socket.addEventListener("open", () => resolve());
-      socket.addEventListener("error", () => reject(new Error(`CDP: sem conexao em ${url}`)));
-    });
-    return new Cdp(socket);
-  }
-
-  send(method: string, params: Params = {}): Promise<Params> {
-    const id = this.nextId++;
-    this.socket.send(JSON.stringify({ id, method, params }));
-    return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
-  }
-
-  on(method: string, listener: (params: Params) => void): void {
-    this.listeners.set(method, [...(this.listeners.get(method) ?? []), listener]);
-  }
-
-  clear(method: string): void {
-    this.listeners.delete(method);
-  }
-
-  close(): void {
-    this.socket.close();
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.unref();
-    server.on("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      const port = typeof address === "object" && address !== null ? address.port : 0;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-/** A porta de depuracao ja responde? Recusa de conexao aqui e o Chrome ainda subindo. */
-async function devtoolsReady(port: number): Promise<boolean> {
-  try {
-    return (await fetch(`http://127.0.0.1:${port}/json/version`)).ok;
-  } catch {
-    return false;
-  }
-}
-
-async function launchChrome(): Promise<{ proc: ChildProcess; port: number; userDataDir: string }> {
-  const port = await freePort();
-  const userDataDir = mkdtempSync(path.join(tmpdir(), "cinerie-perf-lab-"));
-  const proc = spawn(
-    CHROME,
-    [
-      "--headless=new",
-      "--disable-gpu",
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-extensions",
-      `--user-data-dir=${userDataDir}`,
-      `--remote-debugging-port=${port}`,
-      "about:blank",
-    ],
-    { stdio: "ignore" },
-  );
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    if (await devtoolsReady(port)) return { proc, port, userDataDir };
-    await sleep(250);
-  }
-  proc.kill();
-  throw new Error(`o Chrome nao abriu a porta de depuracao em 30 s (${CHROME})`);
-}
-
-// ---------------------------------------------------------------------------
-// Medicao
+// Medicao (o cliente do DevTools Protocol mora em `lab/cdp-chrome.ts`)
 // ---------------------------------------------------------------------------
 
 /** Instalado em todo documento novo, ANTES do primeiro script da pagina. */
@@ -347,13 +226,11 @@ function ms(value: number | null): string {
 async function main(): Promise<void> {
   if (BASE === "") throw new Error("PERF_LAB_BASE e obrigatoria (ex.: http://127.0.0.1:3000)");
 
-  const { proc, port, userDataDir } = await launchChrome();
+  const chrome = await launchChrome(CHROME, "cinerie-perf-lab-");
   const failures: string[] = [];
   const warnings: string[] = [];
   try {
-    const created = await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" });
-    const target = (await created.json()) as { webSocketDebuggerUrl: string };
-    const cdp = await Cdp.connect(target.webSocketDebuggerUrl);
+    const cdp = await openTab(chrome.port);
     await cdp.send("Page.enable");
     await cdp.send("Network.enable");
     await cdp.send("Runtime.enable");
@@ -393,9 +270,7 @@ async function main(): Promise<void> {
     }
     cdp.close();
   } finally {
-    proc.kill();
-    await sleep(500);
-    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    await closeChrome(chrome);
   }
 
   process.stdout.write("\n");

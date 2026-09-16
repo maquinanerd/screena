@@ -123,19 +123,33 @@ estático/dinâmico; a prova 7 do `validate:route-cache` confere contra o manife
 existe no build. A prova usa o mesmo caminho do `perf:lab`: **Chrome headless por DevTools
 Protocol** contra `next start`.
 
-- **Captura:** para cada rota da lista, em 412 px (mobile) e 1350 px (desktop), o estilo
-  computado de todo elemento com classe (propriedades de caixa, tipografia, cor, grid/flex,
-  visibilidade), com a chave `rota + caminho do elemento`.
+- **Captura:** para cada rota da lista, em 412, 700, 900 e 1350 px (os pontos de quebra da
+  folha são 599, 767 e 1023), o estilo computado de todo elemento e de `::before`/`::after`
+  com conteúdo, com a chave `rota + caminho do elemento`. Rede externa bloqueada e animação
+  congelada.
 - **Paridade de carga direta:** captura no build ANTES da mudança, captura no build DEPOIS, diff
-  — **precisa sair vazio**.
-- **Paridade de navegação:** abre a rota A, navega pelo cliente para B clicando num link e captura
-  B; compara com B aberta direto. Pega a folha de A vazando para B (§2).
-- **Rotas:** `/pt/`, `/pt/filmes/`, `/pt/series/`, `/pt/filmes/filme-1/`, `/pt/series/serie-1/`
-  (com o guia de temporadas semeado), `/pt/pessoas/pessoa-1/`, uma matéria semeada, `/pt/explorar/`,
-  `/pt/em-breve/`, `/pt/onde-assistir/`, `/pt/entrar/`, `/pt/termos/` e as demais do segmento
-  movido no PR.
-- **Controle negativo:** o PR de ferramenta prova que a paridade REPROVA uma troca proposital de
-  ordem entre duas regras conflitantes.
+  — **precisa sair vazio**. O ruído (carrossel, relógio) é medido entre duas capturas do MESMO
+  build e descontado.
+- **Paridade de navegação, como ACÚMULO:** em vez de clicar de A para B, cada rota é medida de
+  novo com TODAS as folhas vistas nas outras rotas acrescentadas, em ordem direta e inversa, e
+  comparada com ela mesma. É o superconjunto de qualquer histórico de navegação (§2), e é
+  determinístico.
+- **Rotas:** 38, da home às páginas de conta, incluindo matérias com e sem capa, a série com
+  guia de temporadas, temporada, episódio, pessoa com biografia, galerias e a 404 — os dados que
+  o seed do laboratório não traz vêm de `css:parity:seed`.
+- **Controle negativo:** CSS injetado depois da carga (`PARITY_INJECT_CSS`) tem de reprovar.
+- **O que a paridade não vê** (`:hover`, `:focus`, elemento que só aparece com interação) fica com a
+  checagem estática `css:move-check`: nada reescrito, ordem mantida, nenhuma regra que ficou no
+  global empatando com uma regra movida que ela vencia por vir depois, exclusividade de bloco.
+
+Como rodar, com o laboratório de pé (`validate:route-cache` com `CINERIE_LAB_HOLD_SECONDS`):
+
+```text
+DATABASE_URL=<postgres do laboratório> pnpm --filter @screena/web css:parity:seed
+PARITY_MODE=capture PARITY_BASE=http://127.0.0.1:PORTA PARITY_OUT=antes.json pnpm --filter @screena/web css:parity
+PARITY_MODE=compare PARITY_BASELINE=antes.json PARITY_NOISE=antes-ruido.json PARITY_CURRENT=depois.json pnpm --filter @screena/web css:parity
+CSS_MOVE_BASE_REF=<ref antes da divisão> pnpm --filter @screena/web css:move-check
+```
 
 ---
 
