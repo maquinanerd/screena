@@ -260,6 +260,11 @@ interface Capture {
   readonly failures: CaptureFailure[];
 }
 
+/**
+ * Avalia um script de pagina. Contrato dos scripts deste arquivo: devolvem TEXTO
+ * JSON (`JSON.stringify(...)`) ou um valor que nao seja string (`true`). Um texto
+ * cru como `document.readyState` nao e JSON e derruba a leitura.
+ */
 async function evaluate<T>(cdp: Cdp, expression: string): Promise<T> {
   const result = await Promise.race([
     cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }),
@@ -307,7 +312,7 @@ async function load(cdp: Cdp, url: string, width: number): Promise<number | null
 const NAVIGATING = /context was destroyed|Cannot find context|Inspected target navigated|Execution context/i;
 
 /** Espera um tempo curto dentro da pagina: da a chance de um redirecionamento no cliente comecar. */
-const SETTLE_SCRIPT = `(async () => { await new Promise((r) => setTimeout(r, 400)); return document.readyState; })()`;
+const SETTLE_SCRIPT = `(async () => { await new Promise((r) => setTimeout(r, 400)); return JSON.stringify(document.readyState); })()`;
 
 /** Espera o proximo `load`, ou desiste em `ms`. */
 function nextLoad(cdp: Cdp, ms: number): Promise<void> {
@@ -485,6 +490,9 @@ async function capture(): Promise<void> {
     process.stdout.write(
       `\nCaptura gravada em ${out}. Acumulo: ${leaks} caso(s) com vazamento. Falhas de captura: ${failures.length}.\n`,
     );
+    // A captura com falha fica gravada para inspecao, mas nao sai verde: encadeada
+    // num `&&`, ela nao pode deixar o passo seguinte comparar uma medicao vazia.
+    if (failures.length > 0) process.exitCode = 1;
     cdp.close();
   } finally {
     await closeChrome(chrome);
