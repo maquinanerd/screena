@@ -328,11 +328,16 @@ const NAVIGATING = /context was destroyed|Cannot find context|Inspected target n
 const SETTLE_SCRIPT = `(async () => {
   await new Promise((r) => setTimeout(r, 400));
   await document.fonts.ready;
-  // Imagem visivel ainda carregando muda largura e altura depois da foto — medido:
-  // logo do rodape em 180px numa foto e 179,578px na seguinte. Espera ate 3 s.
-  const visible = () => [...document.images].filter((img) => img.getBoundingClientRect().top < innerHeight);
-  const deadline = Date.now() + 3000;
-  while (Date.now() < deadline && visible().some((img) => !img.complete)) await new Promise((r) => setTimeout(r, 100));
+  // Imagem carregando muda largura e altura entre uma foto e outra — medido: logo
+  // do rodape em 180px numa foto e 179,578px na seguinte; e, com espera so pelas
+  // visiveis, 26px numa captura e 25,78px na outra (lazy, abaixo da dobra). Toda
+  // imagem vira eager e a foto espera todas (ate 5 s): mede-se o estado FINAL, o
+  // mesmo nas duas builds. Imagem externa bloqueada termina em erro, e conta.
+  for (const img of document.images) if (img.loading === "lazy") img.loading = "eager";
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline && [...document.images].some((img) => !img.complete)) {
+    await new Promise((r) => setTimeout(r, 100));
+  }
   return JSON.stringify(document.readyState);
 })()`;
 
