@@ -137,7 +137,14 @@ Protocol** contra `next start`.
 - **Rotas:** 38, da home às páginas de conta, incluindo matérias com e sem capa, a série com
   guia de temporadas, temporada, episódio, pessoa com biografia, galerias e a 404 — os dados que
   o seed do laboratório não traz vêm de `css:parity:seed`.
-- **Controle negativo:** CSS injetado depois da carga (`PARITY_INJECT_CSS`) tem de reprovar.
+- **Controles negativos:** CSS injetado depois da carga (`PARITY_INJECT_CSS`) tem de reprovar a carga
+  direta; CSS acrescentado só junto com as folhas das outras rotas (`PARITY_LEAK_CSS`) tem de acusar
+  vazamento no acúmulo.
+- **Acúmulo em três fotos:** sem as folhas acrescentadas, com elas e de novo sem elas. Vazamento é o
+  que muda com as folhas e volta sem elas; o que difere entre a primeira e a terceira mudou sozinho
+  (imagem decodificando, redirecionamento no cliente) e sai como instabilidade.
+- **Cache ISR:** a captura exige `PARITY_NEXT_DIR` e regera cada rota com `x-prerender-revalidate`
+  antes de medir — ficha com `revalidate = 300` semeada depois do primeiro pedido saía velha.
 - **O que a paridade não vê** (`:hover`, `:focus`, elemento que só aparece com interação) fica com a
   checagem estática `css:move-check`: nada reescrito, ordem mantida, nenhuma regra que ficou no
   global empatando com uma regra movida que ela vencia por vir depois, exclusividade de bloco.
@@ -149,7 +156,7 @@ segunda captura do MESMO build e do MESMO CSS injetado da linha de base; a compa
 
 ```text
 DATABASE_URL=<postgres do laboratório> pnpm --filter @screena/web css:parity:seed
-PARITY_MODE=capture PARITY_BASE=http://127.0.0.1:PORTA PARITY_OUT=antes.json pnpm --filter @screena/web css:parity
+PARITY_MODE=capture PARITY_BASE=http://127.0.0.1:PORTA PARITY_NEXT_DIR=apps/web/.next PARITY_OUT=antes.json pnpm --filter @screena/web css:parity
 PARITY_MODE=compare PARITY_BASELINE=antes.json PARITY_NOISE=antes-ruido.json PARITY_CURRENT=depois.json pnpm --filter @screena/web css:parity
 CSS_MOVE_BASE_REF=<ref antes da divisão> pnpm --filter @screena/web css:move-check
 ```

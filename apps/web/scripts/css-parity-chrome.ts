@@ -37,10 +37,13 @@
  *   PARITY_MODE=compare PARITY_BASELINE=antes.json PARITY_NOISE=antes-2.json \
  *     PARITY_CURRENT=depois.json pnpm --filter @screena/web css:parity
  *
- * Captura: PARITY_WIDTHS (padrao 412,700,900,1350), PARITY_PATHS (virgula; no Git
- * Bash use MSYS2_ENV_CONV_EXCL=PARITY_PATHS), PARITY_ACCUMULATE (padrao 1),
- * PARITY_CHROME, e PARITY_INJECT_CSS — CSS injetado depois da carga, o CONTROLE
- * NEGATIVO: com ele, a comparacao TEM de acusar diferenca.
+ * Captura: PARITY_NEXT_DIR (o `.next` servido, obrigatoria: regera as paginas ISR
+ * antes de medir), PARITY_WIDTHS (padrao 412,700,900,1350), PARITY_PATHS (virgula;
+ * no Git Bash use MSYS2_ENV_CONV_EXCL=PARITY_PATHS), PARITY_ACCUMULATE (padrao 1),
+ * PARITY_CHROME, PARITY_INJECT_CSS — CSS injetado depois da carga, o CONTROLE
+ * NEGATIVO da carga direta: com ele, a comparacao TEM de acusar diferenca — e
+ * PARITY_LEAK_CSS, o CONTROLE NEGATIVO do acumulo: CSS acrescentado so junto com as
+ * folhas das outras rotas; com ele, o acumulo TEM de acusar vazamento.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -201,11 +204,18 @@ const APPEND_SCRIPT = (hrefs: readonly string[]): string => `(async () => {
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = href;
+      link.setAttribute("data-parity-appended", "");
       link.onload = resolve;
       link.onerror = resolve;
       document.head.appendChild(link);
     });
   }
+  return true;
+})()`;
+
+/** Roda na pagina: tira as folhas que `APPEND_SCRIPT` acrescentou. */
+const REMOVE_APPENDED_SCRIPT = `(() => {
+  for (const link of document.querySelectorAll("link[data-parity-appended]")) link.remove();
   return true;
 })()`;
 
@@ -235,8 +245,11 @@ interface AccumulationResult {
   readonly path: string;
   readonly width: number;
   readonly order: "forward" | "reverse";
+  /** Propriedades que mudaram com as folhas acrescentadas e VOLTARAM ao tira-las: vazamento. */
   readonly changed: number;
   readonly samples: string[];
+  /** Propriedades que mudaram sozinhas durante a medicao (imagem decodificada, hidratacao): nao sao vazamento. */
+  readonly unstable: number;
 }
 
 /** Rota que nao pode ser medida. Fica no arquivo, e o `compare` reprova por ela. */
@@ -312,7 +325,16 @@ async function load(cdp: Cdp, url: string, width: number): Promise<number | null
 const NAVIGATING = /context was destroyed|Cannot find context|Inspected target navigated|Execution context/i;
 
 /** Espera um tempo curto dentro da pagina: da a chance de um redirecionamento no cliente comecar. */
-const SETTLE_SCRIPT = `(async () => { await new Promise((r) => setTimeout(r, 400)); return JSON.stringify(document.readyState); })()`;
+const SETTLE_SCRIPT = `(async () => {
+  await new Promise((r) => setTimeout(r, 400));
+  await document.fonts.ready;
+  // Imagem visivel ainda carregando muda largura e altura depois da foto — medido:
+  // logo do rodape em 180px numa foto e 179,578px na seguinte. Espera ate 3 s.
+  const visible = () => [...document.images].filter((img) => img.getBoundingClientRect().top < innerHeight);
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline && visible().some((img) => !img.complete)) await new Promise((r) => setTimeout(r, 100));
+  return JSON.stringify(document.readyState);
+})()`;
 
 /** Espera o proximo `load`, ou desiste em `ms`. */
 function nextLoad(cdp: Cdp, ms: number): Promise<void> {
@@ -354,29 +376,104 @@ function styleOf(snapshot: Snapshot, index: number): string | null {
 }
 
 /** Diferencas de estilo entre duas medicoes do MESMO documento (acumulo). */
-function sameDocumentDiff(a: Snapshot, b: Snapshot): { changed: number; samples: string[] } {
-  const byKey = new Map(b.elements.map((row) => [row[0], row]));
+/**
+ * Acumulo medido em TRES fotos do mesmo documento: sem as folhas acrescentadas
+ * (`direct`), com elas (`piled`) e de novo sem elas (`restored`).
+ *
+ * Duas fotos so nao bastam — medido: com a maquina carregada, uma imagem terminou
+ * de decodificar e uma pagina redirecionou no cliente ENTRE as fotos, e isso saiu
+ * como "vazamento" numa build com UMA folha so. Vazamento e o que muda com as
+ * folhas e volta sem elas; o que difere entre a primeira e a terceira foto mudou
+ * sozinho, e conta como instabilidade, nao como vazamento.
+ */
+function accumulationDiff(
+  direct: Snapshot,
+  piled: Snapshot,
+  restored: Snapshot,
+): { changed: number; samples: string[]; unstable: number } {
+  const piledByKey = new Map(piled.elements.map((row) => [row[0], row]));
+  const restoredByKey = new Map(restored.elements.map((row) => [row[0], row]));
   let changed = 0;
+  let unstable = 0;
   const samples: string[] = [];
-  for (const row of a.elements) {
-    const other = byKey.get(row[0]);
-    if (other === undefined) continue;
+  for (const row of direct.elements) {
+    const withSheets = piledByKey.get(row[0]);
+    const without = restoredByKey.get(row[0]);
+    if (withSheets === undefined || without === undefined) continue;
+    if (withSheets[1] !== row[1] || without[1] !== row[1]) {
+      unstable += 1;
+      continue;
+    }
     for (const [slot, props] of [[2, PROPS], [3, PSEUDO_PROPS], [4, PSEUDO_PROPS]] as const) {
-      const left = styleOf(a, row[slot]);
-      const right = styleOf(b, other[slot]);
-      if (left === right) continue;
-      const l = (left ?? "").split("|");
-      const r = (right ?? "").split("|");
+      const before = styleOf(direct, row[slot]);
+      const during = styleOf(piled, withSheets[slot]);
+      const after = styleOf(restored, without[slot]);
+      if (before === during && before === after) continue;
+      const b = (before ?? "").split("|");
+      const d = (during ?? "").split("|");
+      const a = (after ?? "").split("|");
       for (let i = 0; i < props.length; i += 1) {
-        if (l[i] === r[i]) continue;
+        if (b[i] !== a[i]) {
+          unstable += 1;
+          continue;
+        }
+        if (b[i] === d[i]) continue;
         changed += 1;
         if (samples.length < 12) {
-          samples.push(`${row[0]} .${row[1].split(" ").join(".")} ${slot === 2 ? "" : slot === 3 ? "::before " : "::after "}${props[i]}: ${l[i] ?? "-"} -> ${r[i] ?? "-"}`);
+          samples.push(`${row[0]} .${row[1].split(" ").join(".")} ${slot === 2 ? "" : slot === 3 ? "::before " : "::after "}${props[i]}: ${b[i] ?? "-"} -> ${d[i] ?? "-"}`);
         }
       }
     }
   }
-  return { changed, samples };
+  return { changed, samples, unstable };
+}
+
+/**
+ * Regera no cache ISR, antes da captura, toda rota da lista.
+ *
+ * Medido: as fichas de filme e pessoa tem `revalidate = 300`, e as provas do
+ * `validate:route-cache` ja as tinham pedido ANTES de `css:parity:seed` acrescentar
+ * elenco e biografia. A primeira captura recebeu a versao guardada (filme 194
+ * elementos, pessoa 166); a segunda, dez minutos depois, a nova (263 e 215) — e a
+ * comparacao acusou 182 "diferencas" que nao eram de CSS.
+ *
+ * O pedido com `x-prerender-revalidate: <previewModeId>` e a revalidacao sob
+ * demanda do proprio Next (`checkIsOnDemandRevalidate`): a pagina e renderizada de
+ * novo e o cache e atualizado (`x-nextjs-cache: REVALIDATED`). O id sai do
+ * `prerender-manifest.json` do build servido (`PARITY_NEXT_DIR`). Contra um
+ * servidor sem o build local a mao, `PARITY_NO_REVALIDATE=1` pula — de proposito.
+ */
+async function revalidateIsrPages(base: string, paths: readonly string[]): Promise<void> {
+  if (process.env.PARITY_NO_REVALIDATE === "1") {
+    process.stdout.write("[aviso] PARITY_NO_REVALIDATE=1: paginas ISR podem vir do cache antigo\n");
+    return;
+  }
+  const nextDir = process.env.PARITY_NEXT_DIR ?? "";
+  if (nextDir === "") {
+    throw new Error(
+      "PARITY_NEXT_DIR (o `.next` servido) e obrigatoria: sem ela a captura pode medir pagina ISR velha. " +
+        "Use PARITY_NO_REVALIDATE=1 para pular conscientemente.",
+    );
+  }
+  const manifest = JSON.parse(readFileSync(`${nextDir}/prerender-manifest.json`, "utf8")) as {
+    preview?: { previewModeId?: string };
+  };
+  const previewModeId = manifest.preview?.previewModeId;
+  if (typeof previewModeId !== "string" || previewModeId === "") {
+    throw new Error(`sem preview.previewModeId em ${nextDir}/prerender-manifest.json`);
+  }
+  let regenerated = 0;
+  for (const pagePath of paths) {
+    const response = await fetch(`${base}${pagePath}`, {
+      headers: { "x-prerender-revalidate": previewModeId },
+      redirect: "manual",
+    });
+    await response.arrayBuffer();
+    if (response.headers.get("x-nextjs-cache") === "REVALIDATED") regenerated += 1;
+  }
+  process.stdout.write(
+    `revalidacao sob demanda: ${regenerated} de ${paths.length} rota(s) regeradas no cache ISR (as demais sao dinamicas)\n`,
+  );
 }
 
 async function capture(): Promise<void> {
@@ -390,6 +487,9 @@ async function capture(): Promise<void> {
     .filter((value) => value !== "");
   const accumulate = (process.env.PARITY_ACCUMULATE ?? "1") !== "0";
   const injectedCss = process.env.PARITY_INJECT_CSS ?? null;
+  const leakCss = process.env.PARITY_LEAK_CSS ?? null;
+
+  await revalidateIsrPages(base, paths);
 
   const chrome = await launchChrome(process.env.PARITY_CHROME ?? DEFAULT_CHROME, "cinerie-css-parity-");
   const pages: CapturedPage[] = [];
@@ -453,16 +553,31 @@ async function capture(): Promise<void> {
         for (const width of edgeWidths) {
           for (const order of ["forward", "reverse"] as const) {
             try {
-              await load(cdp, `${base}${pagePath}`, width);
-              await evaluateSettled(cdp, SETTLE_SCRIPT);
-              if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
-              const direct = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
-              const hrefs = order === "forward" ? allSheets : [...allSheets].reverse();
-              await evaluateSettled(cdp, APPEND_SCRIPT(hrefs));
-              const piled = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
-              const { changed, samples } = sameDocumentDiff(direct, piled);
-              accumulation.push({ path: pagePath, width, order, changed, samples });
-              if (changed > 0) process.stdout.write(`  [VAZAMENTO] ${pagePath} @${width} (${order}): ${changed}\n`);
+              const ordered = order === "forward" ? allSheets : [...allSheets].reverse();
+              // CONTROLE NEGATIVO do acumulo: uma "folha de rota" que vaza de proposito,
+              // acrescentada junto com as outras — o acumulo TEM de acusar.
+              const hrefs = leakCss === null ? ordered : [...ordered, `data:text/css,${encodeURIComponent(leakCss)}`];
+              let result: ReturnType<typeof accumulationDiff> | null = null;
+              // O documento pode trocar no meio (redirecionamento no cliente): as tres
+              // fotos tem de ser da MESMA URL, senao mede de novo.
+              for (let attempt = 1; attempt <= 3 && result === null; attempt += 1) {
+                await load(cdp, `${base}${pagePath}`, width);
+                await evaluateSettled(cdp, SETTLE_SCRIPT);
+                if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
+                const direct = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
+                await evaluateSettled(cdp, APPEND_SCRIPT(hrefs));
+                const piled = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
+                await evaluateSettled(cdp, REMOVE_APPENDED_SCRIPT);
+                const restored = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
+                if (direct.url === piled.url && piled.url === restored.url) {
+                  result = accumulationDiff(direct, piled, restored);
+                }
+              }
+              if (result === null) throw new Error("o documento trocou de URL durante as tres fotos, em 3 tentativas");
+              accumulation.push({ path: pagePath, width, order, ...result });
+              if (result.changed > 0) {
+                process.stdout.write(`  [VAZAMENTO] ${pagePath} @${width} (${order}): ${result.changed}\n`);
+              }
             } catch (error) {
               failures.push({ path: pagePath, width, phase: "accumulation", error: firstLine(error) });
               process.stdout.write(`  [ERRO] acumulo ${pagePath} @${width} (${order}): ${firstLine(error)}\n`);
@@ -487,8 +602,10 @@ async function capture(): Promise<void> {
     };
     writeFileSync(out, JSON.stringify(result));
     const leaks = accumulation.filter((entry) => entry.changed > 0).length;
+    const unstable = accumulation.reduce((sum, entry) => sum + entry.unstable, 0);
     process.stdout.write(
-      `\nCaptura gravada em ${out}. Acumulo: ${leaks} caso(s) com vazamento. Falhas de captura: ${failures.length}.\n`,
+      `\nCaptura gravada em ${out}. Acumulo: ${leaks} caso(s) com vazamento ` +
+        `(${unstable} propriedade(s) mudaram sozinhas durante as fotos). Falhas de captura: ${failures.length}.\n`,
     );
     // A captura com falha fica gravada para inspecao, mas nao sai verde: encadeada
     // num `&&`, ela nao pode deixar o passo seguinte comparar uma medicao vazia.
@@ -658,6 +775,7 @@ function compare(): void {
   }
 
   const leaks = current.accumulation.filter((entry) => entry.changed > 0);
+  const unstable = current.accumulation.reduce((sum, entry) => sum + (entry.unstable ?? 0), 0);
   const captureFailures = [
     ...(baseline.failures ?? []).map((failure) => `base ${failure.path} @${failure.width} (${failure.phase}): ${failure.error}`),
     ...(current.failures ?? []).map((failure) => `atual ${failure.path} @${failure.width} (${failure.phase}): ${failure.error}`),
@@ -667,7 +785,8 @@ function compare(): void {
   process.stdout.write(
     `\nelementos comparados: ${compared} · diferencas de estilo: ${diffs}` +
       ` · descontadas como ruido: ${ignoredByNoise} · sem par: ${unmatched}` +
-      ` · paginas ausentes: ${missing.length} · rotas com vazamento no acumulo: ${leaks.length}\n`,
+      ` · paginas ausentes: ${missing.length} · rotas com vazamento no acumulo: ${leaks.length}` +
+      ` (instabilidade durante as fotos, nao conta como vazamento: ${unstable})\n`,
   );
   for (const sample of samples) process.stdout.write(`  [DIFERENCA] ${sample}\n`);
   for (const sample of noiseSamples) process.stdout.write(`  [RUIDO DESCONTADO] ${sample}\n`);
