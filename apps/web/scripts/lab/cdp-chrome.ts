@@ -141,9 +141,28 @@ export async function openTab(port: number): Promise<Cdp> {
   return Cdp.connect(target.webSocketDebuggerUrl);
 }
 
-/** Encerra o Chrome e apaga o perfil temporario. */
+/**
+ * Encerra o Chrome e apaga o perfil temporario.
+ *
+ * No Windows os processos-filho do Chrome seguram arquivos do perfil por alguns
+ * instantes depois do `kill` — medido: `EPERM` no `rm` ao fim de uma captura longa.
+ * Espera o processo sair, tenta de novo por alguns segundos e, se ainda assim o
+ * sistema nao soltar o diretorio, AVISA com o caminho: um perfil temporario
+ * esquecido em %TEMP% nao invalida a medicao que ja foi gravada.
+ */
 export async function closeChrome(chrome: LaunchedChrome): Promise<void> {
+  const exited = new Promise<void>((resolve) => {
+    if (chrome.proc.exitCode !== null) resolve();
+    else chrome.proc.once("exit", () => resolve());
+  });
   chrome.proc.kill();
-  await sleep(500);
-  rmSync(chrome.userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  await Promise.race([exited, sleep(5_000)]);
+  try {
+    rmSync(chrome.userDataDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 500 });
+  } catch (error) {
+    console.warn(
+      `[aviso] perfil temporario do Chrome nao removido (${(error as Error).message.split("\n")[0]}): ` +
+        `${chrome.userDataDir} — sera limpo pelo sistema`,
+    );
+  }
 }

@@ -239,6 +239,14 @@ interface AccumulationResult {
   readonly samples: string[];
 }
 
+/** Rota que nao pode ser medida. Fica no arquivo, e o `compare` reprova por ela. */
+interface CaptureFailure {
+  readonly path: string;
+  readonly width: number;
+  readonly phase: "direct" | "accumulation";
+  readonly error: string;
+}
+
 interface Capture {
   readonly base: string;
   readonly capturedAt: string;
@@ -249,10 +257,16 @@ interface Capture {
   readonly pages: CapturedPage[];
   readonly sheetSizes: Record<string, { bytes: number; gzip: number }>;
   readonly accumulation: AccumulationResult[];
+  readonly failures: CaptureFailure[];
 }
 
 async function evaluate<T>(cdp: Cdp, expression: string): Promise<T> {
-  const result = await cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+  const result = await Promise.race([
+    cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }),
+    sleep(60_000).then((): never => {
+      throw new Error("Runtime.evaluate sem resposta em 60 s");
+    }),
+  ]);
   const exception = result.exceptionDetails as { text?: string; exception?: { description?: string } } | undefined;
   if (exception !== undefined) {
     throw new Error(`na pagina: ${exception.exception?.description ?? exception.text ?? "erro"}`);
@@ -287,6 +301,47 @@ async function load(cdp: Cdp, url: string, width: number): Promise<number | null
   cdp.clear("Page.loadEventFired");
   cdp.clear("Network.responseReceived");
   return status;
+}
+
+/** Erros de avaliacao que significam "o documento trocou no meio". */
+const NAVIGATING = /context was destroyed|Cannot find context|Inspected target navigated|Execution context/i;
+
+/** Espera um tempo curto dentro da pagina: da a chance de um redirecionamento no cliente comecar. */
+const SETTLE_SCRIPT = `(async () => { await new Promise((r) => setTimeout(r, 400)); return document.readyState; })()`;
+
+/** Espera o proximo `load`, ou desiste em `ms`. */
+function nextLoad(cdp: Cdp, ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      cdp.clear("Page.loadEventFired");
+      resolve();
+    }, ms);
+    cdp.on("Page.loadEventFired", () => {
+      clearTimeout(timer);
+      cdp.clear("Page.loadEventFired");
+      resolve();
+    });
+  });
+}
+
+/**
+ * Avalia na pagina tolerando UMA coisa: o documento trocar no meio — rota que
+ * redireciona pelo cliente depois do `load`. Espera o documento novo e tenta de
+ * novo; qualquer outro erro sobe.
+ */
+async function evaluateSettled<T>(cdp: Cdp, expression: string): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await evaluate<T>(cdp, expression);
+    } catch (error) {
+      if (!NAVIGATING.test((error as Error).message) || attempt >= 4) throw error;
+      await nextLoad(cdp, 30_000);
+    }
+  }
+}
+
+function firstLine(error: unknown): string {
+  return ((error as Error).message ?? String(error)).split("\n")[0] ?? "erro";
 }
 
 function styleOf(snapshot: Snapshot, index: number): string | null {
@@ -335,6 +390,7 @@ async function capture(): Promise<void> {
   const pages: CapturedPage[] = [];
   const sheetSizes: Record<string, { bytes: number; gzip: number }> = {};
   const accumulation: AccumulationResult[] = [];
+  const failures: CaptureFailure[] = [];
   try {
     const cdp = await openTab(chrome.port);
     await cdp.send("Page.enable");
@@ -355,20 +411,30 @@ async function capture(): Promise<void> {
     process.stdout.write(`\nPARIDADE DE CSS — captura de ${base} — ${paths.length} rota(s) x ${widths.length} largura(s)\n`);
     for (const pagePath of paths) {
       for (const width of widths) {
-        const status = await load(cdp, `${base}${pagePath}`, width);
-        if (injectedCss !== null) await evaluate(cdp, INJECT_SCRIPT(injectedCss));
-        const snapshot = await evaluate<Snapshot>(cdp, SNAPSHOT_SCRIPT);
-        pages.push({ ...snapshot, path: pagePath, width, status });
-        const unmeasured = snapshot.sheets.filter((href) => sheetSizes[href] === undefined);
-        if (unmeasured.length > 0) {
-          Object.assign(sheetSizes, await evaluate<Record<string, { bytes: number; gzip: number }>>(cdp, SIZES_SCRIPT(unmeasured)));
+        try {
+          const status = await load(cdp, `${base}${pagePath}`, width);
+          await evaluateSettled(cdp, SETTLE_SCRIPT);
+          if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
+          const snapshot = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
+          pages.push({ ...snapshot, path: pagePath, width, status });
+          const unmeasured = snapshot.sheets.filter((href) => sheetSizes[href] === undefined);
+          if (unmeasured.length > 0) {
+            Object.assign(
+              sheetSizes,
+              await evaluateSettled<Record<string, { bytes: number; gzip: number }>>(cdp, SIZES_SCRIPT(unmeasured)),
+            );
+          }
+        } catch (error) {
+          failures.push({ path: pagePath, width, phase: "direct", error: firstLine(error) });
+          process.stdout.write(`  [ERRO] ${pagePath} @${width}: ${firstLine(error)}\n`);
         }
       }
       const first = pages.find((page) => page.path === pagePath);
       const cssBytes = (first?.sheets ?? []).reduce((sum, href) => sum + (sheetSizes[href]?.bytes ?? 0), 0);
       process.stdout.write(
         `  ${pagePath} -> HTTP ${first?.status ?? "?"} · ${first?.elements.length ?? 0} elementos · ` +
-          `${first?.sheets.length ?? 0} folha(s), ${cssBytes} B de CSS\n`,
+          `${first?.sheets.length ?? 0} folha(s), ${cssBytes} B de CSS` +
+          `${first !== undefined && !first.url.includes(pagePath) ? ` · terminou em ${new URL(first.url).pathname}` : ""}\n`,
       );
     }
 
@@ -381,38 +447,48 @@ async function capture(): Promise<void> {
       for (const pagePath of paths) {
         for (const width of edgeWidths) {
           for (const order of ["forward", "reverse"] as const) {
-            await load(cdp, `${base}${pagePath}`, width);
-            if (injectedCss !== null) await evaluate(cdp, INJECT_SCRIPT(injectedCss));
-            const direct = await evaluate<Snapshot>(cdp, SNAPSHOT_SCRIPT);
-            const hrefs = order === "forward" ? allSheets : [...allSheets].reverse();
-            await evaluate(cdp, APPEND_SCRIPT(hrefs));
-            const piled = await evaluate<Snapshot>(cdp, SNAPSHOT_SCRIPT);
-            const { changed, samples } = sameDocumentDiff(direct, piled);
-            accumulation.push({ path: pagePath, width, order, changed, samples });
-            if (changed > 0) process.stdout.write(`  [VAZAMENTO] ${pagePath} @${width} (${order}): ${changed}\n`);
+            try {
+              await load(cdp, `${base}${pagePath}`, width);
+              await evaluateSettled(cdp, SETTLE_SCRIPT);
+              if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
+              const direct = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
+              const hrefs = order === "forward" ? allSheets : [...allSheets].reverse();
+              await evaluateSettled(cdp, APPEND_SCRIPT(hrefs));
+              const piled = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
+              const { changed, samples } = sameDocumentDiff(direct, piled);
+              accumulation.push({ path: pagePath, width, order, changed, samples });
+              if (changed > 0) process.stdout.write(`  [VAZAMENTO] ${pagePath} @${width} (${order}): ${changed}\n`);
+            } catch (error) {
+              failures.push({ path: pagePath, width, phase: "accumulation", error: firstLine(error) });
+              process.stdout.write(`  [ERRO] acumulo ${pagePath} @${width} (${order}): ${firstLine(error)}\n`);
+            }
           }
         }
       }
     }
+
+    // Gravado ANTES de fechar o Chrome: uma falha na limpeza nao pode levar a medicao junto.
+    const result: Capture = {
+      base,
+      capturedAt: new Date().toISOString(),
+      widths,
+      props: PROPS,
+      pseudoProps: PSEUDO_PROPS,
+      injectedCss,
+      pages,
+      sheetSizes,
+      accumulation,
+      failures,
+    };
+    writeFileSync(out, JSON.stringify(result));
+    const leaks = accumulation.filter((entry) => entry.changed > 0).length;
+    process.stdout.write(
+      `\nCaptura gravada em ${out}. Acumulo: ${leaks} caso(s) com vazamento. Falhas de captura: ${failures.length}.\n`,
+    );
     cdp.close();
   } finally {
     await closeChrome(chrome);
   }
-
-  const result: Capture = {
-    base,
-    capturedAt: new Date().toISOString(),
-    widths,
-    props: PROPS,
-    pseudoProps: PSEUDO_PROPS,
-    injectedCss,
-    pages,
-    sheetSizes,
-    accumulation,
-  };
-  writeFileSync(out, JSON.stringify(result));
-  const leaks = accumulation.filter((entry) => entry.changed > 0).length;
-  process.stdout.write(`\nCaptura gravada em ${out}. Acumulo: ${leaks} caso(s) com vazamento.\n`);
 }
 
 function readCapture(file: string): Capture {
@@ -542,6 +618,10 @@ function compare(): void {
   }
 
   const leaks = current.accumulation.filter((entry) => entry.changed > 0);
+  const captureFailures = [
+    ...(baseline.failures ?? []).map((failure) => `base ${failure.path} @${failure.width} (${failure.phase}): ${failure.error}`),
+    ...(current.failures ?? []).map((failure) => `atual ${failure.path} @${failure.width} (${failure.phase}): ${failure.error}`),
+  ];
   process.stdout.write(`\nPARIDADE DE CSS — ${baselineFile}  x  ${currentFile}\n`);
   process.stdout.write(`\nCSS bloqueante por rota (largura ${baseline.widths[0]}):\n${cssRows.join("\n")}\n`);
   process.stdout.write(
@@ -555,11 +635,12 @@ function compare(): void {
     for (const sample of entry.samples) process.stdout.write(`      ${sample}\n`);
   }
   for (const page of missing) process.stdout.write(`  [AUSENTE] ${page}\n`);
+  for (const failure of captureFailures) process.stdout.write(`  [FALHA DE CAPTURA] ${failure}\n`);
 
   // CONTROLE: comparar quase nada nao prova paridade — prova um laboratorio vazio.
   const tooFew = compared < 5_000;
   if (tooFew) process.stdout.write(`  [CONTROLE] so ${compared} elementos comparados: o laboratorio nao renderizou as rotas\n`);
-  const failed = diffs > 0 || leaks.length > 0 || missing.length > 0 || tooFew;
+  const failed = diffs > 0 || leaks.length > 0 || missing.length > 0 || captureFailures.length > 0 || tooFew;
   process.stdout.write(failed ? "\nRESULTADO: REPROVADO\n" : "\nRESULTADO: PARIDADE — nenhum estilo computado mudou\n");
   if (failed) process.exitCode = 1;
 }
