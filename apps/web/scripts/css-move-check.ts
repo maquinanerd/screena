@@ -13,6 +13,8 @@
  *  3. QUEM FICOU NO GLOBAL NAO PASSA A PERDER: a folha de rota carrega DEPOIS de
  *     todo o `globals.css`. Uma regra que ficou no global e vinha depois da regra
  *     movida, empatando com ela (ver `lab/css-order.ts`), inverteria — reprova.
+ *     E entre DUAS folhas de rota nao ha ordem garantida (ordem de import de cada
+ *     pagina, agrupamento de CSS do build): qualquer empate entre elas reprova.
  *  4. EXCLUSIVIDADE: um bloco de classe e estilizado (como sujeito) numa folha so.
  *  5. REMOVIDA SO SE NAO USADA: regra que sumiu de todas as folhas nao pode citar
  *     classe que o codigo do app ainda usa.
@@ -121,6 +123,23 @@ function main(): void {
       });
     });
   }
+
+  // 3b. regra de uma folha de rota x regra de OUTRA folha de rota. Entre duas folhas
+  // de rota nao ha ordem garantida — ela depende da ordem de import de cada pagina e
+  // do agrupamento de CSS do build —, entao qualquer empate entre elas reprova (o
+  // empate e simetrico: classe em comum, especificidade, importancia e propriedade).
+  const routeSheets = sheets.slice(1);
+  routeSheets.forEach((sheet, s) => {
+    for (const other of routeSheets.slice(s + 1)) {
+      for (const left of sheet.rules) {
+        for (const right of other.rules) {
+          for (const conflict of orderConflicts(left, right)) {
+            errors.push(`[ORDEM ENTRE FOLHAS] ${sheet.file}:${left.line} × ${other.file}:${right.line} — ${conflict}`);
+          }
+        }
+      }
+    }
+  });
 
   // 4. exclusividade de bloco (como sujeito)
   const owners = new Map<string, Set<string>>();
