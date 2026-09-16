@@ -67,6 +67,14 @@ export class Cdp {
     this.listeners.set(method, [...(this.listeners.get(method) ?? []), listener]);
   }
 
+  /** Tira UM ouvinte — `clear` tiraria tambem os de quem mais escuta o mesmo evento. */
+  off(method: string, listener: (params: Params) => void): void {
+    this.listeners.set(
+      method,
+      (this.listeners.get(method) ?? []).filter((registered) => registered !== listener),
+    );
+  }
+
   clear(method: string): void {
     this.listeners.delete(method);
   }

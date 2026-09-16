@@ -48,7 +48,7 @@
 
 import { readFileSync, writeFileSync } from "node:fs";
 
-import { type Cdp, closeChrome, DEFAULT_CHROME, launchChrome, openTab, sleep } from "./lab/cdp-chrome";
+import { type Cdp, closeChrome, DEFAULT_CHROME, launchChrome, openTab, type Params, sleep } from "./lab/cdp-chrome";
 
 const DEFAULT_PATHS = [
   "/pt/",
@@ -303,10 +303,11 @@ async function load(cdp: Cdp, url: string, width: number): Promise<number | null
     mobile: width < 768,
   });
   let status: number | null = null;
-  cdp.on("Network.responseReceived", (params) => {
+  const onResponse = (params: Params): void => {
     const response = params.response as { url: string; status: number };
     if (params.type === "Document" && status === null) status = response.status;
-  });
+  };
+  cdp.on("Network.responseReceived", onResponse);
   const loaded = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`load nao disparou em 90 s: ${url}`)), 90_000);
     cdp.on("Page.loadEventFired", () => {
@@ -317,7 +318,8 @@ async function load(cdp: Cdp, url: string, width: number): Promise<number | null
   await cdp.send("Page.navigate", { url });
   await loaded;
   cdp.clear("Page.loadEventFired");
-  cdp.clear("Network.responseReceived");
+  // `off`, nao `clear`: a espera por rede ociosa tambem escuta `responseReceived`.
+  cdp.off("Network.responseReceived", onResponse);
   return status;
 }
 
@@ -343,12 +345,31 @@ const SETTLE_SCRIPT = `(async () => {
   return JSON.stringify({ readyState: document.readyState, pendingImages: pending() });
 })()`;
 
-/** Espera a pagina assentar e avisa se sobrou imagem sem terminar de carregar. */
-async function settle(cdp: Cdp, label: string): Promise<void> {
+/**
+ * Espera a pagina assentar: fontes e imagens (na pagina) e REDE OCIOSA (aqui) —
+ * nenhuma requisicao em voo por 500 ms seguidos, ate 20 s.
+ *
+ * Medido entre duas capturas do mesmo build: a lista de /pt/listas/ mudou 23px de
+ * altura conforme a foto saia antes ou depois da resposta da sessao, que o
+ * componente de cliente pede depois do `load`; e tres logos do rodape de
+ * /pt/importar/ seguiam carregando depois de 15 s. Sobrou requisicao em voo? A
+ * captura avisa com as URLs, em vez de medir um estado intermediario calada.
+ */
+async function settle(cdp: Cdp, label: string, inflight: ReadonlyMap<string, string>): Promise<void> {
   const state = await evaluateSettled<{ readyState: string; pendingImages: number }>(cdp, SETTLE_SCRIPT);
-  if (state.pendingImages > 0) {
-    process.stdout.write(`  [aviso] ${label}: ${state.pendingImages} imagem(ns) ainda carregando depois de 15 s
-`);
+  const deadline = Date.now() + 20_000;
+  let quietSince = 0;
+  while (Date.now() < deadline) {
+    if (inflight.size > 0) quietSince = 0;
+    else if (quietSince === 0) quietSince = Date.now();
+    else if (Date.now() - quietSince >= 500) break;
+    await sleep(50);
+  }
+  if (state.pendingImages > 0 || inflight.size > 0) {
+    const urls = [...new Set(inflight.values())].slice(0, 4).join(", ");
+    process.stdout.write(
+      `  [aviso] ${label}: ${state.pendingImages} imagem(ns) sem terminar; ${inflight.size} requisicao(oes) em voo${urls === "" ? "" : ` (${urls})`}\n`,
+    );
   }
 }
 
@@ -527,14 +548,31 @@ async function capture(): Promise<void> {
       if (request.url.startsWith(base)) void cdp.send("Fetch.continueRequest", { requestId });
       else void cdp.send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
     });
+    // Requisicoes em voo, para a espera por rede ociosa (`settle`).
+    const inflight = new Map<string, string>();
+    cdp.on("Network.requestWillBeSent", (params) => {
+      inflight.set(String(params.requestId), (params.request as { url: string }).url);
+    });
+    cdp.on("Network.loadingFinished", (params) => inflight.delete(String(params.requestId)));
+    cdp.on("Network.loadingFailed", (params) => inflight.delete(String(params.requestId)));
+    // fetch/XHR assenta quando a resposta chega: o corpo so termina quando o JS o le.
+    // Medido: o painel de /pt/listas/ le so o status do 500 e o Chrome nunca emitiu
+    // `loadingFinished` — a pagina ja estava no estado final ("Nao foi possivel...").
+    cdp.on("Network.responseReceived", (params) => {
+      if (params.type === "Fetch" || params.type === "XHR") inflight.delete(String(params.requestId));
+    });
+    const open = (url: string, width: number): Promise<number | null> => {
+      inflight.clear();
+      return load(cdp, url, width);
+    };
     await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: FREEZE_SCRIPT });
 
     process.stdout.write(`\nPARIDADE DE CSS — captura de ${base} — ${paths.length} rota(s) x ${widths.length} largura(s)\n`);
     for (const pagePath of paths) {
       for (const width of widths) {
         try {
-          const status = await load(cdp, `${base}${pagePath}`, width);
-          await settle(cdp, `${pagePath} @${width}`);
+          const status = await open(`${base}${pagePath}`, width);
+          await settle(cdp, `${pagePath} @${width}`, inflight);
           if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
           const snapshot = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
           pages.push({ ...snapshot, path: pagePath, width, status });
@@ -577,8 +615,8 @@ async function capture(): Promise<void> {
               // O documento pode trocar no meio (redirecionamento no cliente): as tres
               // fotos tem de ser da MESMA URL, senao mede de novo.
               for (let attempt = 1; attempt <= 3 && result === null; attempt += 1) {
-                await load(cdp, `${base}${pagePath}`, width);
-                await settle(cdp, `acumulo ${pagePath} @${width}`);
+                await open(`${base}${pagePath}`, width);
+                await settle(cdp, `acumulo ${pagePath} @${width}`, inflight);
                 if (injectedCss !== null) await evaluateSettled(cdp, INJECT_SCRIPT(injectedCss));
                 const direct = await evaluateSettled<Snapshot>(cdp, SNAPSHOT_SCRIPT);
                 await evaluateSettled(cdp, APPEND_SCRIPT(hrefs));
