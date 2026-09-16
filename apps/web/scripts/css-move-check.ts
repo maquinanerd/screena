@@ -7,7 +7,11 @@
  * de uma referencia git (antes de qualquer mudanca) com as folhas de agora:
  *
  *  1. NADA SE REESCREVE: toda regra de agora existe, identica, na referencia.
- *     Mover e mover — regra nova ou alterada reprova.
+ *     Mover e mover — regra nova ou alterada reprova. A comparacao e por SELETOR
+ *     (`a, b { D }` equivale a `a { D } b { D }` na mesma posicao), o que permite
+ *     dividir uma lista que cruza blocos de folhas diferentes — mas so quando
+ *     nenhum seletor dela pode invalidar a lista inteira (`:has()`, `:is()`,
+ *     `:where()`, prefixo de fornecedor): senao, [DIVISAO INSEGURA].
  *  2. A ORDEM SE MANTEM: dentro de cada folha, as regras seguem a ordem que tinham
  *     no `globals.css` da referencia.
  *  3. QUEM FICOU NO GLOBAL NAO PASSA A PERDER: a folha de rota carrega DEPOIS de
@@ -32,7 +36,14 @@ import { fileURLToPath } from "node:url";
 
 import { type OrderConflict, orderConflictDetails } from "./lab/css-order";
 import { REVIEWED_ORDER_PAIRS, type ReviewedOrderPair, reviewedPairFor } from "./lab/css-order-reviewed";
-import { classTokens, type CssRule, parseCssRules, subjectBlocks } from "./lab/css-rules";
+import {
+  classTokens,
+  type CssRule,
+  expandSelectorList,
+  parseCssRules,
+  splitSafeSelector,
+  subjectBlocks,
+} from "./lab/css-rules";
 import { classUsedInSource } from "./lab/css-usage";
 
 const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -83,8 +94,16 @@ function readBase(): { label: string; css: string } {
 function main(): void {
   const { label: baseRef, css: baseCss } = readBase();
   const baseRules = parseCssRules(baseCss);
-  const pending = new Map<string, number[]>();
-  for (const rule of baseRules) pending.set(rule.identity, [...(pending.get(rule.identity) ?? []), rule.index]);
+  // A comparacao e por SELETOR: `a, b { D }` equivale a `a { D } b { D }` na mesma
+  // posicao, e e assim que uma lista que cruza blocos de folhas diferentes (o "piso
+  // de legibilidade") se divide sem reescrever declaracao. Cada unidade guarda o
+  // indice da regra de origem, que e o que conta para a ordem.
+  const pending = new Map<string, Array<{ index: number; unit: CssRule }>>();
+  for (const rule of baseRules) {
+    for (const unit of expandSelectorList(rule)) {
+      pending.set(unit.identity, [...(pending.get(unit.identity) ?? []), { index: rule.index, unit }]);
+    }
+  }
 
   const errors: string[] = [];
   const reviewed: string[] = [];
@@ -102,17 +121,45 @@ function main(): void {
     reviewed.push(`[REVISADO] ${where} — ${describe(conflict)} — ${review.evidence}`);
   };
   const sheets = discoverSheets().map((file) => {
-    const rules = parseCssRules(readFileSync(path.join(repoRoot, file), "utf8"));
-    const baseIndexes = rules.map((rule) => {
-      const index = pending.get(rule.identity)?.shift();
-      if (index === undefined) {
-        errors.push(`[NOVA OU ALTERADA] ${file}:${rule.line} ${rule.prelude}`);
+    const parsed = parseCssRules(readFileSync(path.join(repoRoot, file), "utf8"));
+    const units = parsed.flatMap((parent) => expandSelectorList(parent).map((unit) => ({ unit, parent })));
+    const rules = units.map((entry) => entry.unit);
+    const baseIndexes = units.map(({ unit, parent }) => {
+      const match = pending.get(unit.identity)?.shift();
+      if (match === undefined) {
+        errors.push(`[NOVA OU ALTERADA] ${file}:${parent.line} ${unit.prelude}`);
         return -1;
       }
-      return index;
+      return match.index;
     });
-    return { file, rules, baseIndexes };
+    return { file, parsed, rules, parents: units.map((entry) => entry.parent), baseIndexes };
   });
+
+  // 1b. lista de seletores DIVIDIDA entre regras ou folhas: so e equivalente quando
+  // nenhum seletor pode invalidar a lista inteira (ver `splitSafeSelector`).
+  const landing = new Map<number, Map<string, number>>();
+  for (const sheet of sheets) {
+    sheet.rules.forEach((_, i) => {
+      const index = sheet.baseIndexes[i] as number;
+      if (index < 0) return;
+      const key = `${sheet.file}#${(sheet.parents[i] as CssRule).index}`;
+      const byTarget = landing.get(index) ?? new Map<string, number>();
+      byTarget.set(key, (byTarget.get(key) ?? 0) + 1);
+      landing.set(index, byTarget);
+    });
+  }
+  let splitRules = 0;
+  for (const rule of baseRules) {
+    if (rule.kind !== "style" || rule.selectors.length < 2) continue;
+    const byTarget = landing.get(rule.index);
+    if (byTarget === undefined) continue;
+    if (byTarget.size === 1 && [...byTarget.values()][0] === rule.selectors.length) continue;
+    splitRules += 1;
+    const unsafe = rule.selectors.filter((selector) => !splitSafeSelector(selector));
+    if (unsafe.length > 0) {
+      errors.push(`[DIVISAO INSEGURA] referencia:${rule.line} ${rule.prelude} — ${unsafe.join(", ")}`);
+    }
+  }
 
   // 2. ordem dentro de cada folha
   for (const sheet of sheets) {
@@ -176,9 +223,8 @@ function main(): void {
     if (files.size > 1) errors.push(`[EXCLUSIVIDADE] o bloco .${block} e estilizado em ${[...files].join(" e ")}`);
   }
 
-  // 5. removidas de todas as folhas
-  const leftover = new Set([...pending.values()].flat());
-  const removed = baseRules.filter((rule) => leftover.has(rule.index));
+  // 5. removidas de todas as folhas (por seletor)
+  const removed = [...pending.values()].flat().map((entry) => entry.unit);
   const sourceFiles: string[] = [];
   // `packages/ui` tambem: os componentes do pacote renderizam classe desta folha.
   for (const root of ["apps/web/app", "apps/web/src", "packages/ui/src"]) {
@@ -206,9 +252,10 @@ function main(): void {
   process.stdout.write(`\nCHECAGEM ESTATICA DA DIVISAO DO CSS — referencia ${baseRef}\n`);
   process.stdout.write(`  ${GLOBALS} na referencia: ${baseRules.length} regras, ${totalBytes(baseRules)} B\n`);
   for (const sheet of sheets) {
-    process.stdout.write(`  ${sheet.file}: ${sheet.rules.length} regras, ${totalBytes(sheet.rules)} B\n`);
+    process.stdout.write(`  ${sheet.file}: ${sheet.parsed.length} regras, ${totalBytes(sheet.parsed)} B\n`);
   }
-  process.stdout.write(`  removidas de todas as folhas: ${removed.length} regras, ${totalBytes(removed)} B\n`);
+  process.stdout.write(`  removidos de todas as folhas: ${removed.length} seletor(es), ${totalBytes(removed)} B\n`);
+  process.stdout.write(`  listas de seletores divididas entre regras ou folhas: ${splitRules}\n`);
   for (const line of reviewed) process.stdout.write(`  ${line}\n`);
   for (const error of errors.slice(0, 80)) process.stdout.write(`  ${error}\n`);
   if (errors.length > 80) process.stdout.write(`  ... e mais ${errors.length - 80}\n`);

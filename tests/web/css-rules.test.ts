@@ -13,7 +13,9 @@ import {
   blockOf,
   classTokens,
   type CssRule,
+  expandSelectorList,
   parseCssRules,
+  splitSafeSelector,
   subjectBlocks,
   subjectClassTokens,
 } from '../../apps/web/scripts/lab/css-rules'
@@ -96,5 +98,31 @@ describe('classes e blocos', () => {
   it('os blocos-sujeito de uma regra com varios seletores', () => {
     const rule = parseCssRules('.a__b, .x .c--d { color: red }')[0] as CssRule
     expect(subjectBlocks(rule)).toEqual(['a', 'c'])
+  })
+})
+
+describe('lista de seletores', () => {
+  it('expande em uma regra por seletor, com as MESMAS declaracoes e o mesmo contexto', () => {
+    const [list] = parseCssRules('@media (max-width: 767px) { .a, .b__c { color: red; margin: 0 } }')
+    const expanded = expandSelectorList(list as CssRule)
+    expect(expanded.map((rule) => rule.prelude)).toEqual(['.a', '.b__c'])
+    const [single] = parseCssRules('@media (max-width: 767px) { .b__c { color: red; margin: 0 } }')
+    expect(expanded[1]?.identity).toBe((single as CssRule).identity)
+    expect(expanded[1]?.context).toEqual(['@media (max-width: 767px)'])
+  })
+
+  it('regra de um seletor e at-rule voltam como estao', () => {
+    const [single, keyframes] = parseCssRules('.a { color: red }\n@keyframes x { from { opacity: 0 } }')
+    expect(expandSelectorList(single as CssRule)).toEqual([single])
+    expect(expandSelectorList(keyframes as CssRule)).toEqual([keyframes])
+  })
+
+  it('CONTROLE NEGATIVO: divisao insegura com pseudo-classe de lista ou prefixo de fornecedor', () => {
+    expect(splitSafeSelector('.eyebrow-bar span')).toBe(true)
+    expect(splitSafeSelector(":root[data-poster-size='small'] .similar-card")).toBe(true)
+    expect(splitSafeSelector('.set-row__label:has(.set-row__select)')).toBe(false)
+    expect(splitSafeSelector(':is(.a, .b) span')).toBe(false)
+    expect(splitSafeSelector('.x::-webkit-scrollbar')).toBe(false)
+    expect(splitSafeSelector('.x:-moz-focusring')).toBe(false)
   })
 })
