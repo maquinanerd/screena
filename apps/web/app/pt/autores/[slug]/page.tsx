@@ -14,6 +14,7 @@ import { AUTHORS_INDEX_PATH } from '../../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../../src/lib/site'
 import { socialMetadata } from '../../../../src/lib/social-metadata'
 import { getAuthorDirectoryData } from '../../../../src/server/news-pages'
+import '../../../_components/legal.css'
 
 /**
  * Página de autor — o nome que assina e as matérias no ar com essa assinatura.

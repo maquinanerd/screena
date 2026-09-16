@@ -5,6 +5,7 @@ import {
   videosGalleryMetadata,
   type GalleryRouteParams,
 } from '../../../../_components/gallery-pages'
+import '../../../../_components/gallery.css'
 
 /**
  * Trailers e vídeos de serie — /pt/series/[slug]/videos/.
