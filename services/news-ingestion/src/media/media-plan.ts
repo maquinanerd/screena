@@ -52,6 +52,44 @@ export function imageBlockRequests(blocks: readonly ProjectionBlock[]): MediaReq
   return requests
 }
 
+/**
+ * Itens de GALERIA, cada um com o proprio `mediaRef`.
+ *
+ * A galeria existe no CMS, no contrato e no site — e so o worker nao a
+ * conhecia. Sem estes pedidos nenhum byte era baixado, `applyMediaToBlocks`
+ * devolvia o bloco intacto e o site descartava todos os itens por falta de
+ * caminho local: a galeria publicada sumia da pagina, com 200 e sem log.
+ *
+ * OPCIONAL por item, ao contrario do bloco `image`. O site ja trata a galeria
+ * com "fallback por imagem" (uma foto sem caminho nao derruba as outras);
+ * exigir aqui recusaria a materia inteira por uma foto em dez — o oposto da
+ * politica de exibicao. O item que nao projetar e reportado por
+ * `applyMediaToBlocks`, nao engolido.
+ *
+ * O `blockId` do uso e `<bloco>#<indice>`: o operador precisa saber QUAL foto
+ * de QUAL galeria caiu.
+ */
+export function galleryItemRequests(blocks: readonly ProjectionBlock[]): MediaRequest[] {
+  const requests: MediaRequest[] = []
+  for (const block of blocks) {
+    if (block.type !== 'gallery') continue
+    const blockId = textOrNull(block.id) ?? ''
+    const items = Array.isArray(block.items) ? (block.items as unknown[]) : []
+    items.forEach((raw, index) => {
+      const item = raw as Record<string, unknown> | null
+      const mediaId = textOrNull(item?.mediaRef)
+      if (mediaId === null) return
+      requests.push({
+        mediaId,
+        purpose: 'editorial',
+        usage: { blockId: `${blockId}#${String(index)}` },
+        required: false,
+      })
+    })
+  }
+  return requests
+}
+
 export interface MediaPlan {
   readonly requests: readonly MediaRequest[]
   /** `mediaRef` de bloco de imagem sem id utilizavel. */
@@ -85,19 +123,38 @@ export function planEventMedia(event: ProjectionEvent): MediaPlan {
       malformedBlockIds.push(textOrNull(block.id) ?? '(sem id)')
     }
   }
+  for (const block of blocks) {
+    if (block.type !== 'gallery') continue
+    const items = Array.isArray(block.items) ? (block.items as unknown[]) : []
+    items.forEach((raw, index) => {
+      const item = raw as Record<string, unknown> | null
+      if (textOrNull(item?.mediaRef) === null) {
+        malformedBlockIds.push(`${textOrNull(block.id) ?? '(sem id)'}#${String(index)}`)
+      }
+    })
+  }
   requests.push(...imageBlockRequests(blocks))
+  requests.push(...galleryItemRequests(blocks))
 
   // Dedup por (mediaId, purpose): a mesma foto usada como capa e no corpo e um
   // download so por finalidade.
-  const seen = new Set<string>()
-  const deduped = requests.filter((request) => {
+  //
+  // O PEDIDO MAIS FORTE PREVALECE. A mesma foto num bloco `image` (obrigatorio)
+  // e numa galeria (opcional) e um download so — mas obrigatorio. Ficar com o
+  // primeiro que aparecesse faria a ORDEM dos blocos decidir se uma falha
+  // recusa a materia ou passa calada.
+  const byKey = new Map<string, MediaRequest>()
+  for (const request of requests) {
     const key = `${request.mediaId}::${request.purpose}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+    const previous = byKey.get(key)
+    if (previous === undefined) {
+      byKey.set(key, request)
+    } else if (request.required && !previous.required) {
+      byKey.set(key, { ...previous, required: true })
+    }
+  }
 
-  return { requests: deduped, malformedBlockIds }
+  return { requests: [...byKey.values()], malformedBlockIds }
 }
 
 /* ------------------------------------------------------------------ */
@@ -130,29 +187,93 @@ export function applyMediaToBlocks(
   assets: ReadonlyMap<string, ResolvedMediaAsset>,
 ): { readonly blocks: ProjectionBlock[]; readonly unresolved: string[] } {
   const unresolved: string[] = []
-  const projected = blocks.map((block) => {
-    if (block.type !== 'image') return block
+  const projected = blocks.flatMap((block): ProjectionBlock[] => {
+    if (block.type === 'gallery') {
+      const gallery = applyMediaToGallery(block, assets, unresolved)
+      return gallery === null ? [] : [gallery]
+    }
+    if (block.type !== 'image') return [block]
     const mediaId = textOrNull(block.mediaRef)
     const asset = mediaId === null ? undefined : assets.get(mediaId)
     if (asset === undefined) {
       unresolved.push(textOrNull(block.id) ?? '(sem id)')
-      return block
+      return [block]
     }
     // `mediaRef` sai do bloco publico: um id do CMS no corpo publico e um
     // vazamento de identificador interno que nao serve para nada no render.
     const { mediaRef: _dropped, ...rest } = block
-    return {
+    return [
+      {
+        ...rest,
+        publicPath: asset.publicPath,
+        width: asset.width,
+        height: asset.height,
+        mimeType: asset.mimeType,
+        alt: textOrNull(block.alt) ?? asset.alt,
+        caption: textOrNull(block.caption) ?? asset.caption,
+        credit: textOrNull(block.credit) ?? asset.credit,
+      } as ProjectionBlock,
+    ]
+  })
+  return { blocks: projected, unresolved }
+}
+
+/**
+ * A galeria com cada item resolvido para caminho publico — ou `null` se nenhum
+ * item resolveu.
+ *
+ * Item sem asset SAI do bloco publico e entra em `unresolved` como
+ * `<bloco>#<indice>`. Mante-lo com `mediaRef` levaria o id interno do CMS ao
+ * corpo publico (o mesmo vazamento que o bloco `image` evita), e o site o
+ * descartaria de qualquer forma — so que sem ninguem saber.
+ *
+ * `initialIndex` acompanha o ITEM, nao a posicao: se a galeria abria na 2a foto
+ * e a 1a caiu, ela continua abrindo naquela foto, que agora e a 1a. Se a foto
+ * de abertura caiu, o indice sai e o site abre na primeira.
+ */
+function applyMediaToGallery(
+  block: ProjectionBlock,
+  assets: ReadonlyMap<string, ResolvedMediaAsset>,
+  unresolved: string[],
+): ProjectionBlock | null {
+  const blockId = textOrNull(block.id) ?? '(sem id)'
+  const rawItems = Array.isArray(block.items) ? (block.items as unknown[]) : []
+  const wantedIndex = typeof block.initialIndex === 'number' ? block.initialIndex : null
+
+  const items: Record<string, unknown>[] = []
+  let initialIndex: number | null = null
+
+  rawItems.forEach((raw, index) => {
+    const item = (raw ?? {}) as Record<string, unknown>
+    const mediaId = textOrNull(item.mediaRef)
+    const asset = mediaId === null ? undefined : assets.get(mediaId)
+    if (asset === undefined) {
+      unresolved.push(`${blockId}#${String(index)}`)
+      return
+    }
+    if (index === wantedIndex) initialIndex = items.length
+    const { mediaRef: _dropped, ...rest } = item
+    items.push({
       ...rest,
       publicPath: asset.publicPath,
       width: asset.width,
       height: asset.height,
       mimeType: asset.mimeType,
-      alt: textOrNull(block.alt) ?? asset.alt,
-      caption: textOrNull(block.caption) ?? asset.caption,
-      credit: textOrNull(block.credit) ?? asset.credit,
-    } as ProjectionBlock
+      // Credito e legenda sao POR FOTO: o do item vence; sem ele, o do acervo.
+      alt: textOrNull(item.alt) ?? asset.alt,
+      caption: textOrNull(item.caption) ?? asset.caption,
+      credit: textOrNull(item.credit) ?? asset.credit,
+    })
   })
-  return { blocks: projected, unresolved }
+
+  if (items.length === 0) return null
+
+  const { initialIndex: _previous, items: _raw, ...rest } = block
+  return {
+    ...rest,
+    items,
+    ...(initialIndex === null ? {} : { initialIndex }),
+  } as ProjectionBlock
 }
 
 /**
