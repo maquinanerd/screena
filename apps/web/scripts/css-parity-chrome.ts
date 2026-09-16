@@ -540,6 +540,36 @@ function noiseOf(a: Map<string, Styles>, b: Map<string, Styles>): { props: Set<s
   return { props, keys };
 }
 
+/**
+ * O ruido so vale se for uma segunda captura do MESMO estado da linha de base.
+ * Medido: com a linha de base tirada com CSS injetado e o ruido tirado sem, a
+ * diferenca injetada virou "ruido" e foi descontada — o controle negativo
+ * reprovou por outro motivo, e reprovaria por nenhum numa rodada cheia.
+ * Mesmo estado = mesmo CSS injetado e as mesmas folhas em cada pagina.
+ */
+function assertSameStateAsBaseline(
+  baseline: Capture,
+  noise: Capture,
+  pageKey: (page: CapturedPage) => string,
+): void {
+  if ((noise.injectedCss ?? null) !== (baseline.injectedCss ?? null)) {
+    throw new Error(
+      "PARITY_NOISE tem de ser uma segunda captura do MESMO estado da linha de base: " +
+        `o CSS injetado difere (base: ${JSON.stringify(baseline.injectedCss)}, ruido: ${JSON.stringify(noise.injectedCss)})`,
+    );
+  }
+  const baselineSheets = new Map(baseline.pages.map((page) => [pageKey(page), page.sheets.join(" ")]));
+  for (const page of noise.pages) {
+    const sheets = baselineSheets.get(pageKey(page));
+    if (sheets !== undefined && sheets !== page.sheets.join(" ")) {
+      throw new Error(
+        `PARITY_NOISE tem de ser do MESMO build da linha de base: as folhas de ${pageKey(page)} diferem ` +
+          `(base: ${sheets}; ruido: ${page.sheets.join(" ")})`,
+      );
+    }
+  }
+}
+
 function compare(): void {
   const baselineFile = process.env.PARITY_BASELINE ?? "";
   const currentFile = process.env.PARITY_CURRENT ?? "";
@@ -553,6 +583,7 @@ function compare(): void {
   const pageKey = (page: CapturedPage): string => `${page.path}@${page.width}`;
   const currentPages = new Map(current.pages.map((page) => [pageKey(page), page]));
   const noisePages = new Map((noise?.pages ?? []).map((page) => [pageKey(page), page]));
+  if (noise !== null) assertSameStateAsBaseline(baseline, noise, pageKey);
 
   let compared = 0;
   let diffs = 0;
@@ -560,6 +591,7 @@ function compare(): void {
   let unmatched = 0;
   const missing: string[] = [];
   const samples: string[] = [];
+  const noiseSamples: string[] = [];
   const cssRows: string[] = [];
   const sheetTotal = (capture: Capture, page: CapturedPage): { bytes: number; gzip: number } =>
     page.sheets.reduce(
@@ -598,17 +630,17 @@ function compare(): void {
         const count = Math.max(l.length, r.length);
         for (let i = 0; i < count; i += 1) {
           if (l[i] === r[i]) continue;
+          const sample =
+            `${pageKey(page)} ${key} [${a.classes}] ${slot === "style" ? "" : `::${slot} `}` +
+            `${names[i] ?? `#${i}`}: ${l[i] ?? "(sem)"} -> ${r[i] ?? "(sem)"}`;
           if (noiseSet.props.has(`${key}|${slot}|${i}`)) {
             ignoredByNoise += 1;
+            // O desconto aparece no relatorio: ruido que ninguem ve e diferenca escondida.
+            if (noiseSamples.length < 10) noiseSamples.push(sample);
             continue;
           }
           diffs += 1;
-          if (samples.length < 40) {
-            samples.push(
-              `${pageKey(page)} ${key} [${a.classes}] ${slot === "style" ? "" : `::${slot} `}` +
-                `${names[i] ?? `#${i}`}: ${l[i] ?? "(sem)"} -> ${r[i] ?? "(sem)"}`,
-            );
-          }
+          if (samples.length < 40) samples.push(sample);
         }
       }
     }
@@ -638,6 +670,7 @@ function compare(): void {
       ` · paginas ausentes: ${missing.length} · rotas com vazamento no acumulo: ${leaks.length}\n`,
   );
   for (const sample of samples) process.stdout.write(`  [DIFERENCA] ${sample}\n`);
+  for (const sample of noiseSamples) process.stdout.write(`  [RUIDO DESCONTADO] ${sample}\n`);
   for (const entry of leaks) {
     process.stdout.write(`  [VAZAMENTO] ${entry.path} @${entry.width} (${entry.order}): ${entry.changed}\n`);
     for (const sample of entry.samples) process.stdout.write(`      ${sample}\n`);
