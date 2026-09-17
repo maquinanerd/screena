@@ -5865,6 +5865,20 @@ h4.art-body__heading {
   margin-top: 16px;
 }
 
+/* A nota de correcao da materia: a linha "Correcao · data" e o texto do CMS. O
+   `pre-line` preserva as quebras de linha que a redacao escreveu no campo. */
+.correction-notice__title {
+  margin: 0;
+  color: var(--c-text-primary);
+}
+
+.correction-notice__text {
+  margin: 6px 0 0;
+  line-height: 1.6;
+  white-space: pre-line;
+  color: var(--c-text-body);
+}
+
 @media (max-width: 1023px) {
   /* MESMO ponto de quebra em que `.site-header__inner` troca `--pad-page` por
      `--pad-page-mobile` (e o menu vira hamburguer). Trocar aqui num limiar

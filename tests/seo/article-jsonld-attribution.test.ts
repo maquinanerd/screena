@@ -194,3 +194,30 @@ describe('dateModified', () => {
     expect(buildArticleJsonLd(facts).dateModified).toBe('2026-08-05T12:00:00.000Z')
   })
 })
+
+describe('correction', () => {
+  it('a correcao visivel sai como CorrectionComment, com o texto e a data da redacao', () => {
+    expect(
+      buildArticleJsonLd({
+        ...facts,
+        correction: { dateIso: '2026-08-07T09:00:00.000Z', note: 'Corrigido o nome do diretor.' },
+      }).correction,
+    ).toEqual({
+      '@type': 'CorrectionComment',
+      text: 'Corrigido o nome do diretor.',
+      datePublished: '2026-08-07T09:00:00.000Z',
+    })
+  })
+
+  it('sem correcao visivel — ou sem texto, ou sem data valida — a chave nao aparece', () => {
+    expect(buildArticleJsonLd(facts).correction).toBeUndefined()
+    expect(buildArticleJsonLd({ ...facts, correction: null }).correction).toBeUndefined()
+    expect(
+      buildArticleJsonLd({ ...facts, correction: { dateIso: '2026-08-07T09:00:00.000Z', note: '  ' } })
+        .correction,
+    ).toBeUndefined()
+    expect(
+      buildArticleJsonLd({ ...facts, correction: { dateIso: 'nao-e-data', note: 'Texto.' } }).correction,
+    ).toBeUndefined()
+  })
+})
