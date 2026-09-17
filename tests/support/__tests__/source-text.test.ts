@@ -109,6 +109,23 @@ describe('stripComments: linguagem sem comentario volta CRUA', () => {
     expect(commentSyntaxFor('migration.sql')).toBe('sql')
     expect(commentSyntaxFor('ci.yml')).toBe('hash')
   })
+
+  it('Dockerfile sai do NOME — inclusive com sufixo, que o extname leria como extensao', () => {
+    expect(commentSyntaxFor('Dockerfile')).toBe('hash')
+    expect(commentSyntaxFor('/repo/Dockerfile.catalog-worker')).toBe('hash')
+    expect(commentSyntaxFor('deploy/app.dockerfile')).toBe('hash')
+    // Nao basta CONTER a palavra: um documento sobre Dockerfile continua markdown.
+    expect(commentSyntaxFor('docs/Dockerfile-notas.md')).toBe('none')
+  })
+
+  it('Dockerfile perde o comentario e preserva o # dentro de aspas', () => {
+    const fonte =
+      "# fetch('http://127.0.0.1:3000/api/health/')\n" +
+      'HEALTHCHECK CMD node -e "console.log(\'#nao-e-comentario\')"\n'
+    const out = stripComments(fonte, commentSyntaxFor('Dockerfile'))
+    expect(out).not.toContain('127.0.0.1:3000')
+    expect(out).toContain("console.log('#nao-e-comentario')")
+  })
 })
 
 describe('stripComments: as posicoes sobrevivem', () => {

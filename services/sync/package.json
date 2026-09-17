@@ -29,7 +29,7 @@
     "tsx": "^4.19.0"
   },
   "scripts": {
-    "scheduler:start": "tsx bin/cinerie-scheduler.ts",
+    "scheduler:start": "exec node --import tsx bin/cinerie-scheduler.ts",
     "ingestion:status": "tsx bin/ingestion-status.ts",
     "cache:purge": "tsx bin/purge-api-cache.ts",
     "prove:scheduler-lock": "tsx scripts/prove-scheduler-lock.ts",

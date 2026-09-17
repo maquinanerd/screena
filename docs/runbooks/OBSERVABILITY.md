@@ -27,11 +27,35 @@ O `Dockerfile` declara:
 
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+  CMD node /app/scripts/healthcheck/container-health.mjs
 ```
 
 Usa `node` (a base slim não tem `curl`/`wget`). `start-period=60s` cobre o
 `prisma migrate deploy` do boot.
+
+**Esta imagem roda dois serviços**, e o script sonda a porta de cada um:
+
+| Serviço | Comando do container | Sonda |
+| --- | --- | --- |
+| `screen-app` | o `CMD` da imagem | `GET 127.0.0.1:3000/api/health/` (200 só com o PostgreSQL) |
+| `screen-cron` | `corepack pnpm --filter @screena/sync scheduler:start` | `GET 127.0.0.1:${CINERIE_SCHEDULER_HEALTH_PORT:-3005}/healthz` (liveness, sem banco) |
+
+O serviço é reconhecido pelo **comando do PID 1** (`/proc/1/cmdline`), sem
+configuração no painel. Comando não reconhecido, ou `/proc` ilegível, cai no
+alvo do site — o comportamento anterior. `CINERIE_HEALTHCHECK_URL` (só `http`,
+só loopback, sem credencial) força outro alvo para um papel novo da imagem.
+
+Até 16/09/2026 a sondagem era um `fetch` fixo na 3000. No `screen-cron` nada
+escuta ali: o container nunca ficava saudável e o orquestrador o substituía em
+loop — 129 containers numa hora, e os lotes longos do agendador morriam no meio.
+A decisão e os motivos estão em `scripts/healthcheck/lib/health-target.mjs`.
+
+**Por que não saiu saudável?** O Docker guarda a linha do script:
+
+```bash
+docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' <container>
+# healthy screen-cron (pid1) http://127.0.0.1:3005/healthz -> HTTP 200
+```
 
 ---
 

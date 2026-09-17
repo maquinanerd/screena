@@ -52,6 +52,20 @@ ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
 # local e recusado pela configuracao (disco efemero perde midia); o caminho
 # existe para o caso de um volume ser montado por cima.
 RUN mkdir -p /app/var/editorial-media && chown -R node:node /app
+
+# O /bin/sh DESTA IMAGEM ENTREGA O SIGTERM AO WORKER — e este e o ULTIMO RUN.
+#
+# Em producao este servico NAO roda o CMD abaixo: o painel tem o comando
+# `pnpm --filter @screena/news-ingestion exec tsx bin/project-editorial.ts --loop
+# --allow-production-url` (lido na tela Avancado em 17/09/2026), e o EasyPanel o
+# roda como `/bin/sh -c` NO LUGAR do ENTRYPOINT. O dash ficava no PID 1 sem
+# handler, e o SIGTERM era descartado. O /bin/sh desta imagem vira um init para
+# um comando simples no PID 1: repassa o sinal, colhe orfaos e espera a
+# drenagem — o `pnpm exec` morre ao repassar o sinal, e o worker drena como
+# orfao. Medidas e limites: scripts/container/pid1-shell.sh e
+# docs/operations/sigterm-e-pid1.md.
+RUN install -D -m 0755 -o root -g root scripts/container/pid1-shell.sh /usr/local/lib/cinerie/pid1-shell.sh \
+  && ln -sf /usr/local/lib/cinerie/pid1-shell.sh /usr/bin/sh
 USER node
 
 EXPOSE 3003
@@ -62,7 +76,13 @@ EXPOSE 3003
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3003/healthz').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
 
-# `exec` para que o processo do worker seja PID 1 e receba SIGTERM direto: o
-# encerramento gracioso (terminar o lote atual, parar de reclamar, devolver as
-# leases) depende de o sinal chegar ao processo certo, e nao a um shell pai.
+# Este CMD so vale quando o painel NAO tem comando (hoje tem — ver o ultimo RUN).
+# Por ele, o SIGTERM chega ao worker por DOIS exec, e um sozinho nao basta. O deste
+# CMD poe o `pnpm` no PID 1 (nao o worker, como este comentario afirmava ate
+# 17/09/2026). O pnpm repassa o sinal a um `sh -c` com o script
+# `publication-worker:start` — e so o `exec node --import tsx` DENTRO do script
+# faz esse shell virar o worker. Sem ele o shell morria sem repassar, o pnpm
+# saia e o worker levava SIGKILL em ~100 ms, sem drenar. E `node --import tsx`,
+# nao a CLI `tsx`: ela repassa o sinal ao filho e o mata com SIGKILL se ele nao
+# confirmar em 30 ms. Medidas: docs/operations/sigterm-e-pid1.md.
 CMD ["sh", "-c", "exec pnpm --filter @screena/news-ingestion publication-worker:start"]

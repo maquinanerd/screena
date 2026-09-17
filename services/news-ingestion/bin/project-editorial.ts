@@ -364,9 +364,32 @@ async function main(): Promise<void> {
   const prisma = createPrismaClient({ datasourceUrl: config.screenDatabaseUrl })
 
   let shutdown: ShutdownState = INITIAL_SHUTDOWN
+
+  // A ESPERA ENTRE CICLOS TEM DE ACORDAR COM O SINAL. Com um `setTimeout` cru,
+  // um SIGTERM chegado no comeco da espera so era visto depois dela inteira —
+  // 15 s no default, acima dos 10 s de carencia do orquestrador —, e o processo
+  // levava SIGKILL sem passar pelo `finally` que devolve o health e fecha o
+  // banco. O agendador ja dorme assim (`sleepUntilNextTick`).
+  let wakeUp: (() => void) | null = null
+  const sleepUnlessStopping = async (ms: number): Promise<void> => {
+    if (shutdown.phase !== 'running') return
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        wakeUp = null
+        resolve()
+      }, ms)
+      wakeUp = () => {
+        clearTimeout(timer)
+        wakeUp = null
+        resolve()
+      }
+    })
+  }
+
   const stop = (): void => {
     shutdown = applyShutdownSignal(shutdown, new Date().toISOString())
     console.log('[projecao] sinal recebido: terminando o lote atual e parando de reclamar')
+    wakeUp?.()
   }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
@@ -471,7 +494,7 @@ async function main(): Promise<void> {
         // um CMS fora do ar viraria um laco apertado de ECONNREFUSED queimando
         // CPU e enchendo o log.
         if (shutdown.phase !== 'running') break
-        await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs))
+        await sleepUnlessStopping(config.pollIntervalMs)
         continue
       }
 
@@ -479,7 +502,7 @@ async function main(): Promise<void> {
       // Fila vazia espera o intervalo cheio; fila com trabalho volta na hora,
       // para nao arrastar um acumulo em passos de 15s.
       if (processed === 0) {
-        await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs))
+        await sleepUnlessStopping(config.pollIntervalMs)
       }
     }
   } finally {
@@ -487,6 +510,9 @@ async function main(): Promise<void> {
     heartbeat?.stop()
     if (health !== null) await health.close()
     await prisma.$disconnect()
+    // A linha que diz que a drenagem TERMINOU. "sinal recebido" so diz que ela
+    // comecou — e um SIGKILL no meio deixaria as duas situacoes iguais no log.
+    console.log('[projecao] parado')
   }
 }
 

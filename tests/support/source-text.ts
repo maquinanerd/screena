@@ -76,8 +76,18 @@ const SYNTAX_BY_EXTENSION: Readonly<Record<string, CommentSyntax>> = {
   '.html': 'none',
 }
 
-/** A sintaxe de comentario de um arquivo, pela extensao. */
+/**
+ * Dockerfile se reconhece pelo NOME, nao pela extensao: `Dockerfile.catalog-worker`
+ * tem "extensao" `.catalog-worker`. Entrou quando um guard passou a medir o
+ * HEALTHCHECK das imagens — e o comentario acima do HEALTHCHECK da raiz CITA a
+ * URL fixa que o guard existe para provar ausente (o sexto caso do defeito
+ * descrito no topo deste modulo).
+ */
+const DOCKERFILE_NAME = /^(?:Dockerfile(?:\..+)?|.+\.dockerfile)$/i
+
+/** A sintaxe de comentario de um arquivo, pelo nome (Dockerfile) ou pela extensao. */
 export function commentSyntaxFor(filePath: string): CommentSyntax {
+  if (DOCKERFILE_NAME.test(path.basename(filePath))) return 'hash'
   return SYNTAX_BY_EXTENSION[path.extname(filePath).toLowerCase()] ?? 'none'
 }
 

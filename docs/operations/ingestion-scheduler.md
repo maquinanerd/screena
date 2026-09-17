@@ -298,8 +298,70 @@ todos os dias para que ela nao seja tomada por acidente.
 | --- | --- |
 | `GET /status` do `screen-cron` | **O painel.** HTML, sem script e sem fonte remota: uma linha por fila com intervalo, ultimo sucesso, estado (em dia / vencida / PARADA / NUNCA RODOU) e atraso; e a tabela de cota do dia com saldo total e saldo da fila de fundo. Semaforo `OK`/`DEGRADADO` no topo. `?format=json` e `?format=text` para maquina. |
 | `GET /readyz` | Pode trabalhar? Banco alcancavel, credencial presente, autorizacao de escrita. Carrega a contagem de filas paradas no payload. |
-| `GET /healthz` | Liveness. Nao toca banco. **E este que o healthcheck do container deve apontar.** |
+| `GET /healthz` | Liveness. Nao toca banco. **E o que o HEALTHCHECK da imagem sonda neste servico** — sozinho, pelo comando do container (ver abaixo). |
 | Log do servico | Uma linha `error` por fila parada, evento `scheduler_queue_stalled`. |
+
+### O HEALTHCHECK do container: uma imagem, dois servicos
+
+O `screen-cron` usa o `Dockerfile` do site com o comando trocado. O HEALTHCHECK
+dessa imagem era um `fetch` FIXO em `127.0.0.1:3000/api/health/` — a porta do
+Next, onde o agendador nao escuta. Medido em producao em 16/09/2026 (console do
+`screen-db`, somente leitura):
+
+- `service_heartbeats`: **129 `instance_id` do `screen-cron` numa hora**, em 129
+  hostnames distintos (um container cada), com ~121 s de sinal de vida
+  (`last_seen_at - started_at`); os outros servicos, 1 instancia por hora.
+- `api_sync_logs`: `ratings_omdb`, `watch_offers`, `airing_series`, `awards` e
+  `title_media` sem execucao depois de ~16h17; `changes`, `deploy_reference` e
+  `trending` so com execucoes de 0 a 4 s.
+
+Conferido no painel e de dentro do container em 17/09/2026:
+
+- o servico constroi de `maquinanerd/screena` / `main` com o arquivo `Dockerfile`,
+  1 replica, "tempo de inatividade zero" ligado, comando
+  `corepack pnpm --filter @screena/sync scheduler:start` — e o painel nao tem
+  campo de healthcheck, entao vale o da imagem;
+- o PID 1 e `/bin/sh -c corepack pnpm --filter @screena/sync scheduler:start`;
+- `fetch` em `127.0.0.1:3000/api/health/` -> `ECONNREFUSED`; em
+  `127.0.0.1:3005/healthz` -> `HTTP 200`;
+- o seletor do console listava SEIS containers `screen-cron.1.*` vivos ao mesmo
+  tempo, e o banco contava 7 com sinal de vida no ultimo minuto.
+
+O container nunca ficava saudavel e o orquestrador seguia criando substitutos.
+O registro de uma fila sai quando o lote TERMINA: as filas curtas cabiam na vida
+do container e registravam; as longas eram mortas antes.
+
+**Conserto (sem configuracao no painel):** o HEALTHCHECK chama
+`scripts/healthcheck/container-health.mjs`, que reconhece o servico pelo
+**comando do PID 1** e sonda `/healthz` na `CINERIE_SCHEDULER_HEALTH_PORT` quando
+o comando e o do agendador. Qualquer outro comando cai no alvo do site. A escolha
+por comando, e nao por variavel de ambiente, esta explicada no cabecalho de
+`scripts/healthcheck/lib/health-target.mjs`; a prova com a imagem real e o passo
+"Agendador na mesma imagem" do job `docker-image` da CI.
+
+**Como conferir em producao** (um processo de longa duracao tem ~1 instancia por
+hora):
+
+```sql
+SELECT count(DISTINCT instance_id) AS instancias,
+       max(last_seen_at - started_at) AS maior_vida
+  FROM service_heartbeats
+ WHERE service_key = 'screen-cron'
+   AND started_at > (now() AT TIME ZONE 'UTC') - interval '1 hour';
+```
+
+### O SIGTERM do redeploy: o dash no PID 1 o descartava
+
+Mesma imagem, segundo defeito, medido no mesmo dia: o PID 1 do `screen-cron` e o
+dash de `/bin/sh -c`, que nao trata SIGTERM — o kernel descarta o sinal, e todo
+`docker stop` virava SIGKILL depois da carencia. Nenhum desligamento gracioso do
+agendador (acordar o laco, abortar CLIs filhas, fechar HTTP e a trava) jamais
+rodou em producao. O painel substitui o ENTRYPOINT da imagem, entao o conserto
+esta no proprio `/bin/sh` (`scripts/container/pid1-shell.sh`, que vira um init
+quando e o PID 1 com um comando simples: repassa o sinal, colhe orfaos e espera a
+drenagem) e no script `scheduler:start` (`exec node --import tsx`). **O comando do servico no painel tem de continuar
+SIMPLES** — sem `&&`, `;`, aspas ou variavel —, senao o dash volta ao PID 1.
+Medidas, laboratorio e limites: [`sigterm-e-pid1.md`](./sigterm-e-pid1.md).
 
 ### A CONSULTA que prova que o ritmo rodou ontem, e o que ele tocou
 
@@ -463,7 +525,7 @@ imagem, comando e ciclo de vida proprios:
 | Comando | `corepack pnpm --filter @screena/sync scheduler:start` | `corepack pnpm --filter @screena/ingestion catalog-worker:start` |
 | Escreve | `catalog_jobs` (`store.enqueue`) | `movies`, `tv_shows`, `people`, `tmdb_images`, `tmdb_videos`, ... |
 | Arquivo | [`services/sync/bin/cinerie-scheduler.ts`](../../services/sync/bin/cinerie-scheduler.ts) | [`services/ingestion/bin/catalog-worker-service.ts`](../../services/ingestion/bin/catalog-worker-service.ts) |
-| Dockerfile | `Dockerfile` (mesmo do app) | **`Dockerfile.catalog-worker`** |
+| Dockerfile | `Dockerfile` (mesmo do app; o HEALTHCHECK reconhece o comando) | **`Dockerfile.catalog-worker`** |
 
 **Subir so o `screen-cron` produz exatamente o estado de 21/08/2026:** a fila
 cresce todo dia, o painel fica verde, e o catalogo nao ganha uma linha.
@@ -546,7 +608,8 @@ corepack pnpm --filter @screena/sync ingestion:status
 # 4. Ligar o agendador (servico screen-cron no EasyPanel)
 #    comando: corepack pnpm --filter @screena/sync scheduler:start
 #    env:     CINERIE_SCHEDULER_APPLY=true
-#    health:  /healthz na porta 3005
+#    health:  nada a configurar — o HEALTHCHECK da imagem reconhece este comando
+#             e sonda /healthz na CINERIE_SCHEDULER_HEALTH_PORT (3005)
 
 # 5. Semente (SO depois de o agendador estar estavel) — dry-run primeiro
 corepack pnpm --filter @screena/ingestion catalog plan-bootstrap --limit 20000
