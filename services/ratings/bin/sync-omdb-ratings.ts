@@ -329,6 +329,12 @@ async function main(): Promise<void> {
   // disco) acrescente uma 2a linha `aborted` contraditoria para o mesmo ciclo.
   let mainLogWritten = false
 
+  // O relogio do ciclo, do lado de CA da chamada. O core mede o dele dentro de
+  // `runOmdbRatingsSync`; se ele lancar antes de gravar a linha, esse numero
+  // morre com a excecao — e a linha `aborted` do `catch` abaixo precisa de uma
+  // duracao comparavel a de um ciclo que terminou.
+  const startedAt = Date.now()
+
   try {
     const result = await runOmdbRatingsSync(
       {
@@ -454,6 +460,28 @@ async function main(): Promise<void> {
           endpoint: OMDB_ENDPOINT,
           status: 'aborted',
           errorCode: 'omdb_unexpected_error',
+          // ==============================================================
+          // A COTA JA GASTA ENTRA AQUI — ELA NAO ESPERA O LOTE TERMINAR
+          // ==============================================================
+          // Ate 17/09/2026 esta linha saia SEM `quotaCost`, e o adapter grava
+          // `quota_cost` NULL quando o campo falta (`input.quotaCost ?? null`).
+          // `readSpentToday` (`services/sync/src/scheduler/runtime/facts.ts`)
+          // soma a coluna com `COALESCE(SUM(quota_cost), 0)`: um NULL vale
+          // ZERO, e as requisicoes que este lote JA emitiu — e que a OMDb ja
+          // cobrou — desapareciam da contabilidade do dia. O leitor podia ficar
+          // sem cota mais tarde no MESMO dia por um gasto que ninguem registrou.
+          //
+          // O caminho concreto: `deps.cache.write` (a escrita em `api_cache`)
+          // NAO esta dentro de try/catch no core, entao uma falha dela depois de
+          // N requisicoes pagas sobe inteira ate este `catch`. E o mesmo sintoma
+          // que a PR #303 fechou para o SIGTERM — la a linha
+          // `aborted`/`shutdown-requested` grava `client.getRequestCount()`.
+          // Este ramo, o do erro inesperado, tinha ficado de fora.
+          //
+          // `getRequestCount()` conta requisicoes EMITIDAS (retries incluidos),
+          // que e o que o fornecedor cobra — nao as que trouxeram nota.
+          quotaCost: client.getRequestCount(),
+          durationMs: Date.now() - startedAt,
         })
       }
     } catch (logError) {
