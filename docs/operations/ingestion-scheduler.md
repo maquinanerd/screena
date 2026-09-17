@@ -403,7 +403,7 @@ vermelho ensina o dono a ignorar vermelho.
 | --- | --- | --- |
 | `DATABASE_URL` | — | Obrigatoria. |
 | `TMDB_READ_ACCESS_TOKEN` (ou `TMDB_API_KEY`) | — | Obrigatoria. |
-| `CINERIE_SCHEDULER_APPLY` | `false` | **`true` para trabalhar de verdade.** Sem ela o ciclo roda inteiro em dry-run. Em `NODE_ENV=production` o servico RECUSA subir sem ela. |
+| `CINERIE_SCHEDULER_APPLY` | `false` | **`true` para trabalhar de verdade.** Sem ela o ciclo roda inteiro em dry-run: avalia, seleciona, conta e loga, e **nao grava `catalog_jobs`, nao chama fornecedor e nao passa `--apply` a CLI filha** (medido; ver a nota abaixo). Em `NODE_ENV=production` o servico RECUSA subir sem ela. |
 | `CINERIE_SCHEDULER_HEALTH_PORT` | `3005` | Porta de `/healthz`, `/readyz`, `/status`. |
 | `CINERIE_SCHEDULER_TICK_MS` | `300000` (5 min) | Intervalo entre avaliacoes do relogio. |
 | `CINERIE_SCHEDULER_BATCH_LIMIT` | `200` | Teto de itens por ciclo de cada fila. |
@@ -423,6 +423,23 @@ vermelho ensina o dono a ignorar vermelho.
 > equivalente (default 2000) e este runbook manda DESLIGA-LO quando o agendador
 > sobe — entao o produtor COM teto saía de cena e o SEM teto ficava. Agora os
 > dois tem o mesmo default.
+
+> **O dry-run ENFILEIRAVA ate 17/09/2026.** `discovery`, `changes`, `trending`,
+> `airing_series`, `title_detail_active`, `title_detail_ended` e `people` nunca
+> olharam a flag: sem `APPLY` gravavam em `catalog_jobs` de verdade. Medido com
+> PostgreSQL real: **8 jobs ja no primeiro ciclo sobre banco vazio** (3
+> descobertas, 1 `changes`, 4 `trending`), mais um por titulo ou pessoa que as
+> selecoes encontrassem — e o `trending` ainda declarava 4 requisicoes de cota.
+> Com um `screen-catalog-worker` no mesmo banco, o dry-run virava requisicao ao
+> TMDB. Hoje toda escrita dos runners em `catalog_jobs` passa por UMA porta
+> (`enqueueJob`, em `services/sync/src/scheduler/runtime/runners.ts`), que e
+> quem olha a flag. Duas provas medem o fato:
+> `services/sync/src/scheduler/__tests__/dry-run-no-side-effects.test.ts` (toda
+> fila, com e sem `APPLY`, em todo `pnpm test`) e
+> `pnpm --filter @screena/sync prove:scheduler-service` (conta `catalog_jobs`
+> depois do primeiro ciclo, com PostgreSQL efemero). Um banco que ja recebeu um
+> agendador em dry-run antes disso pode ter esses jobs, com `run_id`
+> `scheduler:<fila>` — o mesmo que um agendador com `APPLY` grava.
 
 > **Estas duas variaveis pertencem ao `screen-catalog-worker`, nao a este
 > servico** — e o servico dele tem passo proprio na secao 7. Ate 21/08/2026

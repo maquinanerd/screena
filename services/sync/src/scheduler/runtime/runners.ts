@@ -13,6 +13,9 @@
  *     `FOR UPDATE SKIP LOCKED` vem de graca — reimplementa-los aqui criaria uma
  *     segunda maquina de fila que divergiria da primeira em silencio.
  *
+ *     Todo runner chega ao `store.enqueue` por `enqueueJob`, e e ELA que olha o
+ *     dry-run. Ver o cabecalho dela.
+ *
  * (B) FILA DE OUTRO SERVICO -> SPAWNA a CLI que ja existe.
  *     Notas (OMDb), premiacao e Cinerie Score moram em `@screena/ratings`, com
  *     CLIs que o dono ja roda a mao. O agendador executa EXATAMENTE esses
@@ -173,6 +176,48 @@ function countReason(bag: Map<string, RunReason>, code: string, detail: string):
 // ---------------------------------------------------------------------------
 
 /**
+ * A UNICA porta dos runners para `catalog_jobs`, e ela e quem olha `deps.apply`.
+ * Devolve `true` quando o job NASCEU; o que nao nasceu fica contado em `reasons`
+ * (`dry_run` ou `already_queued`), e cabe ao chamador somar em `skipped`.
+ *
+ * ============================================================================
+ * POR QUE A GUARDA MORA AQUI, E NAO EM CADA RUNNER
+ * ============================================================================
+ * Ate 17/09/2026 cada runner decidia sozinho se respeitava o dry-run, e cinco
+ * caminhos nunca decidiram: `runDiscovery`, `runChanges`, `runTrending`,
+ * `runPeople` e `enqueueTitleDetails`. Sem `CINERIE_SCHEDULER_APPLY` eles
+ * gravavam em `catalog_jobs` de verdade — e um `screen-catalog-worker` apontado
+ * para o mesmo banco transformava o dry-run em requisicao ao TMDB, exatamente o
+ * que o cabecalho de `bin/cinerie-scheduler.ts` promete que nao acontece. O
+ * `trending` ainda declarava 4 requisicoes de cota que ninguem gastou. Era assim
+ * desde a primeira versao do agendador (`e676fa5`, 21/08/2026); `title_media`,
+ * que chegou depois, foi o unico a nascer com a guarda.
+ *
+ * Uma guarda por runner e uma guarda que o proximo runner esquece. Aqui ela e a
+ * condicao para chegar ao `store.enqueue`, e o teste que percorre TODA fila de
+ * `QUEUE_RUNNERS` com e sem `apply` (`../__tests__/dry-run-no-side-effects.test.ts`)
+ * reprova o runner que enfileirar por fora.
+ *
+ * O JOB E MONTADO ANTES DA GUARDA, de proposito: montar e puro, e um builder que
+ * recusa a entrada tem de aparecer no dry-run como aparece no ciclo real
+ * (`enqueue_failed`). O dry-run avalia tudo; so nao escreve.
+ */
+async function enqueueJob(
+  deps: RunnerDeps,
+  job: Record<string, unknown>,
+  reasons: Map<string, RunReason>,
+  alreadyQueuedDetail: string,
+): Promise<boolean> {
+  if (!deps.apply) {
+    countReason(reasons, 'dry_run', 'sem --apply: nada foi enfileirado')
+    return false
+  }
+  const result = await deps.services.store.enqueue(job)
+  if (!result.created) countReason(reasons, 'already_queued', alreadyQueuedDetail)
+  return result.created
+}
+
+/**
  * Enfileira `sync_details` para uma lista de titulos, com PRIORIDADE pela
  * posicao no ranking de popularidade.
  *
@@ -205,7 +250,8 @@ async function enqueueTitleDetails(
       // outro — e ja aconteceu neste repositorio, mandando o `/changes` inteiro
       // para dead-letter em silencio. Travado por
       // `tests/governance/coverage-single-path.test.ts`.
-      const result = await deps.services.store.enqueue(
+      const created = await enqueueJob(
+        deps,
         buildCoverageJob({
           kind: candidate.entityType,
           tmdbId: candidate.tmdbId,
@@ -218,8 +264,10 @@ async function enqueueTitleDetails(
           rank,
           runId: `scheduler:${queue}`,
         }) as unknown as Record<string, unknown>,
+        reasons,
+        'job identico ja estava na fila deste dia',
       )
-      if (result.created) {
+      if (created) {
         processed += 1
         // Quantos subiram na fila POR TRENDING. Sem esta contagem, o sinal
         // ligado e o sinal quebrado produzem o mesmo relatorio.
@@ -232,7 +280,6 @@ async function enqueueTitleDetails(
         }
       } else {
         skipped += 1
-        countReason(reasons, 'already_queued', 'job identico ja estava na fila deste dia')
       }
     } catch (error) {
       failed += 1
@@ -264,7 +311,8 @@ const runDiscovery: QueueRunner = async (deps) => {
       // vive em `@screena/ingestion` `producer-jobs.ts`, que e puro e TEM teste
       // — e e o MESMO builder do servico de catalogo, entao a chave dos dois
       // produtores nao tem como divergir.
-      const result = await deps.services.store.enqueue(
+      const created = await enqueueJob(
+        deps,
         buildDailyDiscoveryJob({
           kind,
           day,
@@ -278,12 +326,11 @@ const runDiscovery: QueueRunner = async (deps) => {
           limit: deps.discoveryLimit,
           runId: 'scheduler:discovery',
         }) as unknown as Record<string, unknown>,
+        reasons,
+        'descoberta do dia ja enfileirada',
       )
-      if (result.created) processed += 1
-      else {
-        skipped += 1
-        countReason(reasons, 'already_queued', 'descoberta do dia ja enfileirada')
-      }
+      if (created) processed += 1
+      else skipped += 1
     } catch (error) {
       failed += 1
       countReason(reasons, 'enqueue_failed', String(error))
@@ -311,18 +358,18 @@ const runChanges: QueueRunner = async (deps) => {
   try {
     // Mesmo builder do servico de catalogo (`producer-jobs.ts`): chave,
     // payload e prioridade de produtor num lugar so, e com teste.
-    const result = await deps.services.store.enqueue(
+    const created = await enqueueJob(
+      deps,
       buildIncrementalChangesJob({
         slot,
         kinds: ['movie', 'tv', 'person'],
         runId: 'scheduler:changes',
       }) as unknown as Record<string, unknown>,
+      reasons,
+      'ciclo desta hora ja enfileirado',
     )
-    if (result.created) processed += 1
-    else {
-      skipped += 1
-      countReason(reasons, 'already_queued', 'ciclo desta hora ja enfileirado')
-    }
+    if (created) processed += 1
+    else skipped += 1
   } catch (error) {
     failed += 1
     countReason(reasons, 'enqueue_failed', String(error))
@@ -396,39 +443,36 @@ const runTitleMedia: QueueRunner = async (deps) => {
   let failed = 0
 
   for (const candidate of candidates) {
-    if (!deps.apply) {
-      skipped += 1
-      countReason(reasons, 'dry_run', 'sem --apply: nada foi enfileirado')
-      continue
-    }
     const externalId = String(candidate.tmdbId)
     try {
-      const result = await deps.services.store.enqueue({
-        jobType: 'sync_media',
-        entityType: candidate.entityType,
-        externalId,
-        idempotencyKey: buildIdempotencyKey({
+      const created = await enqueueJob(
+        deps,
+        {
           jobType: 'sync_media',
           entityType: candidate.entityType,
           externalId,
-          discriminator: `${deps.locale}:${dailyScope('title_media', startedAt)}`,
-        }),
-        payload: {
-          entityType: candidate.entityType,
-          tmdbId: candidate.tmdbId,
-          locale: deps.locale,
+          idempotencyKey: buildIdempotencyKey({
+            jobType: 'sync_media',
+            entityType: candidate.entityType,
+            externalId,
+            discriminator: `${deps.locale}:${dailyScope('title_media', startedAt)}`,
+          }),
+          payload: {
+            entityType: candidate.entityType,
+            tmdbId: candidate.tmdbId,
+            locale: deps.locale,
+          },
+          // 70: a mesma prioridade que a cascata de `sync_details` da a midia de
+          // filme/serie. Duas origens do MESMO job com prioridades diferentes
+          // fariam a fila reordenar por quem pediu, nao por quem precisa.
+          priority: 70,
+          runId: 'scheduler:title_media',
         },
-        // 70: a mesma prioridade que a cascata de `sync_details` da a midia de
-        // filme/serie. Duas origens do MESMO job com prioridades diferentes
-        // fariam a fila reordenar por quem pediu, nao por quem precisa.
-        priority: 70,
-        runId: 'scheduler:title_media',
-      })
-      if (result.created) processed += 1
-      else {
-        skipped += 1
-        countReason(reasons, 'already_queued', 'midia deste titulo ja enfileirada neste dia')
-      }
+        reasons,
+        'midia deste titulo ja enfileirada neste dia',
+      )
+      if (created) processed += 1
+      else skipped += 1
     } catch (error) {
       failed += 1
       countReason(reasons, 'enqueue_failed', String(error))
@@ -483,10 +527,11 @@ const runTrending: QueueRunner = async (deps) => {
   for (const combo of TRENDING_COMBOS) {
     try {
       // O payload inteiro (inclusive a `priority`, que faltava) vive em
-      // `../trending-jobs.ts`, que e puro e TEM teste. Ver o cabecalho de la:
-      // este arquivo nao e importavel por teste nenhum, entao um campo faltando
-      // aqui nao teria como ficar vermelho em lugar algum.
-      const result = await deps.services.store.enqueue(
+      // `../trending-jobs.ts`, que e puro e TEM teste. O campo faltou porque
+      // nenhum teste olhava o job montado aqui — e o modulo puro e a unidade
+      // certa para olhar.
+      const created = await enqueueJob(
+        deps,
         buildTrendingListJob({
           entityType: combo.entityType,
           window: combo.window,
@@ -501,12 +546,11 @@ const runTrending: QueueRunner = async (deps) => {
           }),
           runId: 'scheduler:trending',
         }),
+        reasons,
+        'ciclo de 6 h ja enfileirado',
       )
-      if (result.created) processed += 1
-      else {
-        skipped += 1
-        countReason(reasons, 'already_queued', 'ciclo de 6 h ja enfileirado')
-      }
+      if (created) processed += 1
+      else skipped += 1
     } catch (error) {
       failed += 1
       countReason(reasons, 'enqueue_failed', String(error))
@@ -535,7 +579,8 @@ const runPeople: QueueRunner = async (deps) => {
 
   for (const candidate of candidates) {
     try {
-      const result = await deps.services.store.enqueue(
+      const created = await enqueueJob(
+        deps,
         buildCoverageJob({
           kind: 'person',
           tmdbId: candidate.tmdbId,
@@ -547,12 +592,11 @@ const runPeople: QueueRunner = async (deps) => {
           rank: null,
           runId: 'scheduler:people',
         }) as unknown as Record<string, unknown>,
+        reasons,
+        'pessoa ja enfileirada neste dia',
       )
-      if (result.created) processed += 1
-      else {
-        skipped += 1
-        countReason(reasons, 'already_queued', 'pessoa ja enfileirada neste dia')
-      }
+      if (created) processed += 1
+      else skipped += 1
     } catch (error) {
       failed += 1
       countReason(reasons, 'enqueue_failed', String(error))
@@ -761,9 +805,10 @@ const runRatingsOmdb: QueueRunner = async (deps) => {
   // de um ciclo que realmente cobriu o catalogo. E o painel media o RELOGIO, nao
   // o trabalho.
   //
-  // Os runners irmaos (`enqueue`, `watch_offers`) ja contavam `dry_run` em
-  // `skipped`; este era o unico que nao contava. A guarda sai daqui e nao de
-  // dentro do laco porque a decisao e do CICLO, nao da fatia.
+  // `watch_offers` e `title_media` ja contavam `dry_run` em `skipped`. (Esta
+  // linha dizia que os runners de enfileirar tambem contavam; ate 17/09/2026
+  // eles nem deixavam de enfileirar — ver `enqueueJob`.) A guarda sai daqui e
+  // nao de dentro do laco porque a decisao e do CICLO, nao da fatia.
   if (!deps.apply) {
     for (const slice of plan.slices) skipped += slice.slots
     return tally(

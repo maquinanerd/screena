@@ -6,14 +6,22 @@
  * ============================================================================
  * O QUE ISTO PROVA QUE UM TESTE DE UNIDADE NAO PROVA
  * ============================================================================
- * Que o processo SOBE, abre a porta, le `api_sync_logs` num banco real, avalia as
- * onze filas e serve o painel — sem `.env`, sem rede externa e sem tocar
- * producao. Os testes puros provam as decisoes; este prova a MONTAGEM: imports,
- * config, Prisma, HTTP e o primeiro ciclo.
+ * Que o processo SOBE, abre a porta, le `api_sync_logs` num banco real, avalia
+ * todas as filas da tabela de ritmos e serve o painel — sem `.env`, sem rede
+ * externa e sem tocar producao. Os testes puros provam as decisoes; este prova a
+ * MONTAGEM: imports, config, Prisma, HTTP e o primeiro ciclo.
  *
  * DRY-RUN SEMPRE (`CINERIE_SCHEDULER_APPLY` fica de fora): o agendador avalia,
  * seleciona e loga, e nao enfileira nada. Uma prova que escrevesse no banco
  * estaria testando o efeito colateral, nao a montagem.
+ *
+ * E "nao enfileira nada" e MEDIDO, nao suposto: a prova espera o primeiro ciclo
+ * terminar todas as filas e conta `catalog_jobs`. Ate 17/09/2026 esta frase era
+ * falsa e ninguem media — `discovery`, `changes` e `trending` enfileiravam em
+ * dry-run ja no banco vazio (8 jobs no primeiro ciclo), e `airing_series`,
+ * `title_detail_*` e `people` enfileiravam o que selecionassem. O teste de
+ * unidade que trava cada fila e `src/scheduler/__tests__/dry-run-no-side-effects.test.ts`;
+ * este e o mesmo fato com o processo inteiro e o PostgreSQL de verdade.
  *
  * NOTA DE AMBIENTE (Windows): o `initdb` do `embedded-postgres` falha em caminho
  * com acento. O diretorio de dados sai de `os.tmpdir()`; se o seu `TEMP` tiver
@@ -29,6 +37,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { PrismaClient } from '@prisma/client'
 import EmbeddedPostgres from 'embedded-postgres'
 
 import { RHYTHMS } from '../src/scheduler/rhythms.js'
@@ -72,6 +81,15 @@ function prismaBin(): string {
 async function get(port: number, route: string): Promise<{ status: number; body: string }> {
   const response = await fetch(`http://127.0.0.1:${String(port)}${route}`)
   return { status: response.status, body: await response.text() }
+}
+
+async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (condition()) return true
+    await sleep(300)
+  }
+  return condition()
 }
 
 async function waitFor(port: number, timeoutMs: number): Promise<boolean> {
@@ -143,7 +161,29 @@ async function main(): Promise<number> {
       },
     )
     let stderr = ''
-    child.stdout?.on('data', () => undefined)
+    // O log do agendador e uma linha JSON por evento. `scheduler_queue_finished`
+    // sai uma vez por fila executada: e por ele que a prova sabe que o primeiro
+    // ciclo TERMINOU, em vez de contar `catalog_jobs` no meio dele.
+    const finishedQueues = new Set<string>()
+    let pendingStdout = ''
+    child.stdout?.on('data', (chunk: Buffer) => {
+      pendingStdout += chunk.toString('utf8')
+      let newline = pendingStdout.indexOf('\n')
+      while (newline >= 0) {
+        const line = pendingStdout.slice(0, newline).trim()
+        pendingStdout = pendingStdout.slice(newline + 1)
+        newline = pendingStdout.indexOf('\n')
+        if (!line.startsWith('{')) continue
+        try {
+          const entry = JSON.parse(line) as { event?: unknown; queue?: unknown }
+          if (entry.event === 'scheduler_queue_finished' && typeof entry.queue === 'string') {
+            finishedQueues.add(entry.queue)
+          }
+        } catch {
+          /* linha que nao e do logger estruturado */
+        }
+      }
+    })
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf8')
     })
@@ -197,6 +237,30 @@ async function main(): Promise<number> {
     // ---- superficie minima -------------------------------------------------
     const naoExiste = await get(httpPort, '/enfileirar')
     check(naoExiste.status === 404, 'nenhuma rota alem das tres: /enfileirar da 404')
+
+    // ---- o primeiro ciclo em dry-run nao enfileira -------------------------
+    // No banco vazio toda fila esta vencida, entao o primeiro ciclo executa
+    // TODAS. As que sobem CLI filha (premiacao, Score, busca) levam segundos
+    // cada: o teto e folgado de proposito.
+    const cicloCompleto = await waitUntil(() => finishedQueues.size >= RHYTHMS.length, 180_000)
+    check(
+      cicloCompleto,
+      `o primeiro ciclo termina as ${RHYTHMS.length} filas (${finishedQueues.size} terminaram)`,
+    )
+    const prisma = new PrismaClient({ datasources: { db: { url } } })
+    try {
+      const rows = await prisma.$queryRawUnsafe<Array<{ jobs: number }>>(
+        'SELECT count(*)::int AS jobs FROM catalog_jobs',
+      )
+      const jobs = rows[0]?.jobs ?? -1
+      // So vale com o ciclo completo: zero linhas no meio do ciclo nao prova nada.
+      check(
+        cicloCompleto && jobs === 0,
+        `dry-run nao grava catalog_jobs: ${jobs} linha(s) depois do primeiro ciclo`,
+      )
+    } finally {
+      await prisma.$disconnect()
+    }
 
     // ---- desligamento limpo ------------------------------------------------
     const pedidoEm = Date.now()
