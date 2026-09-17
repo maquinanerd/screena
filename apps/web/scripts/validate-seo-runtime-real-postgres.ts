@@ -14,6 +14,8 @@
  *   - Sitemap PAGINADO NO BANCO: index por contagem, shard por LIMIT/OFFSET de UM
  *     tipo, exclusao durante a consulta, multiplos shards, 404 estrito, prova de
  *     LIMIT no banco (instrumentacao de SQL), fail-closed.
+ *   - Extensao de imagem (compensacao da D1): a URL da ficha anuncia a arte que
+ *     a pagina exibe, sob a licenca tmdb/image — sem, com e revogada.
  *   - Gate de noticias: licenca/atribuicao/linkback/publicacao fail-closed.
  *   - Seguranca JSON-LD: escape de </script>, <, >, &, U+2028, U+2029.
  *
@@ -104,16 +106,33 @@ type PrismaLike = {
   redirect: { create: (args: unknown) => Promise<unknown> };
   article: { create: (args: unknown) => Promise<{ id: bigint }> };
   articleTranslation: { create: (args: unknown) => Promise<unknown> };
+  sourceLicense: {
+    create: (args: unknown) => Promise<unknown>;
+    updateMany: (args: unknown) => Promise<unknown>;
+  };
 };
 
 const BODY = "Corpo editorial proprio e substancial para a noticia. ".repeat(6);
 
 async function seedMovie(
   prisma: PrismaLike,
-  opts: { tmdbId: number; slug: string; title: string; withTranslation?: boolean },
+  opts: {
+    tmdbId: number;
+    slug: string;
+    title: string;
+    withTranslation?: boolean;
+    /** A arte da ficha (`movies.poster_path`/`backdrop_path`); ausente = sem arte. */
+    posterPath?: string;
+    backdropPath?: string;
+  },
 ): Promise<bigint> {
   const movie = await prisma.movie.create({
-    data: { tmdbId: opts.tmdbId, titleOriginal: opts.title },
+    data: {
+      tmdbId: opts.tmdbId,
+      titleOriginal: opts.title,
+      posterPath: opts.posterPath ?? null,
+      backdropPath: opts.backdropPath ?? null,
+    },
     select: { id: true },
   });
   await prisma.slug.create({
@@ -155,6 +174,44 @@ async function seedDecision(
       decisionOrigin: opts.origin ?? "seo_policy_engine",
       reason: `teste decision=${opts.decision}`,
     },
+  });
+}
+
+const TMDB_IMAGE_ATTRIBUTION =
+  "Este produto usa a API do TMDB, mas nao e endossado ou certificado pelo TMDB.";
+
+/**
+ * A licenca de imagem do TMDB (`source_licenses` tmdb/image), na forma que os
+ * validadores de ficha ja semeiam. O `db:seed` nao a cria: sem ela, a ficha nao
+ * exibe arte do TMDB — e o shard nao pode anunciar imagem.
+ */
+async function seedTmdbImageLicense(prisma: PrismaLike): Promise<void> {
+  await prisma.sourceLicense.create({
+    data: {
+      sourceKey: "tmdb",
+      contentType: "image",
+      providerKey: "tmdb",
+      territoryCode: null,
+      licenseStatus: "official",
+      displayAllowed: true,
+      logoAllowed: true,
+      scoreAllowed: false,
+      reviewQuoteAllowed: false,
+      requiresAttribution: true,
+      requiresLinkback: true,
+      attributionText: TMDB_IMAGE_ATTRIBUTION,
+      isCurrent: true,
+      decisionOrigin: "validator-harness",
+      policyVersion: "cinerie-source-auth/tmdb-image/2026-08-v4",
+    },
+  });
+}
+
+/** Liga ou desliga `display_allowed` da licenca vigente — a revogacao, sem trocar a linha. */
+async function setTmdbImageDisplay(prisma: PrismaLike, allowed: boolean): Promise<void> {
+  await prisma.sourceLicense.updateMany({
+    where: { sourceKey: "tmdb", contentType: "image", isCurrent: true },
+    data: { displayAllowed: allowed },
   });
 }
 
@@ -213,7 +270,10 @@ interface Seams {
     decisionSource: string;
   }>;
   getCurrentPageIndexabilityDecision: (key: unknown) => Promise<{ decision: string } | null>;
-  getMoviePageData: (slug: string) => Promise<{ seo: { decision: string; decisionSource: string } } | null>;
+  getMoviePageData: (slug: string) => Promise<{
+    seo: { decision: string; decisionSource: string };
+    view: { media: { poster: { src: string } | null; backdrop: { src: string } | null } };
+  } | null>;
   lookupRedirect: (path: string) => Promise<{ status: string; location: string | null; statusCode: number | null }>;
   clearRedirectCache: () => void;
   getSitemapIndexXml: (opts?: { limit?: number }, client?: unknown) => Promise<SitemapXml>;
@@ -596,6 +656,85 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   record(48, "D1: shard de galeria responde 404 e o index nao anuncia galeria",
     galeriaImagens === null && galeriaVideos === null && !/-(imagens|videos)-\d+\.xml/.test(indexFinal.xml),
     `imagens=${galeriaImagens === null ? "404" : "obj"} videos=${galeriaVideos === null ? "404" : "obj"}`);
+
+  // D1, compensacao: a arte da FICHA no sitemap. A galeria saiu do indice; a arte
+  // passa a ser anunciada na URL da propria ficha, com `<image:image>`. A licenca
+  // e GLOBAL (tmdb/image), entao o MESMO shard e lido sem licenca, com licenca e
+  // com a licenca revogada — e em cada estado as imagens dele sao as que a PAGINA
+  // exibe. Filme com decisao `index`: o gate de filme esta armado desde o 37.
+  const ARTE = { poster: "/posterFilmeComArte.jpg", backdrop: "/backdropFilmeComArte.jpg" };
+  const idComArte = await seedMovie(prisma, {
+    tmdbId: 96_300_001,
+    slug: "filme-com-arte",
+    title: "Filme Com Arte",
+    posterPath: ARTE.poster,
+    backdropPath: ARTE.backdrop,
+  });
+  await seedDecision(prisma, { entityId: idComArte, slug: "filme-com-arte", decision: "index", isCurrent: true, origin: "catalog_policy_engine" });
+
+  const shardDeFilmes = async (): Promise<string> =>
+    (await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: BIG }))?.xml ?? "";
+  /** O conteudo do `<url>` de uma ficha, ou "" quando ela nao esta no shard. */
+  const urlDaFicha = (xml: string, slug: string): string =>
+    xml
+      .split("<url>")
+      .slice(1)
+      .map((parte) => parte.slice(0, parte.indexOf("</url>")))
+      .find((bloco) => bloco.includes(`/pt/filmes/${slug}/</loc>`)) ?? "";
+  const imagensDe = (bloco: string): string[] =>
+    Array.from(bloco.matchAll(/<image:loc>([^<]*)<\/image:loc>/g), (m) => m[1] ?? "");
+  const arteDaPagina = async (slug: string): Promise<string[]> => {
+    const media = (await seams.getMoviePageData(slug))?.view.media;
+    return [media?.poster?.src, media?.backdrop?.src].filter((src): src is string => src !== undefined);
+  };
+
+  const semLicenca = await shardDeFilmes();
+  const indexSemLicenca = await seams.getSitemapIndexXml({ limit: BIG });
+  const arteSemLicenca = await arteDaPagina("filme-com-arte");
+  record(49, "IMAGEM: sem licenca tmdb/image, a ficha fica no shard SEM imagem — e a pagina tambem nao exibe arte",
+    urlDaFicha(semLicenca, "filme-com-arte") !== "" && !semLicenca.includes("<image:") && arteSemLicenca.length === 0,
+    `ficha=${urlDaFicha(semLicenca, "filme-com-arte") !== ""} imagem=${semLicenca.includes("<image:")} arte-na-pagina=${arteSemLicenca.length}`);
+
+  await seedTmdbImageLicense(prisma);
+  const comLicenca = await shardDeFilmes();
+  const imagensComLicenca = imagensDe(urlDaFicha(comLicenca, "filme-com-arte"));
+  const arteComLicenca = await arteDaPagina("filme-com-arte");
+  record(50, "IMAGEM: com licenca, a URL da ficha anuncia EXATAMENTE a arte que a pagina exibe (poster w500, backdrop w1280)",
+    comLicenca.includes('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"') &&
+      JSON.stringify(imagensComLicenca) ===
+        JSON.stringify([`https://image.tmdb.org/t/p/w500${ARTE.poster}`, `https://image.tmdb.org/t/p/w1280${ARTE.backdrop}`]) &&
+      JSON.stringify(imagensComLicenca) === JSON.stringify(arteComLicenca),
+    `shard=${JSON.stringify(imagensComLicenca)} pagina=${JSON.stringify(arteComLicenca)}`);
+
+  const semArte = urlDaFicha(comLicenca, "titulo-legivel");
+  record(51, "IMAGEM: ficha sem arte no banco nao ganha imagem, mesmo com licenca",
+    semArte !== "" && imagensDe(semArte).length === 0,
+    `ficha=${semArte !== ""} imagens=${imagensDe(semArte).length}`);
+
+  const indexComLicenca = await seams.getSitemapIndexXml({ limit: BIG });
+  record(52, "IMAGEM: a imagem nao muda contagem — as MESMAS URLs no shard e os MESMOS shards no index",
+    JSON.stringify(locsInXml(comLicenca)) === JSON.stringify(locsInXml(semLicenca)) &&
+      JSON.stringify(locsInXml(indexComLicenca.xml)) === JSON.stringify(locsInXml(indexSemLicenca.xml)),
+    `urls=${locsInXml(comLicenca).length}/${locsInXml(semLicenca).length} shards=${locsInXml(indexComLicenca.xml).length}/${locsInXml(indexSemLicenca.xml).length}`);
+
+  // Limite do protocolo com a imagem somada (sitemaps.org: 50.000 URLs e
+  // 52.428.800 bytes por arquivo): o bloco MEDIDO desta ficha, com as duas
+  // imagens, vezes o teto de URLs por shard. O pior caso por comprimento de slug
+  // e travado em `packages/seo/src/sitemap-xml-images.test.ts`.
+  const bytesPorUrl = Buffer.byteLength(`  <url>${urlDaFicha(comLicenca, "filme-com-arte")}</url>\n`, "utf8");
+  const shardCheio = bytesPorUrl * 50_000;
+  record(53, "IMAGEM: um shard cheio de URLs como esta (50.000, duas imagens cada) fica abaixo de 50 MB",
+    bytesPorUrl > 0 && shardCheio < 52_428_800,
+    `bloco=${bytesPorUrl} bytes; 50.000 blocos=${(shardCheio / 1_048_576).toFixed(1)} MB`);
+
+  await setTmdbImageDisplay(prisma, false);
+  const revogada = await shardDeFilmes();
+  const arteRevogada = await arteDaPagina("filme-com-arte");
+  record(54, "IMAGEM: licenca revogada (display_allowed=false) tira a imagem do shard e da pagina, sem tirar a URL",
+    !revogada.includes("<image:") &&
+      JSON.stringify(locsInXml(revogada)) === JSON.stringify(locsInXml(semLicenca)) &&
+      arteRevogada.length === 0,
+    `imagem=${revogada.includes("<image:")} urls=${locsInXml(revogada).length} arte-na-pagina=${arteRevogada.length}`);
 }
 
 async function main(): Promise<void> {

@@ -5,7 +5,6 @@ import {
   buildMetaDescription,
   buildSameAs,
   describeMovieFactually,
-  schemaImageUrls,
   schemaPeople,
   serializeJsonLd,
   toIsoDuration,
@@ -22,6 +21,7 @@ import { TrailerModal } from '../../../_components/trailer-modal'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
   type CinerieScoreView,
@@ -344,7 +344,8 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   // faixa de midia — `image` e obrigatoria para o Google em `Movie` —, os generos
   // da ficha, a direcao da ficha tecnica, o elenco da faixa e a duracao. Pessoa
   // com pagina ganha `url`; sem pagina, so o nome.
-  const images = schemaImageUrls([view.media.poster?.src, view.media.backdrop?.src], SITE_URL)
+  // A MESMA lista que o shard de sitemap anuncia na URL desta ficha.
+  const images = entityPageImageUrls(view.media, SITE_URL)
   if (images.length > 0) movieJsonLd.image = images
   if (genres.length > 0) movieJsonLd.genre = genres
   const directorList = schemaPeople(directors, SITE_URL)
