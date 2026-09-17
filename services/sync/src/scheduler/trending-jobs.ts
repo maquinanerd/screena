@@ -5,10 +5,10 @@
  * POR QUE ISTO É UM MÓDULO, E NÃO UM OBJETO LITERAL DENTRO DO RUNNER
  * ============================================================================
  * Porque o defeito que ele conserta era uma AUSÊNCIA, e ausência não quebra
- * teste. Enquanto o payload morava inline em `runners.ts`, nenhum teste
- * conseguia sequer importar aquele arquivo (ele puxa `@screena/ingestion/runtime`,
- * que não tem alias no `vitest.config.ts`) — então a `priority` faltante nunca
- * teve como ficar vermelha em lugar nenhum.
+ * teste. Enquanto o payload morava inline em `runners.ts`, nenhum teste olhava
+ * para ele — então a `priority` faltante nunca teve como ficar vermelha em lugar
+ * nenhum. (Este parágrafo dizia que nenhum teste CONSEGUIA importar
+ * `runners.ts`; não era verdade — ver `__tests__/trending-priority.test.ts`.)
  *
  * Aqui ela é o valor de retorno de uma função pura. Tirar a prioridade agora
  * exige editar ESTE arquivo, e este arquivo tem teste.

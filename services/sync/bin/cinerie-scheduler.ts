@@ -34,6 +34,12 @@
  * seria um servico verde que nao faz nada: por isso `/readyz` RECUSA producao
  * sem `APPLY` (ver `evaluateSchedulerReadiness`).
  *
+ * Ate 17/09/2026 esta promessa era falsa para sete filas, que enfileiravam em
+ * dry-run. Agora ela e MEDIDA: `src/scheduler/__tests__/dry-run-no-side-effects.test.ts`
+ * roda toda fila de `QUEUE_RUNNERS` com e sem `APPLY`, e
+ * `scripts/prove-scheduler-service.ts` conta `catalog_jobs` depois do primeiro
+ * ciclo deste processo contra PostgreSQL real.
+ *
  * ============================================================================
  * PEDIDOS DO PAINEL
  * ============================================================================
