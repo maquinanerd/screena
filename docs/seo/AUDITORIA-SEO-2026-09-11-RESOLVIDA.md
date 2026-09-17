@@ -65,7 +65,7 @@ série (P9) saíram dos pendentes: ver a linha P9.
 |---|---|---|---|---|---|
 | M1 | `www.cinerie.com` responde 200 sem redirect | Redirect 301 na borda, com a regra escrita | — | conferência pós-deploy (I1) | DEPENDÊNCIA EXTERNA DOCUMENTADA (I1) |
 | M2 | Sitemaps lentos e sem cache | A origem manda `Cache-Control` (`s-maxage` 900/300, `no-store` em falha); falta a Cache Rule na borda | `src/lib/sitemap-cache-control.ts`, rotas de sitemap | `sitemap-cache-control.test.ts` | DEPENDÊNCIA EXTERNA DOCUMENTADA (I2) — origem pronta |
-| M3 | 11.666 fichas `tmdb-{id}` sem tradução indexadas | D3: `noindex, follow` e fora do sitemap até enriquecer; voltam sozinhas | `entity-quality-gates.ts`, `resolver.ts`, `sitemap-index.ts` | `entity-quality-gates.test.ts`, `resolver-quality-gate.test.ts`, `validate:seo-runtime` (43–47) | RESOLVIDO (`3cf1d0e`, `429a194`) |
+| M3 | 11.666 fichas `tmdb-{id}` sem tradução indexadas | D3: `noindex, follow` e fora do sitemap até enriquecer; voltam sozinhas. **A primeira versão não barrava ninguém em produção** — ver §10 | `entity-quality-gates.ts`, `resolver.ts`, `sitemap-index.ts` | `entity-quality-gates.test.ts`, `resolver-quality-gate.test.ts`, `sitemap-localizacao-titulo-proprio.test.ts`, `validate:seo-runtime` (43–47, 55–57) | RESOLVIDO no código (`3cf1d0e`, `429a194`); **corrigido depois de medir produção** (§10) |
 | M4 | Meta description ausente sem sinopse | Descrição factual com o que a ficha mostra (ano, direção, gêneros, elenco, duração) | `packages/seo/src/factual-description.ts`, fichas | `factual-description.test.ts`, `meta-description-length.test.ts` | RESOLVIDO (`14a6ed0`) |
 | M5 | Falha de banco virava `noindex` guardado pelo ISR | Falha LANÇA `IndexabilityDecisionUnavailableError` → 5xx, com log; nunca `noindex` | `src/server/seo/indexability-decision.ts` | `validate:seo-runtime` | RESOLVIDO (`dbe5dd7`) |
 | M6 | Sitemap de notícias engolia falha de banco sem log | `console.error` com a causa e resposta degradada `no-store` | `src/server/seo/news-sitemap.ts` | `sitemap-cache-control.test.ts` | RESOLVIDO (`47a3b23`) |
@@ -235,3 +235,65 @@ do deploy (I6).
   pessoa com biografia liberada. Os comportamentos que dependem disso foram
   provados nos validadores próprios (`validate:seo-runtime`,
   `validate:entity-indexes`), não no laboratório.
+
+---
+
+## 10. Conferência em produção (17/09/2026, depois do deploy)
+
+Os 15 PRs entraram na `main` em 17/09/2026 (`5fb9cd0`) e foram implantados no
+mesmo dia. Esta seção registra o que foi **MEDIDO no site publicado** — o que a
+§9 dizia não existir ainda. Sondas: `fetch` com `cache: 'no-store'` na própria
+origem, contagem de folhas de CSS no HTML, `<meta name="robots">` e leitura
+completa dos shards de sitemap.
+
+### 10.1 O que o deploy confirmou
+
+| O quê | Medido em produção | Antes do deploy |
+|---|---|---|
+| CSS da home | 2 folhas, 51.629 B crus, 11.035 B em gzip | 1 folha, 144.735 B e 24.800 B |
+| CSS da ficha de filme | 3 folhas, 62.305 B, 13.563 B em gzip | as mesmas 1 folha e 144.735 B |
+| HTML da ficha de série | 92.452 B | 150.132 B |
+| D1 · galeria | `/pt/filmes/o-fim-da-rua/imagens/` responde `noindex, follow` | `index, follow` |
+| D1 · sitemap | o índice não anuncia `imagens-*` nem `videos-*`; `sitemap-pt-BR-imagens-1.xml` responde 404 | os três shards anunciados |
+| D2 · pessoa | 3 de 3 perfis amostrados em `noindex, follow`; nenhum perfil no sitemap | página `index`, sitemap com 0 URLs |
+| Imagens no sitemap (#282) | `sitemap-pt-BR-movies-1.xml` com `xmlns:image` e `<image:image>` (pôster e backdrop) | sem extensão de imagem |
+| M2 · cache do sitemap | a origem manda `Cache-Control: public, max-age=0, s-maxage=900, stale-while-revalidate=3600` | sem `Cache-Control` |
+
+Continuam pendentes, e todas fora do repositório: **I1** (`https://www.cinerie.com/pt/`
+ainda responde 200, sem redirect), **I2** (a borda responde `cf-cache-status: DYNAMIC`,
+sem Cache Rule), **I5** (`cinerie.com` não tem registro MX, e `/pt/privacidade/`
+já publica `privacidade@` e `contato@`) e **I7**.
+
+**Achado de borda, para o dono decidir (D7).** O `robots.txt` de produção traz
+**um** grupo `User-agent: *`, sem `Content-Signal` e sem `Disallow` para crawler
+de treino: o bloco gerenciado da Cloudflare não está mais sendo servido. A D7
+manda mantê-lo. Se a duplicidade do I3 foi resolvida desligando o bloco, o
+bloqueio de treino saiu junto.
+
+### 10.2 A D3 não barrava ninguém — e o conserto
+
+**MEDIDO.** O sitemap publicado tem 94.415 fichas (58.169 filmes e 36.246
+séries), e **11.922 delas têm slug `tmdb-N`** (6.682 filmes e 5.240 séries) —
+praticamente a população que a auditoria media (11.666). Todas com `index` na
+página. Ou seja: o portão da D3 estava no ar e não excluía nada.
+
+**A amostra explicou.** `/pt/filmes/tmdb-1465816/` (`Τίποτα`),
+`/pt/filmes/tmdb-1729257/` e `/pt/filmes/tmdb-1744388/` (`月の民`) saem com `h1` no
+alfabeto original, `index, follow` e a description **gerada de fatos** (M4) —
+portanto sem `summary` e sem `meta_description` na linha do locale publicado.
+
+**A causa.** A condição era "existe título não vazio na linha do locale
+publicado". E existe: a linha pt-BR carrega o **título original copiado**. Copiar
+o original não é traduzir, e a D3 fala de "título no alfabeto original e sem
+description".
+
+**O conserto.** `isLocalizedTitle` passa a exigir título **diferente** do
+original (comparação exata, só com `trim`, para o SQL do sitemap julgar igual à
+página), e os quatro trechos de SQL comparam `et.title` com `movies.title_original`
+/ `tv_shows.name_original`. Provas: `entity-quality-gates.test.ts` (casos 3b, 3c,
+4b, 5b), `sitemap-localizacao-titulo-proprio.test.ts` (guard dos quatro trechos,
+com controle) e `validate:seo-runtime` 55–57 contra PostgreSQL real.
+
+**Efeito esperado:** as ~11,9 mil fichas saem da página e do sitemap, e voltam
+sozinhas quando ganharem título em pt-BR ou descrição. É **indexação em massa**:
+vale a D3, que o dono decidiu em 11/09/2026, e o merge é dele.

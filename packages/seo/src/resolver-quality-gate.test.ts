@@ -27,7 +27,8 @@ const BASE: PageSeoFacts = {
 
 const BARRADA = evaluateLocalizationGate({
   canonicalSlug: "tmdb-1",
-  hasLocalizedTitle: false,
+  localizedTitle: null,
+  originalTitle: "Τίποτα",
   hasLocalizedDescription: false,
 });
 
@@ -44,7 +45,8 @@ describe("portao de qualidade no resolver", () => {
   it("(2) portao aprovado nao muda nada: indexacao total", () => {
     const aprovado = evaluateLocalizationGate({
       canonicalSlug: "a-origem",
-      hasLocalizedTitle: false,
+      localizedTitle: null,
+      originalTitle: "Inception",
       hasLocalizedDescription: false,
     });
     const r = resolvePageSeo({ ...BASE, qualityGate: aprovado });
