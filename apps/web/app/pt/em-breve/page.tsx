@@ -8,6 +8,7 @@ import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../
 import { socialMetadata } from '../../../src/lib/social-metadata'
 import { ANTICIPATED_PATH } from '../../../src/lib/routes'
 import { anticipatedIndexable, getAnticipatedData } from '../../../src/server/anticipated'
+import './anticipated.css'
 
 /**
  * Em breve / Mais Aguardados — tela 12 do canônico, estrutura EXATA:

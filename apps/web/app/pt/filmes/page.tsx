@@ -21,6 +21,7 @@ import { getHomeUpcomingMovies } from '../../../src/server/home-upcoming'
 import { getPopularRankings } from '../../../src/server/popular-rankings'
 import { getMovieIndexData } from '../../../src/server/entity-indexes'
 import { getNewsIndexData } from '../../../src/server/news-pages'
+import '../../_components/home-like.css'
 
 /**
  * Categoria Filmes — tela 04 do canônico (EX-04-dual): "CATEGORY HOME sem

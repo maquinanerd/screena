@@ -25,6 +25,8 @@ import { CINERIE_SCORE_LOGO } from '../../../../src/lib/brand-logos'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, gatePublicRobots } from '../../../../src/lib/site'
 import { brandSocialImage } from '../../../../src/lib/social-metadata'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
+import '../../../_components/art-body.css'
+import './article.css'
 
 /**
  * Artigo — tela 05 do canônico: hero de CAPA full-bleed sob o header

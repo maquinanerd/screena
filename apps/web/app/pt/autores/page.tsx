@@ -10,6 +10,7 @@ import { AUTHORS_INDEX_PATH } from '../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getAuthorDirectoryData } from '../../../src/server/news-pages'
+import '../../_components/legal.css'
 
 /**
  * Autores — quem assina as matérias da Cinerie.

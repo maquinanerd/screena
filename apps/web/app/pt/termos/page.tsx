@@ -12,6 +12,7 @@ import {
   legalDocRobots,
 } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
+import '../../_components/legal.css'
 
 /**
  * Termos de Uso.

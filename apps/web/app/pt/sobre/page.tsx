@@ -17,6 +17,7 @@ import {
 } from '../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
+import '../../_components/legal.css'
 
 /**
  * Sobre a Cinerie.

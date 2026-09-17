@@ -21,6 +21,7 @@ import { trailBreadcrumbJsonLd, type TrailStep } from '../../../src/lib/institut
 import { EDITORIAL_POLICY_PATH, SCORE_METHODOLOGY_PATH } from '../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
+import '../../_components/legal.css'
 
 /**
  * Como funciona o Cinerie Score — a conta inteira, com os números da fórmula

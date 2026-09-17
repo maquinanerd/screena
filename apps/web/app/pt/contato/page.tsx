@@ -12,6 +12,7 @@ import { trailBreadcrumbJsonLd, type TrailStep } from '../../../src/lib/institut
 import { CONTACT_PATH, PRIVACY_PATH } from '../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
+import '../../_components/legal.css'
 
 /**
  * Contato.

@@ -8,6 +8,7 @@ import type { NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getNewsIndexData } from '../../../src/server/news-pages'
+import './news.css'
 
 /**
  * Notícias — tela 03 do canônico, layout MAGAZINE na estrutura EXATA do HTML:

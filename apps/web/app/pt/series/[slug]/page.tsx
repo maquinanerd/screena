@@ -41,6 +41,8 @@ import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getSeriesPageData } from '../../../../src/server/series-page'
 import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
 import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
+import '../../../_components/detail-hero.css'
+import '../../../_components/detail.css'
 
 /**
  * Detalhe de série — tela 07 do canônico, na ESTRUTURA EXATA do HTML:

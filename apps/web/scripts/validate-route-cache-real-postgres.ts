@@ -34,8 +34,8 @@
  * Pre-requisito: `pnpm build` (o script sobe `next start` sobre o build atual).
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
@@ -133,6 +133,28 @@ function freePort(): Promise<number> {
       const addr = srv.address();
       const port = typeof addr === "object" && addr ? addr.port : 0;
       srv.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Roda um processo filho SEM bloquear o laco de eventos deste processo.
+ *
+ * O Postgres embarcado escreve o log no stderr por um pipe que SO este processo
+ * esvazia (o `embedded-postgres` le por evento `data`). Com `execFileSync` o laco
+ * para, o pipe enche e o backend que for logar trava dentro do `write()`. Medido
+ * em 16/09/2026: a migration `20260716140000` ficou 6 h "active", sem wait_event,
+ * com 0,97 s de CPU. Reproduzido fora do validador: com o laco bloqueado, um
+ * cliente parou em ~100 WARNINGs (~56 KB de log, o buffer do pipe) e nao terminou
+ * em 90 s; com o filho assincrono, 600 WARNINGs passaram em 215 ms.
+ */
+function runChild(command: string, args: readonly string[], options: { env: NodeJS.ProcessEnv; cwd: string }): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: "inherit" });
+    child.on("error", reject);
+    child.on("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} ${args.join(" ")} terminou com ${signal ?? `codigo ${code}`}`));
     });
   });
 }
@@ -550,16 +572,8 @@ async function main(): Promise<void> {
     process.env.DATABASE_URL = url;
     const env = { ...process.env, DATABASE_URL: url };
 
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
-      env,
-      stdio: "inherit",
-      cwd: dbDir,
-    });
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
-      env,
-      stdio: "inherit",
-      cwd: dbDir,
-    });
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], { env, cwd: dbDir });
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], { env, cwd: dbDir });
 
     const dbServer = (await import("@screena/db/server")) as {
       getPrismaClient: () => {
@@ -953,10 +967,22 @@ async function main(): Promise<void> {
     // `CINERIE_LAB_HOLD_SECONDS`: mantem o Next e o banco semeado de pe DEPOIS das
     // provas, para medicao por fora — `seo:audit` e `perf:lab`. Nao muda prova
     // nenhuma, e sem a variavel o validador termina como sempre terminou.
+    //
+    // `CINERIE_LAB_STOP_FILE`: o hold termina ANTES do prazo quando esse arquivo
+    // aparece, e o `finally` abaixo derruba o Next e o Postgres. Matar o processo no
+    // lugar disso pula o `finally` — medido: `next start` e `postgres.exe` ficaram
+    // orfaos, segurando as portas e o diretorio de dados.
     const holdSeconds = Number(process.env.CINERIE_LAB_HOLD_SECONDS ?? "0");
     if (Number.isFinite(holdSeconds) && holdSeconds > 0) {
-      console.log(`\n[lab] Next de pe em ${base} por ${holdSeconds}s (CINERIE_LAB_HOLD_SECONDS)`);
-      await new Promise((resolve) => setTimeout(resolve, holdSeconds * 1000));
+      const stopFile = process.env.CINERIE_LAB_STOP_FILE ?? "";
+      console.log(
+        `\n[lab] Next de pe em ${base} por ${holdSeconds}s (CINERIE_LAB_HOLD_SECONDS)` +
+          (stopFile === "" ? "" : ` ou ate existir ${stopFile} (CINERIE_LAB_STOP_FILE)`),
+      );
+      const deadline = Date.now() + holdSeconds * 1000;
+      while (Date.now() < deadline && !(stopFile !== "" && existsSync(stopFile))) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
+      }
     }
   } finally {
     server?.kill();

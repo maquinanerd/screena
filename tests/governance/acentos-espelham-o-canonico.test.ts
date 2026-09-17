@@ -47,8 +47,12 @@ describe("os acentos de filme e serie tem UM valor so", () => {
   it("CONTROLE POSITIVO: o CSS foi lido e declara os dois tokens", () => {
     // Sem esta ancora, um caminho errado faria `tokenNoCss` lancar e o
     // diagnostico apareceria como "token nao encontrado" em vez de "arquivo
-    // errado" — que sao dois problemas bem diferentes.
-    expect(CSS.length).toBeGreaterThan(100_000);
+    // errado" — que sao dois problemas bem diferentes. A ancora e a ESTRUTURA do
+    // arquivo (o `:root` com os tokens `--c-*`), nao o tamanho: com a divisao do
+    // CSS por rota o globals.css encolheu de 257 KB para 87 KB, e os tokens
+    // ficaram nele (regra R4 do plano). Nenhuma folha de rota declara bloco `:root { }`.
+    expect(CSS).toMatch(/:root\s*\{/);
+    expect((CSS.match(/--c-[a-z0-9-]+\s*:/g) ?? []).length).toBeGreaterThan(20);
     expect(() => tokenNoCss("--c-accent-movie")).not.toThrow();
     expect(() => tokenNoCss("--c-accent-series")).not.toThrow();
   });

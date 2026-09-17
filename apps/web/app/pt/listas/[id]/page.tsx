@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import { ListDetailPanel } from './list-detail-panel'
+import '../lists.css'
 
 /**
  * Detalhe de LISTA (C8) — itens, adicionar/remover e reordenar.

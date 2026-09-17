@@ -26,6 +26,8 @@ import { decideSection } from '../../../../src/lib/section-absence'
 import { SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getPersonPageData } from '../../../../src/server/person-page'
+import '../../../_components/art-body.css'
+import './person.css'
 
 /**
  * Pessoa — tela 09 do canônico, estrutura EXATA: header 200px/1fr (retrato
