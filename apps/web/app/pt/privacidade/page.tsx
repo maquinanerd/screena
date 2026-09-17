@@ -13,6 +13,7 @@ import {
   legalDocRobots,
 } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
+import '../../_components/legal.css'
 
 /**
  * Política de Privacidade (LGPD, Lei 13.709/2018).

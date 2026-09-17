@@ -13,6 +13,7 @@ import {
 } from '../../../../../../../../../src/lib/site'
 import { socialMetadata } from '../../../../../../../../../src/lib/social-metadata'
 import { getEpisodePageData } from '../../../../../../../../../src/server/episode-page'
+import '../../../../../../../../_components/gallery.css'
 
 /**
  * Galeria de imagens de UM episodio

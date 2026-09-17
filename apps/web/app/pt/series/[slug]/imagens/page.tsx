@@ -5,6 +5,7 @@ import {
   imagesGalleryMetadata,
   type GalleryRouteParams,
 } from '../../../../_components/gallery-pages'
+import '../../../../_components/gallery.css'
 
 /**
  * Imagens e pôsteres de serie — /pt/series/[slug]/imagens/.
