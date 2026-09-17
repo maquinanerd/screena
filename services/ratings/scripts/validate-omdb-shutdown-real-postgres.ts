@@ -45,7 +45,6 @@
  * Uso: pnpm --filter @screena/ratings validate:omdb-shutdown
  */
 
-import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import { createRequire } from 'node:module'
@@ -54,6 +53,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { runChild } from '@screena/db/async-child-process'
 import { OMDB_PROVIDER_API } from '@screena/omdb-client'
 import { STOP_IN_FLIGHT_GRACE_MS } from '@screena/rapidapi-core'
 import EmbeddedPostgres from 'embedded-postgres'
@@ -120,16 +120,6 @@ function prismaBin(): string {
   }
   const rel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin.prisma
   return path.join(path.dirname(pkgPath), rel)
-}
-
-/** Filho ASSINCRONO com a semantica de erro de um `exec`: codigo != 0 rejeita. */
-async function runNode(args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): Promise<void> {
-  const code = await new Promise<number | null>((resolve, reject) => {
-    const child = spawn(process.execPath, args, { cwd, env, stdio: ['ignore', 'inherit', 'inherit'] })
-    child.on('error', reject)
-    child.on('exit', (exitCode) => resolve(exitCode))
-  })
-  if (code !== 0) throw new Error(`node ${args.slice(0, 2).join(' ')} saiu com ${String(code)}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -511,9 +501,17 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url }
 
     console.log('--- prisma migrate deploy ---')
-    await runNode([prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], env, dbDir)
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
+      env,
+      stdio: 'inherit',
+      cwd: dbDir,
+    })
     console.log('--- prisma db seed (inclui o provider "omdb") ---')
-    await runNode([prismaBin(), 'db', 'seed', '--schema', dbSchema], env, dbDir)
+    await runChild('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
+      env,
+      stdio: 'inherit',
+      cwd: dbDir,
+    })
     record(1, 'migrate deploy + seed aplicam sem erro', true, 'ok')
 
     fake = await startFakeOmdb()
