@@ -1,0 +1,959 @@
+/* ------------------------------------------------------------------ */
+/* HomeLike — /pt/, /pt/filmes/ e /pt/series/ (valores EXATOS do canônico) */
+/* ------------------------------------------------------------------ */
+/*
+ * Folha da HomeLike: /pt/, /pt/filmes/ e /pt/series/, importada por cada uma
+ * dessas paginas. COMPARTILHADA (regra R3 do plano): as tres rotas renderizam
+ * o mesmo template (ticker, destaques editoriais, populares da semana, cards
+ * frescos, espiadinha e noticias).
+ *
+ * Saiu do `globals.css` na divisao do CSS por rota
+ * (docs/frontend/CSS-SPLIT-PLAN-2026-09-15.md): so essas rotas escrevem estas
+ * classes (guarda R2 em tests/web/css-route-sheets.test.ts) e as regras seguem
+ * a ordem relativa que tinham la. Esta folha carrega DEPOIS da global;
+ * `pnpm --filter @screena/web css:move-check` prova que nenhuma regra que ficou
+ * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
+ *
+ * Ficam no global o que outras rotas tambem usam: `.hero` (o carrossel), os
+ * trilhos (`.rail*`), `.glimpse-card`, `.card-bookmark`, `.poster-card` e os
+ * cards de noticia (`.news-*-card`).
+ */
+
+/* ------------------------------------------------------------------ */
+/* Ticker (episodios novos hoje — so com dado real)                    */
+/* ------------------------------------------------------------------ */
+
+/* O credito da fonte agregadora SAIU da faixa em 13/08/2026 (decisao do
+   proprietario): todo credito de fonte vive no rodape global. As regras
+   `.ticker__credit` foram removidas junto com a marcacao — CSS orfao vira
+   armadilha para quem tentar "restaurar" o bloco. Ver `.footer__credits`. */
+
+.ticker {
+  background: var(--c-accent-editorial);
+  color: var(--c-text-primary);
+}
+
+.ticker__inner {
+  max-width: var(--container-editorial);
+  margin-inline: auto;
+  padding: 14px var(--pad-page);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.ticker__label {
+  background: var(--c-text-primary);
+  color: var(--c-accent-editorial);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  flex-shrink: 0;
+}
+
+.ticker__text {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticker__text strong {
+  font-weight: 800;
+}
+
+@media (max-width: 767px) {
+  .ticker__inner {
+    padding-inline: var(--pad-page-mobile);
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  /* No mobile a faixa quebra em duas linhas — ela nunca some nem estoura. */
+  .ticker__text {
+    white-space: normal;
+  }
+  .ticker__lead {
+    flex-basis: 100%;
+  }
+}
+
+.ticker__lead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ticker__controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.ticker__dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ticker__dot {
+  appearance: none;
+  border: none;
+  padding: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: rgba(16, 16, 16, 0.3);
+  cursor: pointer;
+  transition: width 0.3s ease, background 0.3s ease;
+  /* O indicador é pequeno por design; o ALVO de toque não pode ser. */
+  position: relative;
+}
+
+/*
+ * Alvo de toque ampliado SEM sobreposição. Os dots ficam a 6px um do outro, e
+ * uma área de 24px de largura invadiria o vizinho — o alvo de cima roubaria o
+ * clique do de baixo (defeito pego pelo QA no app real, não pelo CSS lido no
+ * papel). A área cresce só até a METADE do gap (`+6px`), então os alvos se
+ * encostam sem se cobrir; a altura, essa sim, vai a 24px.
+ */
+.ticker__dot::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  top: 50%;
+  height: 24px;
+  transform: translateY(-50%);
+}
+
+/* Sem transição sob `prefers-reduced-motion` (o autoplay já fica desligado). */
+@media (prefers-reduced-motion: reduce) {
+  .ticker__dot {
+    transition: none;
+  }
+}
+
+.ticker__dot[aria-selected='true'] {
+  width: 18px;
+  background: var(--c-text-primary);
+}
+
+.ticker__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--c-text-primary);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: var(--r-control);
+  white-space: nowrap;
+}
+
+/* Nome do provedor dentro do CTA: TEXTO, nunca logo (logo_allowed=false). */
+.ticker__cta strong {
+  font-weight: 800;
+}
+
+/*
+  MODALIDADE da oferta no CTA da faixa ("· Aluguel"). Peso menor que a marca,
+  mas OPACIDADE alta de proposito: compra e aluguel sao a maioria do corpus, e
+  esconder o que custa dinheiro num cinza fraco reproduziria, em CSS, o mesmo
+  defeito que a informacao viver so em `aria-label`.
+*/
+.ticker__cta .home-ticker__modality {
+  font-weight: 500;
+  opacity: 0.92;
+}
+
+/* Destaques de hoje — grid 1.62fr 1fr 1fr, cards 460px */
+.feat-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.feat-grid {
+  display: grid;
+  grid-template-columns: 1.62fr 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
+}
+
+.feat-card {
+  display: block;
+  position: relative;
+  height: 460px;
+  border-radius: var(--r-card);
+  overflow: hidden;
+  background: #2a2620;
+  box-shadow: 0 3px 14px rgba(20, 18, 14, 0.08);
+}
+
+.feat-card--poster {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+}
+
+.feat-card__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feat-card__scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.28) 0%,
+    rgba(0, 0, 0, 0) 34%,
+    rgba(0, 0, 0, 0.72) 82%,
+    rgba(0, 0, 0, 0.92) 100%
+  );
+}
+
+.feat-card--poster .feat-card__scrim {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.82) 100%);
+}
+
+.feat-card__body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28px 28px 26px;
+}
+
+.feat-card--poster .feat-card__body {
+  padding: 22px 20px;
+}
+
+.feat-card__title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+  line-height: 1.1;
+  margin: 0;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+}
+
+.feat-card__sub {
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+  margin: 12px 0 0;
+  max-width: 52ch;
+}
+
+.feat-card__kicker {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--c-accent-editorial);
+  margin-bottom: 9px;
+}
+
+.feat-card__kicker--dim {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.feat-card__title--sm {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: #fff;
+  line-height: 1.16;
+  margin: 0;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/*
+ * Composição HONESTA com menos de três matérias: o grid se adapta em vez de
+ * inventar o terceiro card (e nunca preenche o buraco com pôster de catálogo).
+ */
+.feat-grid[data-count='2'] {
+  grid-template-columns: 1.62fr 1fr;
+}
+
+.feat-grid[data-count='1'] {
+  grid-template-columns: 1fr;
+}
+
+/*
+ * Placeholder editorial: matéria sem imagem publicável preserva a altura e o
+ * ritmo do card, mas NÃO finge ser a capa real — nada de pôster da entidade
+ * relacionada no lugar da foto da matéria.
+ */
+.feat-card__placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(160deg, #2a2620 0%, #1b1815 100%);
+}
+
+/* Estado vazio da vertical: honesto, sem trocar de filtro nem cair no catálogo. */
+.feat-empty {
+  margin: 0;
+  padding: 40px 0 8px;
+  font-size: 15px;
+  color: var(--c-text-secondary);
+}
+
+@media (max-width: 1023px) {
+  .feat-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .feat-grid[data-count='2'],
+  .feat-grid[data-count='1'] {
+    grid-template-columns: 1fr;
+  }
+  .feat-card--lead {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 767px) {
+  /*
+   * Mobile: as três matérias viram um SLIDE horizontal (um card por vez, com
+   * espiada do próximo), no mesmo idioma de rail/snap do resto do site.
+   * Scroll nativo — toque, teclado e leitores de tela continuam funcionando
+   * sem nenhum JS extra. A pilha vertical foi descartada por decisão editorial.
+   */
+  .feat-grid,
+  .feat-grid[data-count='2'],
+  .feat-grid[data-count='1'] {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 86%;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding-bottom: 8px;
+  }
+  .feat-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .feat-grid > * {
+    scroll-snap-align: start;
+  }
+  /* O lead ocupa UMA coluna do trilho (anula o span herdado do breakpoint 1023). */
+  .feat-card--lead {
+    grid-column: auto;
+  }
+  .feat-card {
+    height: 380px;
+  }
+}
+
+/* Popular essa semana — banda escura, posteres 152px com rank */
+/* ------------------------------------------------------------------ */
+/* Banda escura sancionada (Popular This Week / Em breve)              */
+/*                                                                     */
+/* A faixa em si mora em `.band` / `.band--dark` (secao "Popular essa  */
+/* semana"). Aqui existiam `.dark-band` e `.dark-band .section`, um    */
+/* SEGUNDO nome que nenhum componente jamais renderizou — removidos em */
+/* 14/08/2026 junto com os outros 5 seletores `.dark-band`. Nao        */
+/* recriar: geometria propria neste nome divergiria de `.band--dark`   */
+/* (que usa `margin-top: 6px`, nao `--section-rhythm`).                */
+/* ------------------------------------------------------------------ */
+
+.band {
+  margin-top: 56px;
+}
+
+.band--dark {
+  background: var(--c-bg-dark-band);
+  color: #fff;
+  margin-top: 6px;
+}
+
+.band__inner {
+  max-width: var(--container-editorial);
+  margin-inline: auto;
+  padding: 54px var(--pad-page) 58px;
+}
+
+@media (max-width: 767px) {
+  .band__inner {
+    padding-inline: var(--pad-page-mobile);
+  }
+}
+
+.pop-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+  margin-top: 26px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Aba INATIVA. A escala de branco da barra e 0.5 (inativa) → 0.8 (hover) →
+   1.0 (ativa): estava 0.6 e foi alinhada a spec em 14/08/2026. */
+.pop-tabs__tab {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  padding: 0 2px 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+/* A aba é <button role="tab">, não link: `aria-selected` é o estado real. O
+   sublinhado usa o acento da VERTICAL (vermelho em filmes e na home, verde em
+   séries) — nunca branco fixo, que apagava a diferença entre as duas páginas. */
+.pop-tabs__tab[aria-selected='true'] {
+  font-weight: 700;
+  color: #fff;
+  border-bottom-color: var(--pop-accent);
+}
+
+.pop-tabs__tab:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pop-tabs__tab:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* Aba sem resultado: a seção FICA, com altura preservada. Escondê-la tornaria o
+   recorte vazio invisível — o leitor não saberia que aquela aba existe. */
+.pop-empty {
+  margin: 36px 0 0;
+  min-height: 228px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.pop-rail {
+  display: flex;
+  gap: 32px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 8px 8px 12px;
+}
+
+.pop-rail__item {
+  display: block;
+  flex: 0 0 152px;
+  position: relative;
+}
+
+.pop-rail__poster {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: #1a1a1e;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-editorial-image);
+}
+
+.pop-rail__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pop-rail__rank {
+  position: absolute;
+  left: -12px;
+  bottom: -8px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--c-bg-dark-band);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pop-rail__rank span {
+  font-size: 34px;
+  font-weight: 800;
+  /* Acento da VERTICAL. Estava preso ao vermelho: o ranking de /pt/series saía
+     com o número em vermelho de filme. */
+  color: var(--pop-accent);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+/* --------------------------------------------------------------------------
+   "Popular essa semana" — matriz responsiva.
+
+   A barra de abas era `justify-content:center` com `gap:36px` e SEM regra de
+   viewport estreita. Com tres ou quatro abas ("No ar · Streaming · Novas
+   temporadas"), a 320px ela ultrapassava a largura do container e empurrava a
+   PAGINA para a rolagem horizontal. Abaixo de 768px as abas rolam sozinhas,
+   alinhadas a esquerda e sem quebrar linha — o resto da pagina fica parado.
+
+   Os valores de geometria (152/144/132/116 no poster, 54/46 no disco) sao os do
+   canonico; o disco menor abaixo de 1024px existe porque 54px sobre um poster de
+   116px cobriria um quarto da arte.
+   -------------------------------------------------------------------------- */
+@media (max-width: 1279px) {
+  .pop-tabs {
+    gap: 28px;
+  }
+  .pop-rail__item {
+    flex: 0 0 144px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .pop-tabs {
+    gap: 22px;
+  }
+  .pop-rail__item {
+    flex: 0 0 132px;
+  }
+  .pop-rail__rank {
+    width: 46px;
+    height: 46px;
+  }
+  .pop-rail__rank span {
+    font-size: 28px;
+  }
+  .pop-empty {
+    min-height: 198px;
+  }
+}
+
+@media (max-width: 767px) {
+  .pop-tabs {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .pop-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .pop-tabs__tab {
+    /* Sem isto o flex encolhe os rotulos ate quebrarem no meio da palavra. */
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .pop-rail__item {
+    flex: 0 0 116px;
+  }
+  .pop-empty {
+    min-height: 174px;
+  }
+}
+
+/* Certified-fresh cards (Filmes em alta / Séries da semana) */
+.fresh-rail {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 6px;
+}
+
+.fresh-card {
+  display: block;
+  flex: 0 0 196px;
+  position: relative;
+  background: var(--c-bg-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--sh-card);
+}
+
+.fresh-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px 9px;
+}
+
+.fresh-card__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--c-text-primary);
+}
+
+.fresh-card__rating svg {
+  color: var(--c-accent-editorial);
+}
+
+.fresh-card__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+}
+
+.fresh-card__poster {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  background: var(--c-bg-skeleton);
+  overflow: hidden;
+  border-radius: var(--r-card);
+  margin: 0 8px;
+}
+
+.fresh-card__poster img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fresh-card__body {
+  padding: 12px 14px 14px;
+}
+
+.fresh-card__title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.fresh-card__cta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.fresh-card__cta {
+  display: inline-flex;
+  align-items: center;
+  background: var(--c-accent-movie-cta);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 16px;
+  border-radius: var(--r-pill);
+}
+
+.fresh-card--series .fresh-card__cta {
+  /* DD-03: serie usa verde escuro no CTA (branco sobre verde claro falha AA) */
+  background: var(--c-accent-series-dark);
+}
+
+/* Seu mes em numeros — faixa preta com dados PESSOAIS (client boundary) */
+.stats-strip {
+  background: var(--c-text-primary);
+  color: #fff;
+  margin-top: 56px;
+}
+
+.stats-strip__inner {
+  max-width: var(--container-editorial);
+  margin-inline: auto;
+  padding: 20px var(--pad-page);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.stats-strip__left {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.stats-strip__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-accent-editorial);
+}
+
+.stats-strip__stat {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.stats-strip__stat strong {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--c-accent-editorial);
+}
+
+.stats-strip__stat a {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.stats-strip__link {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+@media (max-width: 767px) {
+  .stats-strip__inner {
+    padding-inline: var(--pad-page-mobile);
+  }
+}
+
+/* Get a Glimpse (Em breve) — cards 332px 16/10 na banda escura */
+.glimpse-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.glimpse-head__sub {
+  font-size: 13px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.55);
+  margin-top: 7px;
+}
+
+.glimpse-rail {
+  display: flex;
+  gap: 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 6px;
+}
+
+/* Notícias & entrevistas (home) — lead 430 + grade 2x2 de 200 */
+.hnews-sub {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--c-text-secondary);
+  margin-top: 12px;
+}
+
+.hnews-chips {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 22px 0 28px;
+  list-style: none;
+  padding: 0;
+}
+
+.hnews-chips a {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid var(--c-border);
+  color: var(--c-text-secondary);
+  padding: 9px 18px;
+  border-radius: var(--r-pill);
+}
+
+.hnews-chips a[aria-current='true'] {
+  font-weight: 700;
+  background: var(--c-text-primary);
+  border-color: var(--c-text-primary);
+  color: #fff;
+}
+
+.hnews-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 18px;
+}
+
+.hnews-lead {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  min-height: 430px;
+  background: var(--c-bg-dark-band);
+}
+
+.hnews-lead__img,
+.hnews-card__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hnews-lead__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.1) 0%,
+    rgba(0, 0, 0, 0.2) 45%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+}
+
+.hnews-lead__body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 32px;
+}
+
+.hnews-lead__title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+  line-height: 1.1;
+  margin: 0;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+}
+
+.hnews-lead__sub {
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 11px 0 0;
+  max-width: 46ch;
+}
+
+.hnews-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.hnews-card {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  min-height: 200px;
+  background: var(--c-bg-dark-band);
+}
+
+.hnews-card__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.05) 0%,
+    rgba(0, 0, 0, 0.2) 40%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+}
+
+.hnews-card__body {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 16px;
+}
+
+.hnews-card__title {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  color: #fff;
+  line-height: 1.16;
+  margin: 0;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hnews-card__sub {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+  margin: 8px 0 0;
+}
+
+@media (max-width: 1023px) {
+  .hnews-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  .hnews-side {
+    grid-template-columns: 1fr;
+  }
+}
+
+.seg-toggle {
+  display: inline-flex;
+  background: #efebe3;
+  border-radius: var(--r-pill);
+  padding: 4px;
+  gap: 2px;
+}
+
+.seg-toggle__opt {
+  appearance: none;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-pill);
+  min-height: 36px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5a564e;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.seg-toggle__opt[aria-selected='true'],
+.seg-toggle__opt[aria-current='true'],
+a.seg-toggle__opt[aria-current='page'] {
+  background: var(--c-bg-surface);
+  color: var(--c-text-primary);
+  box-shadow: var(--sh-sticky-header);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--c-border);
+  overflow-x: auto;
+}
