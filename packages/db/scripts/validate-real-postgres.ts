@@ -26,7 +26,6 @@
  * Uso: pnpm --filter @screena/db db:validate:real
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -34,6 +33,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "../src/async-child-process.js";
 import { PrismaClient } from "@prisma/client";
 
 const require = createRequire(import.meta.url);
@@ -773,11 +773,11 @@ async function main(): Promise<void> {
 
     const env = { ...process.env, DATABASE_URL: url };
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
     record(1, "migrate deploy aplica sem erro", true, "ok");
 
     console.log("--- prisma db seed ---");
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
     record(2, "db:seed roda sem erro", true, "ok");
 
     console.log("\n--- checks no banco real ---");

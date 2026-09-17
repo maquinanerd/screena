@@ -15,7 +15,6 @@
  * Uso: pnpm --filter @screena/ingestion validate:catalog-platform-complete
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -23,6 +22,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-store.js'
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
@@ -1473,7 +1473,7 @@ async function main(): Promise<void> {
 
     const env = { ...process.env, DATABASE_URL: url }
     console.log('--- prisma migrate deploy (do zero) ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env,
       stdio: 'inherit',
       cwd: dbDir,

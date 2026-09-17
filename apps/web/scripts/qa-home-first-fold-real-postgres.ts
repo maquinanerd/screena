@@ -30,7 +30,7 @@
  * Uso: pnpm --filter @screena/web qa:home-fold
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -39,6 +39,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
@@ -538,13 +539,13 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url };
 
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,
     });
     console.log("--- prisma db seed (idiomas/paises/fontes/providers) ---");
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,

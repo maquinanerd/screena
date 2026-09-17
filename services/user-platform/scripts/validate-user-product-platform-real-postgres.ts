@@ -19,7 +19,6 @@
  * claro existe neste fluxo: o adapter so conhece hash opaco.
  */
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -27,6 +26,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 import { PrismaClient } from "@prisma/client";
 import { createPrismaIdentityStore } from "../src/persistence/prisma/identity-store.js";
 import { createPrismaPasswordCredentialStore } from "../src/persistence/prisma/password-credential-store.js";
@@ -2692,7 +2692,7 @@ async function main(): Promise<void> {
     await pg.createDatabase("c7b1");
     const url = `postgresql://postgres:postgres@127.0.0.1:${port}/c7b1?schema=public`;
 
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: "pipe",
       cwd: dbDir,

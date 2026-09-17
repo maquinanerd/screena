@@ -45,7 +45,7 @@
  * Uso: pnpm --filter @screena/sync prove:queue-drains
  */
 
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { createServer, type Server } from 'node:http'
 import { mkdtempSync, rmSync } from 'node:fs'
 import net from 'node:net'
@@ -54,6 +54,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 import { BACKLOG_STALE_HOURS, evaluateBacklog, type JobBacklogCounts } from '../src/scheduler/backlog.js'
@@ -238,7 +239,7 @@ async function main(): Promise<number> {
     const url = `postgresql://postgres:postgres@127.0.0.1:${String(pgPort)}/${database}`
 
     log('== aplicando as migrations REAIS do screen-db ==')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'pipe',
       cwd: dbDir,
@@ -249,7 +250,7 @@ async function main(): Promise<number> {
     // primeiro job morre em violacao de chave estrangeira. E a mesma
     // pre-condicao do runbook de bootstrap do catalogo.
     log('== semeando o registro de fornecedores (api_providers etc.) ==')
-    execFileSync(
+    await runChild(
       process.execPath,
       [tsxBin(), path.join(dbDir, 'prisma', 'seed.ts')],
       { env: { ...process.env, DATABASE_URL: url }, stdio: 'pipe', cwd: dbDir },

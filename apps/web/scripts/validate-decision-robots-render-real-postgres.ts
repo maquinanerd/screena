@@ -47,7 +47,6 @@
  * Uso: pnpm --filter @screena/web validate:decision-robots
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -55,6 +54,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
@@ -366,13 +366,13 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url };
 
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,
     });
     console.log("--- prisma db seed (idiomas/paises) ---");
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,
