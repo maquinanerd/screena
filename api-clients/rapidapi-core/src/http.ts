@@ -11,6 +11,11 @@
  *  4. cache local — responsabilidade do worker (ver `buildCacheKey`/`hashPayload`);
  *  5. hash de payload — idem.
  *
+ * E a PARADA DO PROCESSO (`stopSignal`): depois do SIGTERM nenhuma requisicao
+ * nova sai — nem retentativa —, as esperas de throttle e backoff acabam na hora,
+ * e a requisicao que ja estava em voo tem `stopGraceMs` para voltar antes de ser
+ * cortada. Ver `RapidApiHttpDeps.stopSignal`.
+ *
  * SEGREDO — dois modos de auth, e a diferenca importa:
  *
  *  - `rapidapi-headers` (DEFAULT, usado por todos os clients RapidAPI): a
@@ -36,6 +41,7 @@ import {
   RapidApiCircuitOpenError,
   RapidApiHttpError,
   RapidApiInvalidPayloadError,
+  RapidApiStoppedError,
 } from './errors.js'
 
 /** Requisicao HTTP de baixo nivel (apenas GET nesta fase). */
@@ -43,6 +49,8 @@ export interface HttpRequest {
   readonly url: string
   readonly method: 'GET'
   readonly headers: Record<string, string>
+  /** Abortado = cortar ESTA requisicao (a carencia de parada acabou). */
+  readonly signal?: AbortSignal
 }
 
 /** Resposta HTTP normalizada. `headers` deve ter chaves em minusculas. */
@@ -100,18 +108,44 @@ export interface RapidApiClientConfig {
   readonly auth?: ExternalApiAuthMode
 }
 
-/** Dependencias injetaveis (transporte + relogio + sleep + random). */
+/** Dependencias injetaveis (transporte + relogio + sleep + random + parada). */
 export interface RapidApiHttpDeps {
   readonly transport: HttpTransport
   readonly now?: () => number
   readonly sleep?: (ms: number) => Promise<void>
   readonly random?: () => number
+  /**
+   * PEDIDO DE PARADA do processo — o SIGTERM do orquestrador, traduzido pela CLI.
+   *
+   * Abortado, o client para ENTRE requisicoes: nenhuma tentativa nova sai (nem a
+   * retentativa de uma que falhou), e a espera de throttle ou de backoff termina
+   * na hora — com o timer limpo, senao o processo esperaria ate 10 s de backoff
+   * para sair. A chamada que parou lanca `RapidApiStoppedError`.
+   *
+   * A requisicao que JA estava em voo nao e cortada no ato: ela ja foi paga, e
+   * a resposta dela ainda vira dado. Ela tem `stopGraceMs` para voltar.
+   */
+  readonly stopSignal?: AbortSignal
+  /** Carencia da requisicao em voo depois da parada. Default `STOP_IN_FLIGHT_GRACE_MS`. */
+  readonly stopGraceMs?: number
 }
 
 /** Base do backoff exponencial em ms. */
 export const BACKOFF_BASE_MS = 250
 /** Teto absoluto de espera entre tentativas, em ms. */
 export const BACKOFF_MAX_MS = 10_000
+
+/**
+ * Quanto a requisicao EM VOO ainda pode durar depois do pedido de parada.
+ *
+ * O teto vem da carencia do orquestrador, nao do fornecedor: o Swarm manda
+ * SIGKILL 10 s depois do SIGTERM, para o container INTEIRO, e dentro desses 10 s
+ * cabem esta espera, a escrita do item que voltou, a linha de `api_sync_logs`, o
+ * fim deste processo e o desligamento do agendador que o spawnou. Sem teto, o
+ * timeout de uma requisicao pendurada (15 s na OMDb) passaria da carencia — e o
+ * SIGKILL levaria justamente a linha que registra a cota gasta.
+ */
+export const STOP_IN_FLIGHT_GRACE_MS = 3_000
 
 /** Header canonico da chave RapidAPI (minusculo, como o transporte normaliza). */
 export const RAPIDAPI_KEY_HEADER = 'x-rapidapi-key'
@@ -128,6 +162,11 @@ export function createRapidApiFetchTransport(timeoutMs: number): HttpTransport {
   return async (request) => {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
+    // O corte pedido por quem chamou (carencia de parada esgotada) aborta a MESMA
+    // requisicao que o timeout abortaria.
+    const onCallerAbort = (): void => controller.abort()
+    if (request.signal?.aborted === true) controller.abort()
+    else request.signal?.addEventListener('abort', onCallerAbort, { once: true })
     try {
       const response = await fetch(request.url, {
         method: request.method,
@@ -142,8 +181,30 @@ export function createRapidApiFetchTransport(timeoutMs: number): HttpTransport {
       return { status: response.status, headers, body }
     } finally {
       clearTimeout(timer)
+      request.signal?.removeEventListener('abort', onCallerAbort)
     }
   }
+}
+
+/**
+ * `setTimeout` que ACORDA no pedido de parada e LIMPA o proprio timer. Um sleep
+ * que so resolvesse mais cedo deixaria o timer pendurado, e o processo esperaria
+ * o backoff inteiro para sair.
+ */
+function sleepUnlessStopped(ms: number, stopSignal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (stopSignal?.aborted === true) {
+      resolve()
+      return
+    }
+    const wake = (): void => {
+      clearTimeout(timer)
+      stopSignal?.removeEventListener('abort', wake)
+      resolve()
+    }
+    const timer = setTimeout(wake, ms)
+    stopSignal?.addEventListener('abort', wake, { once: true })
+  })
 }
 
 /** 4xx (exceto 429) e erro permanente: requisicao invalida, nao retenta. */
@@ -173,6 +234,8 @@ export class RapidApiHttpClient {
   private readonly sleep: (ms: number) => Promise<void>
   private readonly random: () => number
   private readonly minIntervalMs: number
+  private readonly stopSignal: AbortSignal | undefined
+  private readonly stopGraceMs: number
 
   private nextAllowedAt = 0
   private consecutiveFailures = 0
@@ -184,9 +247,11 @@ export class RapidApiHttpClient {
     this.config = config
     this.transport = deps.transport
     this.now = deps.now ?? (() => Date.now())
-    this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+    this.sleep = deps.sleep ?? ((ms) => sleepUnlessStopped(ms, deps.stopSignal))
     this.random = deps.random ?? (() => Math.random())
     this.minIntervalMs = Math.ceil(1000 / config.maxRps)
+    this.stopSignal = deps.stopSignal
+    this.stopGraceMs = deps.stopGraceMs ?? STOP_IN_FLIGHT_GRACE_MS
   }
 
   /** Estado atual do circuito (observabilidade/log). */
@@ -224,6 +289,7 @@ export class RapidApiHttpClient {
 
   /** GET em `path` com `params`; devolve o JSON parseado como `unknown`. */
   async request(path: string, params: QueryParams = {}): Promise<unknown> {
+    this.assertNotStopped(path)
     this.assertCircuitClosed()
 
     const url = this.buildUrl(path, params)
@@ -232,12 +298,26 @@ export class RapidApiHttpClient {
 
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt += 1) {
       await this.throttle()
+      // A parada pedida durante a espera barra a PROXIMA requisicao — inclusive a
+      // retentativa desta. E aqui que "parar entre requisicoes" acontece.
+      this.assertNotStopped(path)
       this.requestCount += 1
 
+      const inFlight = this.watchInFlight()
       let response: HttpResponse
       try {
-        response = await this.transport({ url, method: 'GET', headers })
+        response = await this.transport(
+          inFlight.signal === undefined
+            ? { url, method: 'GET', headers }
+            : { url, method: 'GET', headers, signal: inFlight.signal },
+        )
+        inFlight.dispose()
       } catch (error) {
+        const cutByStop = inFlight.signal?.aborted === true
+        inFlight.dispose()
+        // Cortada pela carencia: a parada, nao o fornecedor. Nao retenta, nao
+        // conta para o breaker — e `requestCount` ja a contou, porque ela saiu.
+        if (cutByStop) throw new RapidApiStoppedError(this.config.providerApi, path, true)
         // Rede/timeout/abort: transitorio. NUNCA propaga o erro cru do fetch
         // (poderia carregar a URL/headers em `cause`).
         lastError =
@@ -303,6 +383,42 @@ export class RapidApiHttpClient {
     }
   }
 
+  private stopRequested(): boolean {
+    return this.stopSignal?.aborted === true
+  }
+
+  private assertNotStopped(path: string): void {
+    if (this.stopRequested()) {
+      throw new RapidApiStoppedError(this.config.providerApi, path, false)
+    }
+  }
+
+  /**
+   * A carencia da requisicao EM VOO: se a parada chegar enquanto ela esta na
+   * rede, ela ainda tem `stopGraceMs` para voltar; depois disso e abortada.
+   * `dispose` solta o ouvinte e o timer assim que a requisicao termina.
+   */
+  private watchInFlight(): {
+    readonly signal: AbortSignal | undefined
+    readonly dispose: () => void
+  } {
+    const stop = this.stopSignal
+    if (stop === undefined) return { signal: undefined, dispose: () => undefined }
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const onStop = (): void => {
+      timer = setTimeout(() => controller.abort(), this.stopGraceMs)
+    }
+    stop.addEventListener('abort', onStop, { once: true })
+    return {
+      signal: controller.signal,
+      dispose: () => {
+        stop.removeEventListener('abort', onStop)
+        if (timer !== null) clearTimeout(timer)
+      },
+    }
+  }
+
   private onSuccess(): void {
     this.consecutiveFailures = 0
     this.openUntil = null
@@ -317,11 +433,13 @@ export class RapidApiHttpClient {
 
   private async throttle(): Promise<void> {
     const wait = this.nextAllowedAt - this.now()
-    if (wait > 0) await this.sleep(wait)
+    // Parado, nao ha proxima requisicao para espacar: esperar so atrasaria a saida.
+    if (wait > 0 && !this.stopRequested()) await this.sleep(wait)
     this.nextAllowedAt = this.now() + this.minIntervalMs
   }
 
   private async backoff(attempt: number, retryAfterMs: number | null): Promise<void> {
+    if (this.stopRequested()) return
     if (retryAfterMs !== null) {
       await this.sleep(Math.min(retryAfterMs, BACKOFF_MAX_MS))
       return

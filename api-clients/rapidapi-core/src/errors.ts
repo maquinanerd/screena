@@ -88,6 +88,45 @@ export class RapidApiInvalidPayloadError extends Error {
   }
 }
 
+/**
+ * A requisicao nao se completou porque o PROCESSO pediu parada (SIGTERM do
+ * orquestrador) — nao porque o fornecedor falhou.
+ *
+ * Por isso ela nao conta para o breaker, nao retenta e nao pode ser lida como
+ * falha de rede: quem para um lote por causa dela registra INTERRUPCAO, e o
+ * titulo continua candidato no proximo ciclo.
+ *
+ * `emitted` diz se a requisicao chegou a sair (e foi cortada pela carencia) ou
+ * se parou antes. So a primeira conta em `getRequestCount()` — o fornecedor
+ * pode te-la contabilizado.
+ */
+export class RapidApiStoppedError extends Error {
+  readonly providerApi: string
+  readonly endpoint: string
+  readonly emitted: boolean
+
+  constructor(providerApi: string, endpoint: string, emitted: boolean) {
+    super(
+      emitted
+        ? `RapidAPI ${providerApi} ${endpoint}: requisicao em voo cortada pela parada do processo.`
+        : `RapidAPI ${providerApi} ${endpoint}: parada do processo pedida; requisicao nao emitida.`,
+    )
+    this.name = 'RapidApiStoppedError'
+    this.providerApi = providerApi
+    this.endpoint = endpoint
+    this.emitted = emitted
+  }
+}
+
+/** O erro e a parada do processo? Deteccao ESTRUTURAL, como a do circuito. */
+export function isStoppedError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    (error as { name?: unknown }).name === 'RapidApiStoppedError'
+  )
+}
+
 /** O erro sinaliza circuito aberto? Deteccao ESTRUTURAL (nao acopla a classe). */
 export function isCircuitOpenError(error: unknown): boolean {
   if (error === null || typeof error !== 'object') return false

@@ -36,6 +36,10 @@
  * Protecao ativa: 3 falhas CONSECUTIVAS (ou circuito aberto) interrompem o lote
  * e o relatorio diz quantos ids ficaram sem consulta.
  *
+ * SIGTERM/SIGINT (`--sample`/`--apply`): o lote para ENTRE requisicoes, grava a
+ * linha `aborted` (`shutdown-requested`) com a cota real e sai com 128 + sinal.
+ * Repetir o sinal sai na hora.
+ *
  * NAO FAZ: exibir nada publicamente; tocar `screen_score`; alterar slugs,
  * canonical, redirects ou UI; baixar imagem; criar migration.
  *
@@ -77,6 +81,7 @@ import {
   serializeOmdbReportJson,
 } from '../src/omdb/report.js'
 import { DEFAULT_OMDB_CANDIDATE_LIMIT, runOmdbRatingsSync } from '../src/omdb/run.js'
+import { exitCodeForStop, listenForStop } from '../src/process-stop.js'
 import type {
   CachePort,
   EntityLookupPort,
@@ -273,8 +278,36 @@ async function main(): Promise<void> {
   }
 
   // A partir daqui a rede sera tocada, e o gate ja garantiu chave + DATABASE_URL.
+  //
+  // ==========================================================================
+  // O SIGTERM VIRA PEDIDO DE PARADA — E A LINHA DE api_sync_logs SAI MESMO ASSIM
+  // ==========================================================================
+  // O agendador spawna este processo e, no desligamento de todo redeploy, manda
+  // SIGTERM a ele. Sem ouvinte o processo morria no ato: a linha do ciclo — que o
+  // nucleo grava uma vez, no FIM do lote — nao saia, e a cota ja gasta sumia de
+  // `readSpentToday`, que passava a subcontar o dia para o leitor.
+  //
+  // Com o ouvinte, o primeiro sinal aborta `stop.signal`: o client nao emite a
+  // proxima requisicao (a que esta em voo tem `STOP_IN_FLIGHT_GRACE_MS`), o
+  // nucleo para entre ids e grava a linha `aborted` com a contagem de
+  // `client.getRequestCount()`, e o processo sai com 128 + sinal — dentro da
+  // carencia do orquestrador (10 s no Swarm).
+  //
+  // Ele nasce AQUI, e nao no topo: dry-run e `--plan` nao gastam cota nem gravam
+  // linha, e para eles morrer no sinal e a saida mais rapida.
+  const stop = listenForStop(process, {
+    onStop: (signal) => {
+      console.error(
+        `[omdb] ${signal} recebido: o lote para entre requisicoes e grava api_sync_logs (repita para forcar).`,
+      )
+    },
+    onForce: (signal) => {
+      console.error(`[omdb] ${signal} de novo: saindo sem esperar o lote.`)
+      process.exit(exitCodeForStop(signal))
+    },
+  })
   const config = loadOmdbConfig(process.env)
-  const client = createOmdbClient(config)
+  const client = createOmdbClient(config, { stopSignal: stop.signal })
   const prisma = getPrismaClient()
 
   const { createPrismaCache } = await import('../src/persistence/cache.js')
@@ -353,6 +386,7 @@ async function main(): Promise<void> {
         tripProviderCircuit: () => {
           client.tripCircuit()
         },
+        stopSignal: stop.signal,
       },
     )
 
@@ -407,6 +441,7 @@ async function main(): Promise<void> {
         `frescos pulados=${result.idsSkippedFresh} · ratings reconhecidos=${result.counters.ratingsRecognized}` +
         `${bySource === '' ? '' : ` (${bySource})`} · ` +
         `gravados=${result.counters.ratingsWritten} · sem entidade=${result.idsWithoutEntity} · ` +
+        `interrompidos pela parada=${result.idsInterrupted} · ` +
         `cota=${result.quotaCost}/${report.quota.daily_limit} por dia`,
     )
     if (result.status === 'failed') process.exitCode = 1
@@ -435,6 +470,11 @@ async function main(): Promise<void> {
   } finally {
     await disconnectPrisma()
   }
+
+  // Parou pelo sinal: 128 + sinal, mesmo que o ciclo tenha terminado sem erro.
+  // Quem spawnou precisa ler "interrompido", nunca "processado".
+  const stoppedBy = stop.received()
+  if (stoppedBy !== null) process.exitCode = exitCodeForStop(stoppedBy)
 }
 
 /** Escreve o relatorio (best-effort: uma falha de disco nunca invalida o sync). */

@@ -97,6 +97,13 @@ export type OmdbRejectionReason =
    * ser candidato no proximo ciclo, sozinho.
    */
   | 'quota-denied'
+  /**
+   * O PROCESSO pediu parada (SIGTERM do orquestrador, ou Ctrl+C) e o lote parou
+   * entre requisicoes. Fato sobre o processo — nem sobre o titulo, nem sobre o
+   * dia: os ids restantes voltam como candidatos, e e tambem o `error_code` da
+   * linha `aborted` que o ciclo grava com a cota que chegou a gastar.
+   */
+  | 'shutdown-requested'
 
 /** Uma recusa, com detalhe legivel (sem segredo, sem payload cru). */
 export interface OmdbRejection {

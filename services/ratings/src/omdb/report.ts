@@ -100,6 +100,8 @@ export interface OmdbReportJson {
      * fila menor. Um numero so mandaria o operador para o lado errado.
      */
     readonly denied_by_quota: number
+    /** Sem consulta concluida porque o PROCESSO pediu parada (SIGTERM); voltam a fila. */
+    readonly interrupted_by_shutdown: number
     /** Pulados por coleta recente (frescor) — NAO e falha. */
     readonly skipped_fresh: number
     readonly without_entity: number
@@ -151,6 +153,7 @@ export function buildOmdbReport(
       failed: result.idsFailed,
       skipped_batch_abort: result.idsSkipped,
       denied_by_quota: result.idsDeniedByQuota,
+      interrupted_by_shutdown: result.idsInterrupted,
       skipped_fresh: result.idsSkippedFresh,
       without_entity: result.idsWithoutEntity,
     },
@@ -217,6 +220,9 @@ export function renderOmdbReport(report: OmdbReportJson): string {
       (report.ids.denied_by_quota > 0
         ? ' (nenhum deles foi marcado como "sem nota": cota e fato sobre o DIA)'
         : ''),
+  )
+  lines.push(
+    `- sem consulta concluida por PARADA do processo (SIGTERM), devolvidos a fila: ${report.ids.interrupted_by_shutdown}`,
   )
   lines.push(
     `- pulados por coleta recente (frescor${
