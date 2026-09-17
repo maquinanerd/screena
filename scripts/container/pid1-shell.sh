@@ -47,8 +47,10 @@
 #      orfao quando ela termina. Um `node` no PID 1 os deixaria como zumbi
 #      (medido: 36 em 5 s);
 #   3. depois de um pedido de parada, ESPERA a arvore inteira: enquanto houver
-#      processo no container alem dele e das sessoes de `docker exec`, ele nao
-#      sai. O orquestrador tem o SIGKILL para quem nao terminar a tempo.
+#      processo no container alem dele e das raizes de sessao `docker exec` (pai
+#      0), ele nao sai. Os FILHOS de uma sessao contam — um console aberto segura
+#      a saida ate o SIGKILL, com o servico ja drenado. O orquestrador tem o
+#      SIGKILL para quem nao terminar a tempo.
 #
 # Sem pedido de parada (o servico caiu sozinho), ele sai na hora com o codigo do
 # comando: o reinicio nao espera orfao nenhum.

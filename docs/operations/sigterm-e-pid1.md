@@ -131,8 +131,9 @@ Zumbis depois de 5 s com orfaos em serie: dash no PID 1 = 0; **pnpm no PID 1 =
 
 Zumbis: 0 nos dois formatos. Queda sem sinal (o servico sai sozinho com codigo
 3): o container sai na hora, com o codigo do comando (3 pelo `pnpm run`, 1 pelo
-`pnpm exec`) — sem esperar orfao nenhum. Sessao de `docker exec`
-aberta durante o stop: nao segura o container. Fora do PID 1, o `/bin/sh` novo
+`pnpm exec`) — sem esperar orfao nenhum. O processo de uma sessao `docker exec`
+aberta durante o stop nao segura o container (os filhos dele, sim — secao 5).
+Fora do PID 1, o `/bin/sh` novo
 deu saida identica a do dash numa bateria de 16 invocacoes (`-c` com e sem `$0`,
 entrada padrao, arquivo, `-e`, codigo de saida, comando inexistente, `/bin/sh`
 pelo caminho).
@@ -203,6 +204,10 @@ marcador `scheduler:start` continua em `/proc/1/cmdline` (travado em
 - **O Next** (`screen-app`, `cinerie-admin`, `cinerie-cms`): o `start` de cada
   app e `next start` sem `exec`, entao o Next continua sem receber o SIGTERM — o
   mesmo elo 2.
+- **Console `docker exec` aberto durante o stop**: o init ignora a raiz da sessao
+  (pai 0), mas nao os filhos dela (o `bash` que o console abre). Com um console
+  aberto, o container espera ate o SIGKILL da carencia — a drenagem do servico ja
+  terminou; so o codigo de saida e que vira 137.
 - **A carencia do painel** nao aparece na tela. O default do Swarm e 10 s.
 
 ---
