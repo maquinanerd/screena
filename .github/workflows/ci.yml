@@ -492,8 +492,13 @@ jobs:
           docker run -d --name pg --network cinerie-ci \
             -e POSTGRES_USER=screen -e POSTGRES_PASSWORD=screen -e POSTGRES_DB=screen \
             postgres:16-alpine
+          # PRONTO PELO TCP, nao pelo socket. Durante o init a imagem postgres sobe um
+          # servidor TEMPORARIO que so escuta o socket; `pg_isready` por ali respondia
+          # "pronto" antes de o banco existir, e o psql abaixo falhava com
+          # `database "screen" does not exist` (visto na CI da PR #300). O servidor
+          # temporario nao abre TCP: pronto no 127.0.0.1 e o servidor definitivo.
           for i in $(seq 1 30); do
-            if docker exec pg pg_isready -U screen -d screen >/dev/null 2>&1; then break; fi
+            if docker exec pg pg_isready -h 127.0.0.1 -U screen -d screen >/dev/null 2>&1; then break; fi
             sleep 2
           done
           docker exec pg psql -U screen -d screen -c "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;"
