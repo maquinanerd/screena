@@ -6,6 +6,7 @@ import {
   type GalleryRouteParams,
 } from '../../../../_components/gallery-pages'
 import '../../../../_components/gallery.css'
+import '../../../../_components/detail-hero.css'
 
 /**
  * Imagens e pôsteres de serie — /pt/series/[slug]/imagens/.

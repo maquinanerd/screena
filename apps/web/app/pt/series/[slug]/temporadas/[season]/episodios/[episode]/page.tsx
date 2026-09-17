@@ -20,6 +20,8 @@ import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../..
 import { socialArt, socialMetadata } from '../../../../../../../../src/lib/social-metadata'
 import { getEpisodePageData } from '../../../../../../../../src/server/episode-page'
 import '../../../../../../../_components/gallery.css'
+import '../../../../../../../_components/detail-hero.css'
+import '../../../../../../../_components/detail.css'
 
 /**
  * Pagina publica de episodio

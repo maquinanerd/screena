@@ -5,6 +5,7 @@ import {
   personPhotosGalleryMetadata,
 } from '../../../../_components/gallery-pages'
 import '../../../../_components/gallery.css'
+import '../../../../_components/detail-hero.css'
 
 /**
  * Fotos de pessoa — /pt/pessoas/[slug]/fotos/.

@@ -38,6 +38,8 @@ import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getMoviePageData } from '../../../../src/server/movie-page'
 import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
 import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
+import '../../../_components/detail-hero.css'
+import '../../../_components/detail.css'
 
 /**
  * Detalhe de filme — tela 06 do canônico, na ESTRUTURA EXATA do HTML:

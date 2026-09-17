@@ -333,3 +333,34 @@ export function blockOf(classToken: string): string {
 export function subjectBlocks(rule: CssRule): string[] {
   return [...new Set(rule.selectors.flatMap((s) => subjectClassTokens(s).map(blockOf)))];
 }
+
+/**
+ * Uma regra com LISTA de seletores equivale a uma regra por seletor, na mesma
+ * posicao e com as mesmas declaracoes: `a, b { D }` e `a { D } b { D }`. Devolve a
+ * forma expandida — uma regra por seletor, com a identidade de cada um (regra de
+ * um seletor so, ou at-rule, volta como esta).
+ *
+ * Existe para a divisao do CSS por rota: uma regra como o "piso de legibilidade"
+ * junta, numa lista so, seletores de blocos que vao para folhas diferentes, e a
+ * unica forma de move-los sem reescrever declaracao e dividir a lista.
+ */
+export function expandSelectorList(rule: CssRule): CssRule[] {
+  if (rule.kind !== "style" || rule.selectors.length < 2) return [rule];
+  const emptyBody = identityOf(rule.context, rule.prelude, "");
+  const body = rule.identity.slice(emptyBody.length - 1, -1);
+  return rule.selectors.map((selector) => {
+    const identity = identityOf(rule.context, selector, body);
+    return { ...rule, selectors: [selector], prelude: selector, identity, bytes: Buffer.byteLength(identity, "utf8") };
+  });
+}
+
+/**
+ * Dividir `a, b { D }` em `a { D } b { D }` so e equivalente quando nenhum seletor
+ * pode invalidar a LISTA: um seletor que o navegador nao entende derruba a lista
+ * inteira, e dividida ela deixaria de cair. Ficam de fora os seletores com
+ * pseudo-classe de lista (`:has()`, `:is()`, `:where()`) e com prefixo de
+ * fornecedor.
+ */
+export function splitSafeSelector(selector: string): boolean {
+  return !/:has\(|:is\(|:where\(|::?-(?:webkit|moz|ms)-/i.test(selector);
+}
