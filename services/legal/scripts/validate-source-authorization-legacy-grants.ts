@@ -23,6 +23,11 @@
  *   ---- e então o `legal sources apply` volta a passar, e uma nota exibe com
  *        crédito.
  *
+ * CONTAGENS: saem do `STATIC_AUTHORIZATION` vigente (`./spec-expectations.ts`),
+ * nunca de literal. Os literais de 2026-08-12 (8 licenças, 13 decisões, 10
+ * decisões legadas, 5 licenças de rating exibíveis) batiam com o spec daquele
+ * dia e envelheceram com ele sem ninguém ver — este validador não roda na CI.
+ *
  * FERRAMENTA DE DESENVOLVIMENTO DESCARTÁVEL — nunca em produto/render/produção.
  * Motor: embedded-postgres (PostgreSQL 16 real, efêmero), devDependency-only.
  * Segurança: nenhum segredo; DATABASE_URL só em memória, mascarado; PG derrubado
@@ -54,6 +59,7 @@ import {
   readLegacyGrants,
   renderRemediationRecord,
 } from "../src/remediation.js";
+import { describeSpecExpectations, specExpectations } from "./spec-expectations.js";
 
 const require = createRequire(import.meta.url);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -147,13 +153,22 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
     );
 
   try {
-    const entries = STATIC_AUTHORIZATION; // produção não tem provedor de streaming registrado
+    // Só a leva ESTÁTICA (as licenças de provedor de streaming nascem de
+    // `watch_providers`, que este banco efêmero não tem). É dela que sai toda
+    // contagem esperada abaixo.
+    const entries = STATIC_AUTHORIZATION;
+    const esperado = specExpectations(entries);
+    console.log(describeSpecExpectations(esperado));
+    // A semente, lida ANTES do apply: a leva a supersede inteira, e ela continua
+    // no total de `source_licenses` como histórico.
+    const semente = await count(`FROM source_licenses WHERE is_current=true`);
+    const licTotalEsperado = esperado.licenses + semente;
 
     // ============ 1-2. (b1) O SEED NAO REBAIXA MAIS ============
     await apply(entries);
-    record(1, "apply cria a leva completa (8 licencas vigentes, 13 decisoes)",
-      (await count(`FROM source_licenses WHERE is_current=true`)) === 8 &&
-        (await count(`FROM data_usage_decisions WHERE is_current=true`)) === 13,
+    record(1, `apply cria a leva completa (${esperado.licenses} licencas vigentes, ${esperado.decisions} decisoes)`,
+      (await count(`FROM source_licenses WHERE is_current=true`)) === esperado.licenses &&
+        (await count(`FROM data_usage_decisions WHERE is_current=true`)) === esperado.decisions,
       `licencas=${await count(`FROM source_licenses WHERE is_current=true`)} decisoes=${await count(`FROM data_usage_decisions WHERE is_current=true`)}`);
 
     const antesDoSeed = await snapshot();
@@ -164,8 +179,9 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
       antesDoSeed === depoisDoSeed ? "estado identico (o seed pulou e logou)" : "O SEED AINDA MEXE NA LICENCA VIGENTE");
 
     record(3, "(b1) o seed tambem nao cria linha nova nem mexe em decisao",
-      (await count(`FROM source_licenses`)) === 13 && (await count(`FROM data_usage_decisions`)) === 13,
-      `licencas=${await count(`FROM source_licenses`)} decisoes=${await count(`FROM data_usage_decisions`)}`);
+      (await count(`FROM source_licenses`)) === licTotalEsperado &&
+        (await count(`FROM data_usage_decisions`)) === esperado.decisions,
+      `licencas=${await count(`FROM source_licenses`)} decisoes=${await count(`FROM data_usage_decisions`)} (esperado ${licTotalEsperado} e ${esperado.decisions})`);
 
     // ============ 4. (b4) O REBAIXAMENTO E RECUSADO NA ORIGEM ============
     let recusaDowngrade = "";
@@ -202,8 +218,9 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
     const ratingDisplay = await count(
       `FROM data_usage_decisions WHERE is_current=true AND use_case='rating_display' AND territory='BR' AND display_allowed=true`,
     );
-    record(6, "estado == producao (8 licencas vigentes de 13; 13 decisoes vigentes; 5 rating_display/BR display=true)",
-      licCurrent === 8 && licTotal === 13 && decCurrent === 13 && ratingDisplay === 5,
+    record(6, `estado tem a forma de producao (${esperado.licenses} licencas vigentes de ${licTotalEsperado}; ${esperado.decisions} decisoes vigentes; ${esperado.ratingDisplayBR} rating_display/BR display=true)`,
+      licCurrent === esperado.licenses && licTotal === licTotalEsperado &&
+        decCurrent === esperado.decisions && ratingDisplay === esperado.ratingDisplayBR,
       `vigentes=${licCurrent}/${licTotal} decisoes=${decCurrent} rating_display/BR=${ratingDisplay}`);
 
     // ============ 7. O IMPASSE, ANTES DO REPARO ============
@@ -220,15 +237,18 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
     // ============ 8-10. (a) A REMEDIACAO ============
     const grants = await readLegacyGrants(prisma);
     const plan = planRemediation(grants);
-    record(8, "remediacao enxerga TODA decisao viva concedendo sob licenca unknown",
-      plan.items.length === 10 && plan.remediable.length === 10 && plan.refused.length === 0,
+    // O rebaixamento pega as licenças de RATING (`CLOBBER_SQL`), então a
+    // remediação tem de enxergar toda decisão delas que concede alguma coisa.
+    record(8, `remediacao enxerga TODA decisao viva concedendo sob licenca unknown (${esperado.ratingGrants} no spec)`,
+      plan.items.length === esperado.ratingGrants && plan.remediable.length === esperado.ratingGrants &&
+        plan.refused.length === 0,
       `total=${plan.items.length} reparaveis=${plan.remediable.length} recusadas=${plan.refused.length} ` +
         `(display=${plan.items.filter((i) => i.grant.displayAllowed).length}, so storage=${plan.items.filter((i) => !i.grant.displayAllowed).length})`);
 
     // Dry-run não escreve.
     const decAntes = await count(`FROM data_usage_decisions WHERE is_current=true`);
     record(9, "dry-run nao escreve nada",
-      decAntes === 13, `decisoes vigentes apos o dry-run=${decAntes}`);
+      decAntes === esperado.decisions, `decisoes vigentes apos o dry-run=${decAntes} (esperado ${esperado.decisions})`);
     console.log("\n--- REGISTRO NOMINAL (o que vai para docs/legal/) ---");
     console.log(renderRemediationRecord(plan, "2026-08-12"));
     console.log("--- fim do registro ---\n");
@@ -240,9 +260,10 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
     );
 
     const retired = await prisma.$transaction(async (tx) => applyRemediationWithin(tx, plan));
-    record(10, "--confirm aposenta as 10 decisoes legadas",
-      retired === 10 && (await count(`FROM data_usage_decisions WHERE is_current=true`)) === 3,
-      `aposentadas=${retired} vigentes restantes=${await count(`FROM data_usage_decisions WHERE is_current=true`)}`);
+    record(10, `--confirm aposenta as ${esperado.ratingGrants} decisoes legadas`,
+      retired === esperado.ratingGrants &&
+        (await count(`FROM data_usage_decisions WHERE is_current=true`)) === esperado.decisions - esperado.ratingGrants,
+      `aposentadas=${retired} vigentes restantes=${await count(`FROM data_usage_decisions WHERE is_current=true`)} (esperado ${esperado.ratingGrants} e ${esperado.decisions - esperado.ratingGrants})`);
 
     // ============ 11-12. O QUE SOBREVIVEU / O QUE SE PERDEU ============
     const depois = await q<{ id: bigint; stage: string; use_case: string; policy_version: string; decided_by: string; reason: string; valid_from: Date; display_allowed: boolean; storage_allowed: boolean; derivative_allowed: boolean; is_current: boolean }>(
@@ -257,7 +278,7 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
         new Date(a.valid_from).getTime() === new Date(d.valid_from).getTime();
     });
     record(11, "auditoria preservada: stage, use_case, policy_version, decided_by, reason e valid_from intactos",
-      depois.length === 10 && preservado,
+      depois.length === esperado.ratingGrants && preservado,
       `linhas aposentadas=${depois.length} stages=${[...new Set(depois.map((d) => d.stage))].join(",")}`);
 
     record(12, "grants zerados (a perda declarada) e nada mais",
@@ -274,9 +295,25 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
     record(13, "apos a remediacao, o apply passa",
       applyDepois === "", applyDepois === "" ? "aplicado" : `BARRADO: ${applyDepois.slice(0, 175)}`);
 
-    record(14, "as 5 licencas de rating voltam a ser third_party/display=true",
-      (await count(`FROM source_licenses WHERE is_current=true AND content_type='rating' AND license_status='third_party' AND display_allowed=true`)) === 5,
-      `third_party vigentes=${await count(`FROM source_licenses WHERE is_current=true AND content_type='rating' AND license_status='third_party'`)}`);
+    // Toda licença de rating volta ao estado que o SPEC declara para ela. Em
+    // 2026-08-12 eram as 5 em third_party/display=true; desde a revogação de
+    // 2026-08-13, Letterboxd e FilmAffinity voltam a third_party/display=false —
+    // que é o autorizado para elas, e não uma licença que deixou de voltar.
+    const specRating = new Map(
+      entries.filter((e) => e.license.contentType === "rating").map((e) => [e.license.ratingSourceKey, e.license]),
+    );
+    const ratingVigentes = await q<{ rating_source_key: string; license_status: string; display_allowed: boolean }>(
+      `SELECT rating_source_key, license_status::text AS license_status, display_allowed
+         FROM source_licenses WHERE is_current=true AND content_type='rating' ORDER BY rating_source_key`,
+    );
+    const deVoltaAoSpec = ratingVigentes.filter((l) => {
+      const alvo = specRating.get(l.rating_source_key);
+      return alvo !== undefined && alvo.licenseStatus === l.license_status && alvo.displayAllowed === l.display_allowed;
+    }).length;
+    record(14, `as ${esperado.ratingLicenses} licencas de rating voltam ao estado do spec (license_status e display_allowed)`,
+      ratingVigentes.length === esperado.ratingLicenses && deVoltaAoSpec === esperado.ratingLicenses,
+      `vigentes=${ratingVigentes.length} de volta ao spec=${deVoltaAoSpec} ` +
+        `(${ratingVigentes.map((l) => `${l.rating_source_key}=${l.license_status}/${l.display_allowed ? "display" : "sem display"}`).join(", ")})`);
 
     record(15, "nenhuma decisao vigente concede sob licenca nao-exibivel",
       (await readLegacyGrants(prisma)).length === 0,
