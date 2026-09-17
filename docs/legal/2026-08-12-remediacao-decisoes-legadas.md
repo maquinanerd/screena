@@ -109,6 +109,16 @@ vigentes de 13; 13 decisões vigentes; 5 `rating_display`/BR concedendo):
 
 Todas decididas por `Pablo Eduardo — proprietário da Cinerie`.
 
+> **Nota de 2026-09-17: a tabela acima é o registro de 2026-08-12, não a saída de
+> hoje.** Ela saiu do validador com o spec daquele dia (47634d8). Depois disso,
+> Letterboxd e FilmAffinity perderam a decisão `rating_display` (86b9996), o IMDb
+> ganhou a decisão `cinerie_score_display` (3eb22ed) e as versões de política
+> mudaram de sufixo. O validador deixou de usar contagens literais e passou a
+> derivá-las do `STATIC_AUTHORIZATION` vigente
+> (`services/legal/scripts/spec-expectations.ts`). Rodado em 2026-09-17, ele
+> reconstrói **9** decisões legadas, não 10, com as versões de política vigentes.
+> A tabela acima não muda: é o que existia em 2026-08-12.
+
 ### 6.2 Produção — PREENCHER ANTES DO `--confirm`
 
 > `pnpm legal sources remediate` (sem `--confirm`) imprime esta tabela já pronta
