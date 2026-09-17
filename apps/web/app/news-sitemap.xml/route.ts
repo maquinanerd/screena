@@ -9,6 +9,7 @@
  * Zero API externa no render (invariante 3): le apenas PostgreSQL local.
  */
 
+import { sitemapCacheControl } from "../../src/lib/sitemap-cache-control";
 import { getNewsSitemapXml } from "../../src/server/seo/news-sitemap";
 
 // Dinamico: o build roda sem DATABASE_URL, e a janela de 48h muda a cada
@@ -16,9 +17,13 @@ import { getNewsSitemapXml } from "../../src/server/seo/news-sitemap";
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
-  const { xml, contentType } = await getNewsSitemapXml();
+  const { xml, contentType, degraded } = await getNewsSitemapXml();
   return new Response(xml, {
     status: 200,
-    headers: { "content-type": contentType },
+    headers: {
+      "content-type": contentType,
+      // Janela curta: a lista de 48 h muda a cada materia. Falha nunca fica na borda.
+      "cache-control": sitemapCacheControl("news", degraded),
+    },
   });
 }

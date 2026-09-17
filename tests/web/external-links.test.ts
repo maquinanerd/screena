@@ -40,6 +40,21 @@ describe("buildExternalLinks", () => {
     ]);
   });
 
+  it("o TMDb aparece com o source que o banco GRAVA (tmdb_movie), nao so com `tmdb`", () => {
+    expect(
+      buildExternalLinks(
+        [
+          { source: "imdb", externalId: "tt1375666" },
+          { source: "tmdb_movie", externalId: "27205" },
+        ],
+        "movie",
+      ),
+    ).toEqual([
+      { label: "IMDb", href: "https://www.imdb.com/title/tt1375666/" },
+      { label: "TMDb", href: "https://www.themoviedb.org/movie/27205" },
+    ]);
+  });
+
   it("ignora IDs malformados e fontes desconhecidas; sem validos -> []", () => {
     expect(
       buildExternalLinks(

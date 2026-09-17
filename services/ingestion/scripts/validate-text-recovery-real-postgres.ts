@@ -38,7 +38,6 @@
  * Uso: pnpm --filter @screena/ingestion validate:text-recovery
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -46,6 +45,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 import { produceIndexabilityDecisions } from '../src/persistence/indexability-writer.js'
@@ -614,7 +614,7 @@ async function main(): Promise<void> {
   if (external !== null) {
     console.log('[info] usando CINERIE_VALIDATOR_DATABASE_URL (cluster externo, loopback).')
     try {
-      execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+      await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
         env: { ...process.env, DATABASE_URL: external },
         stdio: 'inherit',
         cwd: dbDir,
@@ -655,7 +655,7 @@ async function main(): Promise<void> {
     started = true
     await pg.createDatabase('cinerie_text_recovery')
 
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'inherit',
       cwd: dbDir,

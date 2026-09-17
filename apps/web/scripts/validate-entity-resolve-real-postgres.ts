@@ -41,7 +41,7 @@
  * Uso: pnpm --filter @screena/web validate:entity-resolve
  */
 
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -50,6 +50,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild, spawnChild } from "@screena/db/async-child-process";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
@@ -820,7 +821,7 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url };
 
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,
@@ -828,7 +829,7 @@ async function main(): Promise<void> {
     record("migrate deploy aplica sem erro", true, "ok");
 
     console.log("--- prisma db seed ---");
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,
@@ -945,14 +946,15 @@ async function main(): Promise<void> {
     };
 
     console.log("--- next build ---");
-    const build = spawnSync("node", [nextBin, "build"], {
+    // Minutos de build com o Postgres de pe: com `spawnSync` o log do Postgres
+    // deixaria de ser lido e o backend travaria no `write()` (ver o helper).
+    const build = await spawnChild("node", [nextBin, "build"], {
       cwd: webDir,
       env: webEnv,
       stdio: "pipe",
-      shell: false,
     });
     if (build.status !== 0) {
-      record("next build", false, (build.stdout?.toString() ?? "").slice(-1200));
+      record("next build", false, build.stdout.slice(-1200));
       throw new Error("next build falhou");
     }
     record("next build concluido", true, "ok");

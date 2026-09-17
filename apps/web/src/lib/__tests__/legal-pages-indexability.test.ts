@@ -19,7 +19,11 @@ const PRODUCAO_OFICIAL = {
 
 describe("indexabilidade das paginas legais", () => {
   it("indexa quando a flag global esta ligada na origem oficial", () => {
-    expect(publicRobots(true, PRODUCAO_OFICIAL)).toEqual({ index: true, follow: true });
+    expect(publicRobots(true, PRODUCAO_OFICIAL)).toEqual({
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+    });
   });
 
   it("NAO indexa com a flag desligada (estado atual de producao)", () => {

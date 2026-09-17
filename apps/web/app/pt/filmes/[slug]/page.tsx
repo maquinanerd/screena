@@ -1,7 +1,14 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
+import {
+  buildMetaDescription,
+  buildSameAs,
+  describeMovieFactually,
+  schemaPeople,
+  serializeJsonLd,
+  toIsoDuration,
+} from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -14,15 +21,12 @@ import { TrailerModal } from '../../../_components/trailer-modal'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
   type CinerieScoreView,
 } from '../../../../src/lib/cinerie-score-presenter'
-import {
-  HERO_SYNOPSIS_MAX_CHARS,
-  breadcrumbGenre,
-  heroGenreChips,
-} from '../../../../src/lib/detail-hero'
+import { HERO_SYNOPSIS_MAX_CHARS, heroGenreChips } from '../../../../src/lib/detail-hero'
 import {
   buildSectionAbsence,
   decideSection,
@@ -30,9 +34,12 @@ import {
 } from '../../../../src/lib/section-absence'
 import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getMoviePageData } from '../../../../src/server/movie-page'
 import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
 import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
+import '../../../_components/detail-hero.css'
+import '../../../_components/detail.css'
 
 /**
  * Detalhe de filme — tela 06 do canônico, na ESTRUTURA EXATA do HTML:
@@ -45,7 +52,8 @@ import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes
  * (320px).
  *
  * O TOPO É O CANÔNICO E MAIS NADA (decisão do dono, 20/08/2026): breadcrumb
- * com o gênero no meio; badge; título; chips (gêneros + meta + classificação);
+ * (sem o degrau de gênero desde 11/09/2026, enquanto não houver página de
+ * gênero); badge; título; chips (gêneros + meta + classificação);
  * sinopse de TRÊS linhas (texto completo em "A OBRA"); DOIS botões; cartão à
  * direita com Cinerie Score → Avaliações → Onde assistir (marcas em linha).
  * As sete remoções (linha de métrica, aviso de escala, "Atualizado em" ×2,
@@ -140,18 +148,43 @@ export async function generateMetadata({
     }
   }
 
-  const { view, seo, canonicalUrl } = data
+  const { view, seo, canonicalUrl, genres, cast, directors } = data
   const title =
     view.metaTitle ?? `${view.title}${view.year !== null ? ` (${view.year})` : ''} — Filme`
+  // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
+  // que a ficha ja mostra. Antes a tag simplesmente nao saia: 3 de 5 filmes
+  // amostrados pela auditoria de SEO (achado M4).
+  const description =
+    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      describeMovieFactually({
+        title: view.title,
+        year: view.year,
+        genres,
+        directors: directors.map((person) => person.name),
+        cast: cast.map((member) => member.name),
+        runtimeLabel: view.runtimeLabel,
+      }),
+    )
 
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
+    // A arte que a ficha exibe, sob a mesma licenca (decisao do dono D4): o
+    // backdrop, depois o poster; sem nenhum dos dois, a marca.
+    ...socialMetadata({
+      type: 'video.movie',
+      title,
+      description,
+      canonicalUrl,
+      images: [
+        socialArt(view.media.backdrop, view.title, 'landscape'),
+        socialArt(view.media.poster, view.title, 'portrait'),
+      ],
+    }),
   }
-  if (view.metaDescription !== null) {
-    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 
@@ -163,13 +196,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, directors, releaseDateIso } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')
-  const crumbGenre = breadcrumbGenre(genres)
   const genreChips = heroGenreChips(genres)
   const scoreDecision = decideCinerieScore(score)
 
@@ -269,10 +301,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     reason: 'no_recommendation_for_entity',
   })
 
-  // Espelha a trilha VISIVEL do topo canonico: `Filmes / <genero> / titulo`
-  // (o genero entrou no lugar do "Inicio" — decisao do dono, 20/08/2026).
-  // Schema e trilha nunca divergem: sem genero, o item do meio nao existe nos
-  // dois lados.
+  // Espelha a trilha VISIVEL do topo: `Filmes / titulo`. Schema e trilha nunca
+  // divergem.
+  //
+  // O degrau de GENERO saiu dos dois lados em 11/09/2026 (decisao do dono): ele
+  // apontava para a MESMA URL da listagem geral, porque nao existe pagina de
+  // genero — "Filmes › Ação" levava a todos os filmes (auditoria de SEO, M8).
+  // Volta quando a pagina de genero existir.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -283,19 +318,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         name: 'Filmes',
         item: `${SITE_URL}${MOVIES_INDEX_PATH}`,
       },
-      ...(crumbGenre !== null
-        ? [
-            {
-              '@type': 'ListItem',
-              position: 2,
-              name: crumbGenre,
-              item: `${SITE_URL}${MOVIES_INDEX_PATH}`,
-            },
-          ]
-        : []),
       {
         '@type': 'ListItem',
-        position: crumbGenre !== null ? 3 : 2,
+        position: 2,
         name: view.title,
         item: canonicalUrl,
       },
@@ -310,10 +335,27 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     url: canonicalUrl,
     mainEntityOfPage: canonicalUrl,
   }
-  if (view.year !== null) movieJsonLd.datePublished = String(view.year)
+  // Data COMPLETA quando o banco a tem; o ano sozinho so na falta dela (auditoria
+  // de SEO: o `Movie` saia so com o ano).
+  const datePublished = releaseDateIso ?? (view.year !== null ? String(view.year) : null)
+  if (datePublished !== null) movieJsonLd.datePublished = datePublished
   if (view.metaDescription !== null) {
     movieJsonLd.description = view.metaDescription
   }
+  // O que a ficha MOSTRA, e nada alem disso (auditoria de SEO, 3.5): a arte da
+  // faixa de midia — `image` e obrigatoria para o Google em `Movie` —, os generos
+  // da ficha, a direcao da ficha tecnica, o elenco da faixa e a duracao. Pessoa
+  // com pagina ganha `url`; sem pagina, so o nome.
+  // A MESMA lista que o shard de sitemap anuncia na URL desta ficha.
+  const images = entityPageImageUrls(view.media, SITE_URL)
+  if (images.length > 0) movieJsonLd.image = images
+  if (genres.length > 0) movieJsonLd.genre = genres
+  const directorList = schemaPeople(directors, SITE_URL)
+  if (directorList.length > 0) movieJsonLd.director = directorList
+  const actorList = schemaPeople(primaryCast, SITE_URL)
+  if (actorList.length > 0) movieJsonLd.actor = actorList
+  const duration = toIsoDuration(view.runtimeMinutes)
+  if (duration !== null) movieJsonLd.duration = duration
   const sameAs = buildSameAs(externalIds, 'movie')
   if (sameAs.length > 0) movieJsonLd.sameAs = sameAs
 
@@ -332,11 +374,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               <li>
                 <a href={MOVIES_INDEX_PATH}>Filmes</a>
               </li>
-              {crumbGenre !== null ? (
-                <li>
-                  <a href={MOVIES_INDEX_PATH}>{crumbGenre}</a>
-                </li>
-              ) : null}
               <li aria-current="page">{view.title}</li>
             </ol>
           </nav>
@@ -443,7 +480,13 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               {view.media.poster !== null ? (
                 <img
                   alt={`Pôster de ${view.title}`}
-                  fetchPriority="high"
+                  // O poster NAO e o LCP quando ha destaque (2026-09-11): a celula
+                  // dele e 1/6 da faixa no desktop e 1/3 no tablet e no celular, e a
+                  // do destaque, ao lado, e sempre maior. `low` tira o preload de
+                  // alta prioridade que o SSR do React 19 emite para toda <img>
+                  // eager — sem `lazy`, porque ele segue acima da dobra. Sem
+                  // destaque, ele e a maior imagem da faixa e volta a `high`.
+                  fetchPriority={view.media.backdrop === null ? 'high' : 'low'}
                   height={view.media.poster.height}
                   src={view.media.poster.src}
                   width={view.media.poster.width}
@@ -454,8 +497,12 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
               {view.media.backdrop !== null ? (
                 <img
                   alt=""
+                  // O LCP da ficha em TODA largura (2026-09-11). Carregava com
+                  // `loading="lazy"`: medido na auditoria de SEO, 269 ms de espera e
+                  // prioridade baixa no elemento que decide o LCP, enquanto o
+                  // preload de alta prioridade ia para o poster.
+                  fetchPriority="high"
                   height={view.media.backdrop.height}
-                  loading="lazy"
                   src={view.media.backdrop.src}
                   width={view.media.backdrop.width}
                 />

@@ -1,0 +1,146 @@
+/* ------------------------------------------------------------------ */
+/* Tela 13 — Configurações: moldura (navegação e seções)              */
+/* ------------------------------------------------------------------ */
+/*
+ * Folha de /pt/conta/, /pt/conta/privacidade/ e /pt/importar/, importada por cada uma dessas paginas.
+ *
+ * Saiu do `globals.css` na divisao do CSS por rota
+ * (docs/frontend/CSS-SPLIT-PLAN-2026-09-15.md): so essas rotas escrevem estas
+ * classes (guarda R2 em tests/web/css-route-sheets.test.ts) e as regras seguem
+ * a ordem relativa que tinham la. Esta folha carrega DEPOIS da global;
+ * `pnpm --filter @screena/web css:move-check` prova que nenhuma regra que ficou
+ * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
+ *
+ * A importacao usa a mesma moldura das configuracoes; os paineis de cada
+ * tela ficam em `settings.css` e em `../importar/importar.css`.
+ */
+
+.set-layout {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 36px var(--pad-page) 0;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 48px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .set-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding-inline: var(--pad-page-mobile);
+  }
+}
+
+.set-nav {
+  position: sticky;
+  top: 96px;
+}
+
+@media (max-width: 900px) {
+  .set-nav {
+    position: static;
+  }
+  .set-nav nav {
+    display: flex;
+    gap: 4px;
+  }
+}
+
+.set-nav__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa); /* DD-02: rótulo decorativo */
+  margin: 0 0 14px 4px;
+}
+
+.set-nav nav {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 900px) {
+  .set-nav nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.set-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+  text-decoration: none;
+}
+
+.set-nav__item--active {
+  background: var(--c-bg-muted);
+  color: var(--c-text-primary);
+  font-weight: 700;
+}
+
+.set-nav__bar {
+  width: 3px;
+  height: 15px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.set-nav__item--active .set-nav__bar {
+  background: var(--c-accent-movie);
+}
+
+.set-content {
+  min-width: 0;
+}
+
+.set-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 32px 0 13px;
+}
+
+.set-section-head__title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.set-section-head__bar {
+  width: 3px;
+  height: 14px;
+  background: var(--c-accent-movie);
+}
+
+.set-section-head__bar--series {
+  background: var(--c-accent-series);
+}
+
+.set-section-head h2 {
+  text-transform: uppercase;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--c-text-primary);
+  margin: 0;
+}
+
+.set-section-head h2 strong {
+  font-weight: 800;
+}
+
+.set-section-head h2 span {
+  font-weight: 300;
+}
+
+.set-bottom-space {
+  height: 40px;
+}

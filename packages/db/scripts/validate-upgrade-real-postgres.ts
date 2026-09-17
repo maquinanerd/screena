@@ -25,7 +25,6 @@
  * Uso: pnpm --filter @screena/db db:validate:upgrade
  */
 
-import { execFileSync } from "node:child_process";
 import { cpSync, copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -33,6 +32,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "../src/async-child-process.js";
 import { PrismaClient } from "@prisma/client";
 
 const require = createRequire(import.meta.url);
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     }
 
     console.log("--- migrate deploy (estado ANTERIOR a Fase 2) ---");
-    execFileSync(
+    await runChild(
       "node",
       [prismaBin(), "migrate", "deploy", "--schema", tempSchema],
       { env, stdio: "inherit", cwd: dbDir },
@@ -277,7 +277,7 @@ async function main(): Promise<void> {
         cpSync(path.join(migrationsDir, dir), path.join(tempMig, dir), { recursive: true });
       }
       console.log("\n--- migrate deploy (Fase 2 + posteriores SOBRE estado anterior) ---");
-      execFileSync(
+      await runChild(
         "node",
         [prismaBin(), "migrate", "deploy", "--schema", tempSchema],
         { env, stdio: "inherit", cwd: dbDir },

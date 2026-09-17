@@ -78,6 +78,16 @@ export interface WatchBrowseData {
   attributions: { text: string; url: string | null }[]
 }
 
+/**
+ * O hub indexa quando ha ao menos uma plataforma com titulo licenciado; listagem
+ * vazia e `noindex` tecnico. A PAGINA e o SITEMAP perguntam por esta funcao: duas
+ * copias da regra divergiriam na primeira mudanca — e divergiam, com o hub fora do
+ * sitemap e `index` na pagina (auditoria de SEO, 11/09/2026, secao 3.7).
+ */
+export function watchBrowseIndexable(data: Pick<WatchBrowseData, 'providers'>): boolean {
+  return data.providers.length > 0
+}
+
 export const getWatchBrowseData = cache(async (): Promise<WatchBrowseData> => {
   const prisma = getPrismaClient()
   const now = new Date()

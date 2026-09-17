@@ -18,7 +18,7 @@
  * midia). Setup nao e a coisa sob teste; o caminho sob teste e o HTTP.
  */
 
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
 import {
   mkdirSync,
@@ -42,6 +42,7 @@ import {
   skipBuildAllowed,
   type SourceFileStamp,
 } from '../build-fingerprint.js'
+import { spawnChild } from './async-child-process.js'
 import {
   decideMigrationOutcome,
   describeDatabaseFailure,
@@ -304,13 +305,15 @@ async function applyCmsMigrations(
   const silentAttempts: string[] = []
 
   for (let attempt = 1; attempt <= MIGRATION_ATTEMPTS; attempt += 1) {
-    const migration = spawnSync('node', ['--no-warnings', binJs, 'migrate'], {
+    // ASSINCRONO de proposito: este processo hospeda o Postgres e le o log dele
+    // pelo laco de eventos; um `spawnSync` deixaria o pipe do log encher e o
+    // backend travar no `write()` (ver `async-child-process.ts`).
+    const migration = await spawnChild('node', ['--no-warnings', binJs, 'migrate'], {
       cwd: cmsDir,
       env: childEnv,
       stdio: 'pipe',
-      shell: false,
     })
-    const output = `${migration.stdout?.toString() ?? ''}\n${migration.stderr?.toString() ?? ''}`
+    const output = `${migration.stdout}\n${migration.stderr}`
 
     // A pergunta e feita ao BANCO, nao ao processo. `decideMigrationOutcome` e
     // pura e esta coberta por teste: a regra nao mora nesta glue.
@@ -354,7 +357,7 @@ async function applyCmsMigrations(
       throw new Error(
         `migrations do CMS falharam (exit ${String(migration.status)}, sinal ${String(
           migration.signal,
-        )}): ${migration.stderr?.toString() ?? ''}`,
+        )}): ${migration.stderr}`,
       )
     }
 
@@ -624,16 +627,15 @@ async function bootCmsHarness(resources: HarnessResources): Promise<CmsHarness> 
   }
 
   if (!skipped) {
-    const build = spawnSync('node', [nextBin, 'build'], {
+    // ~2 minutos com o Postgres de pe: o caso em que congelar o laco de eventos
+    // mais custaria (ver `async-child-process.ts`).
+    const build = await spawnChild('node', [nextBin, 'build'], {
       cwd: cmsDir,
       env: childEnv,
       stdio: 'pipe',
-      shell: false,
     })
     if (build.status !== 0) {
-      throw new Error(
-        `build do CMS falhou (exit ${String(build.status)}): ${build.stdout?.toString().slice(-3000) ?? ''}`,
-      )
+      throw new Error(`build do CMS falhou (exit ${String(build.status)}): ${build.stdout.slice(-3000)}`)
     }
     // Carimbo gravado SO apos build bem-sucedido: um build que falhou nao pode
     // autorizar o atalho da proxima rodada.

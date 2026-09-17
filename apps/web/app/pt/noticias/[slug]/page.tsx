@@ -8,6 +8,7 @@ import {
   buildTwitter,
   resolveCanonical,
   serializeJsonLd,
+  type ArticleSchemaMention,
   type ArticleSeoFacts,
   buildMetaDescription,
 } from '@screena/seo'
@@ -17,10 +18,15 @@ import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-bo
 import { CardBookmark } from '../../../_components/card-bookmark'
 import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
-import type { NewsArticleView } from '../../../../src/lib/news-presenter'
+import { authorHrefOf } from '../../../../src/lib/author-presenter'
+import { AI_ASSISTED_ARTICLE_NOTE } from '../../../../src/lib/editorial-disclosure'
+import type { NewsArticleView, NewsRelatedEntityType } from '../../../../src/lib/news-presenter'
 import { CINERIE_SCORE_LOGO } from '../../../../src/lib/brand-logos'
-import { HOME_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
+import { HOME_PATH, SITE_URL, canonicalPublicUrl, gatePublicRobots } from '../../../../src/lib/site'
+import { brandSocialImage } from '../../../../src/lib/social-metadata'
 import { getNewsArticleData } from '../../../../src/server/news-pages'
+import '../../../_components/art-body.css'
+import './article.css'
 
 /**
  * Artigo — tela 05 do canônico: hero de CAPA full-bleed sob o header
@@ -94,6 +100,23 @@ export async function generateMetadata({
   return metadata
 }
 
+/** O tipo schema.org de cada entidade citada — o mesmo tipo da ficha dela. */
+const MENTION_SCHEMA_TYPES: Readonly<Record<NewsRelatedEntityType, ArticleSchemaMention['type']>> = {
+  movie: 'Movie',
+  tv: 'TVSeries',
+  person: 'Person',
+}
+
+/**
+ * A pagina de autor da assinatura, absoluta. Toda materia no ar esta na pagina do
+ * seu autor (o mesmo gate — `src/lib/author-presenter.ts`); sem slug nao ha
+ * pagina, e entao nao ha `url`.
+ */
+function authorUrlOf(author: string | null): string | null {
+  const href = authorHrefOf(author)
+  return href === null ? null : canonicalPublicUrl(href)
+}
+
 /**
  * View publica -> fatos de SEO tecnico.
  *
@@ -123,8 +146,24 @@ function seoFactsOf(
     publishedAtIso: view.dateIso,
     updatedAtIso: view.updatedAtIso,
     authorName: view.author,
+    authorUrl: authorUrlOf(view.author),
+    // A MESMA correcao que a nota visivel mostra — sem nota na pagina, sem
+    // `correction` no JSON-LD.
+    correction:
+      view.correction === null
+        ? null
+        : { dateIso: view.correction.dateIso, note: view.correction.note },
+    // As entidades dos chips "Entidades citadas nesta materia" — visiveis na pagina.
+    mentions: view.related.map((entity) => ({
+      type: MENTION_SCHEMA_TYPES[entity.entityType],
+      name: entity.title,
+      url: `${SITE_URL}${entity.href}`,
+    })),
     siteName: 'Cinerie',
     locale: 'pt-BR',
+    // Materia sem capa leva o cartao da MARCA no compartilhamento (decisao do
+    // dono D4); o JSON-LD continua sem `image`, porque logo nao e foto da materia.
+    socialFallbackImage: brandSocialImage(),
   }
 }
 
@@ -178,12 +217,20 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   // byline so pode mostrar o que existe. `null` quando o nome nao tem letra —
   // ai nao ha circulo nenhum (ver `authorInitials`).
   const initials = view.author === null ? null : authorInitials(view.author)
+  // A assinatura leva a pagina do autor (auditoria de SEO, 11/09/2026: era texto
+  // simples). Nome sem slug fica sem link — nunca um link para 404.
+  const authorHref = authorHrefOf(view.author)
 
   // Ultimo degrau da trilha. Prefere a secao APROVADA; `category` e texto livre
   // da fonte, e feed RSS carimba a categoria do proprio feed — era dai que saia
   // o `Inicio > Noticias > news`, com o mesmo degrau repetido em ingles.
   const sectionLabel = sectionCrumbLabel(view.articleSection ?? view.category)
 
+  // A trilha do schema e a trilha VISIVEL, degrau por degrau: `Início › Notícias
+  // › seção`. O schema terminava no titulo da materia, que a trilha visivel nao
+  // tem — eram duas trilhas para a mesma pagina (auditoria de SEO, 11/09/2026). A
+  // secao nao tem pagina propria, entao o ultimo degrau sai sem `item`, como o
+  // schema permite ao ultimo.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -200,7 +247,9 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
         name: 'Notícias',
         item: `${SITE_URL}${NEWS_INDEX_PATH}`,
       },
-      { '@type': 'ListItem', position: 3, name: view.title, item: canonicalUrl },
+      ...(sectionLabel !== null
+        ? [{ '@type': 'ListItem', position: 3, name: sectionLabel }]
+        : []),
     ],
   }
 
@@ -289,6 +338,15 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
                 ) : (
                   view.dateLabel
                 )}
+                {/* A contraparte visível do `dateModified` do JSON-LD, só quando a
+                    última gravação cai num dia posterior ao da publicação
+                    (`formatNewsUpdatedLabel`). */}
+                {view.updatedDateLabel !== null && view.updatedAtIso !== null ? (
+                  <>
+                    {' · Atualizada em '}
+                    <time dateTime={view.updatedAtIso}>{view.updatedDateLabel}</time>
+                  </>
+                ) : null}
               </p>
             ) : null}
             <h1 className="art-title">{view.title}</h1>
@@ -307,7 +365,14 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
                       {initials}
                     </span>
                   ) : null}
-                  por <strong>{view.author}</strong>
+                  por{' '}
+                  {authorHref !== null ? (
+                    <a className="art-byline__link" href={authorHref}>
+                      <strong>{view.author}</strong>
+                    </a>
+                  ) : (
+                    <strong>{view.author}</strong>
+                  )}
                 </span>
               ) : null}
               {view.author !== null && view.readTimeLabel !== null ? (
@@ -422,6 +487,20 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
           </p>
         ) : null}
 
+        {/* Nota de correção — a data e o texto que a redação registrou no CMS
+            ("Corrigida em" + "Nota de correção"), sem reescrita. Fica entre a
+            fonte e a nota de IA, a ordem do handoff de design. Matéria retratada
+            nunca chega aqui: o gate de publicação a devolve como 404. */}
+        {view.correction !== null ? (
+          <aside aria-labelledby="art-correction-title" className="correction-notice">
+            <p className="correction-notice__title" id="art-correction-title">
+              <strong>Correção</strong> ·{' '}
+              <time dateTime={view.correction.dateIso}>{view.correction.dateLabel}</time>
+            </p>
+            <p className="correction-notice__text">{view.correction.note}</p>
+          </aside>
+        ) : null}
+
         {/* Entidades citadas (chips) + share — o CMS não tem tags editoriais;
             as entidades citadas ficam como componente próprio rotulado. */}
         <div className="art-share">
@@ -478,8 +557,8 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
         {view.aiAssisted ? (
           <p className="art-note" role="note">
-            Conteúdo produzido pela equipe editorial da Cinerie, com apoio de ferramentas de
-            inteligência artificial.
+            {/* A MESMA nota que a Política editorial cita (`editorial-disclosure.ts`). */}
+            {AI_ASSISTED_ARTICLE_NOTE}
             {showsImage ? ' Imagens meramente ilustrativas.' : null}
           </p>
         ) : null}

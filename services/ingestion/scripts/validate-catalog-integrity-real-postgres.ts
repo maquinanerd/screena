@@ -31,7 +31,6 @@
  * Uso: pnpm --filter @screena/ingestion validate:catalog-integrity
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -39,6 +38,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 import { backfillFinalization } from '../src/persistence/finalization-backfill.js'
 import { createPrismaMediaStore } from '../src/persistence/media-store.js'
@@ -345,7 +345,7 @@ async function main(): Promise<void> {
     await pg.start()
     started = true
     await pg.createDatabase('cinerie_integrity')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'inherit',
       cwd: dbDir,

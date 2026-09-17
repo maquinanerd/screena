@@ -41,7 +41,18 @@ import path from 'node:path'
 
 import { readSourceWithoutComments, REPO_ROOT } from '../support/source-text.js'
 
-const css = readSourceWithoutComments(path.join(REPO_ROOT, 'apps', 'web', 'app', 'globals.css'))
+/**
+ * As folhas que a ficha carrega, na ORDEM de carga: a global (do layout) e as do
+ * detalhe (da pagina). A reordenacao mobile vive nas folhas do detalhe desde a
+ * divisao do CSS por rota; ler so a global mediria o vazio.
+ */
+const css = [
+  ['apps', 'web', 'app', 'globals.css'],
+  ['apps', 'web', 'app', '_components', 'detail-hero.css'],
+  ['apps', 'web', 'app', '_components', 'detail.css'],
+]
+  .map((parts) => readSourceWithoutComments(path.join(REPO_ROOT, ...parts)))
+  .join('\n')
 
 /** Larguras a partir das quais o empilhamento de celular vale. */
 const MOBILE_PRELUDE = /max-width:\s*767px/
@@ -74,6 +85,36 @@ function mediaBodies(source: string, matcher: RegExp): string {
     at.lastIndex = i
   }
 
+  return out.join('\n')
+}
+
+/**
+ * O CSS FORA de toda `@media`, pelo mesmo casamento de chaves de `mediaBodies`.
+ *
+ * Cortar no primeiro `@media` so mediria o comeco de cada folha: numa folha de
+ * rota a primeira `@media` vem logo no inicio, e o resto dela ficaria invisivel.
+ */
+function outsideMedia(source: string): string {
+  const out: string[] = []
+  const at = /@media[^{]*\{/g
+  let from = 0
+  let match: RegExpExecArray | null
+
+  while ((match = at.exec(source)) !== null) {
+    out.push(source.slice(from, match.index))
+    let depth = 1
+    let i = at.lastIndex
+    while (i < source.length && depth > 0) {
+      const ch = source[i]
+      if (ch === '{') depth += 1
+      else if (ch === '}') depth -= 1
+      i += 1
+    }
+    from = i
+    at.lastIndex = i
+  }
+
+  out.push(source.slice(from))
   return out.join('\n')
 }
 
@@ -144,7 +185,11 @@ describe('em celular, a ficha abre com imagem', () => {
     // O desktop e o canonico: heroi de texto e, abaixo, a banda full-bleed com
     // poster sangrando a esquerda. Se a regra vazasse para fora da media query,
     // este teste continuaria verde no de cima e o desktop estaria quebrado.
-    const foraDeCelular = css.split(/@media[^{]*\{/).shift() ?? ''
+    const foraDeCelular = outsideMedia(css)
+    // CONTROLE DO INSTRUMENTO: o recorte achou as regras de desktop da banda e
+    // nao sobrou nenhuma `@media` dentro dele.
+    expect(foraDeCelular).toContain('.media-strip {')
+    expect(foraDeCelular).not.toContain('@media')
     expect(orderFor(foraDeCelular, `${MOVIE} ${MEDIA}`)).toBeNull()
     expect(orderFor(foraDeCelular, `${SERIES} ${MEDIA}`)).toBeNull()
   })

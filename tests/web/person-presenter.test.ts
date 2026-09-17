@@ -235,7 +235,7 @@ describe("buildPersonPageView", () => {
     expect(view.hiddenCreditCount).toBe(1);
   });
 
-  it("monta perfil REMOTO do TMDB a partir do file_path cru (original)", () => {
+  it("monta perfil REMOTO do TMDB a partir do file_path cru (w300, nunca original)", () => {
     const view = buildPersonPageView({
       record: record({ name: "Pessoa TMDB", profilePath: "/abc.jpg" }),
       translation: null,
@@ -243,7 +243,9 @@ describe("buildPersonPageView", () => {
       credits: [],
       rawCreditCount: 0,
     });
-    expect(view.profile?.src).toBe("https://image.tmdb.org/t/p/original/abc.jpg");
+    // Ate 2026-09-11 este teste afirmava `original` — e fixava o defeito: um
+    // retrato de 200 px servido a partir de um arquivo de ate 2000x3000 px.
+    expect(view.profile?.src).toBe("https://image.tmdb.org/t/p/w300/abc.jpg");
     expect(view.hasRealImage).toBe(true);
   });
 

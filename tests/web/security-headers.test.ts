@@ -263,13 +263,22 @@ describe('CSP entra pelo middleware, e em REPORT-ONLY', () => {
     // burlaria a mesma regra que o codigo passou a respeitar.
     expect(csp).toContain(`https://${TMDB_IMAGE_HOST}`)
     expect(csp).toContain('https://www.youtube-nocookie.com')
+
+    // `upgrade-insecure-requests` e INERTE numa politica report-only: ela muda
+    // requisicao, e report-only nao muda nada por definicao — o navegador so
+    // emite um aviso de console, em TODA pagina. Removida em 2026-09-11 (medida
+    // pela auditoria de SEO). Quem forca HTTPS e o HSTS. A diretiva volta JUNTO
+    // com a promocao do cabecalho a bloqueante — nunca antes, porque antes ela
+    // continua sendo custo sem efeito.
+    expect(csp).not.toContain('upgrade-insecure-requests')
   })
 
   it('o REDIRECT da raiz tambem carrega a politica', async () => {
     // Um caminho de saida sem CSP nao quebra nada e nao avisa nada — e por isso
     // que os tres caminhos passam pela mesma funcao.
     const response = await middleware(request('/'))
-    expect(response.status).toBe(307)
+    // 308 desde 2026-09-11 (decisao do dono) — ver root-locale-redirect.test.ts.
+    expect(response.status).toBe(308)
     expect(response.headers.get('content-security-policy-report-only')).not.toBeNull()
   })
 })

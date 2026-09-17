@@ -24,7 +24,6 @@
  * Uso: pnpm --filter @screena/db db:validate:user-persistence
  */
 
-import { execFileSync } from "node:child_process";
 import { copyFileSync, cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -32,6 +31,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "../src/async-child-process.js";
 import { PrismaClient } from "@prisma/client";
 
 const require = createRequire(import.meta.url);
@@ -460,7 +460,7 @@ async function runUpgradeScenario(url: string, env: NodeJS.ProcessEnv): Promise<
     // (C7A.1) — senao o "estado anterior" conteria uma migration posterior.
     rmSync(path.join(tempMig, C7A_DIR), { recursive: true, force: true });
     rmSync(path.join(tempMig, C7A1_DIR), { recursive: true, force: true });
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
       env,
       stdio: "pipe",
       cwd: dbDir,
@@ -482,7 +482,7 @@ async function runUpgradeScenario(url: string, env: NodeJS.ProcessEnv): Promise<
 
       // Aplica C7A por cima.
       cpSync(path.join(migrationsDir, C7A_DIR), path.join(tempMig, C7A_DIR), { recursive: true });
-      execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
+      await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
         env,
         stdio: "pipe",
         cwd: dbDir,
@@ -559,7 +559,7 @@ async function runTrackingUpgradeScenario(url: string, env: NodeJS.ProcessEnv): 
     copyFileSync(schemaPath, tempSchema);
     cpSync(migrationsDir, tempMig, { recursive: true });
     rmSync(path.join(tempMig, C7A1_DIR), { recursive: true, force: true });
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
       env,
       stdio: "pipe",
       cwd: dbDir,
@@ -598,7 +598,7 @@ async function runTrackingUpgradeScenario(url: string, env: NodeJS.ProcessEnv): 
 
     // Aplica C7A.1 por cima.
     cpSync(path.join(migrationsDir, C7A1_DIR), path.join(tempMig, C7A1_DIR), { recursive: true });
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", tempSchema], {
       env,
       stdio: "pipe",
       cwd: dbDir,
@@ -678,7 +678,7 @@ async function main(): Promise<void> {
     // --- Cenario A: FRESH ---
     await pg.createDatabase("c7a_fresh");
     const freshUrl = `postgresql://postgres:postgres@127.0.0.1:${port}/c7a_fresh?schema=public`;
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
       env: { ...process.env, DATABASE_URL: freshUrl },
       stdio: "pipe",
       cwd: dbDir,
@@ -690,7 +690,7 @@ async function main(): Promise<void> {
     // o Prisma nao os representa. O que NAO pode aparecer e qualquer objeto de
     // C7A: se o Prisma quisesse criar/alterar a tabela de feedback, as colunas
     // novas ou os enums novos, o schema estaria fora de sincronia com o SQL.
-    const drift = execFileSync(
+    const drift = await runChild(
       "node",
       [
         prismaBin(),
@@ -702,7 +702,9 @@ async function main(): Promise<void> {
         schemaPath,
         "--script",
       ],
-      { env: { ...process.env, DATABASE_URL: freshUrl }, encoding: "utf8", cwd: dbDir },
+      // Sem `stdio`: stdout capturado (e devolvido como texto UTF-8), stderr repassado
+      // ao terminal — o mesmo default do `execFileSync` que estava aqui.
+      { env: { ...process.env, DATABASE_URL: freshUrl }, cwd: dbDir },
     );
     // Classe CONHECIDA e repo-wide: a FK polimorfica composta para o registry
     // `entities` NAO e representavel no Prisma (nenhum model declara relacao

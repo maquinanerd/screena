@@ -25,7 +25,29 @@ export interface SitemapXmlUrl {
   changefreq?: string | null;
   /** prioridade 0..1, ou null/omitido. */
   priority?: number | null;
+  /**
+   * Imagens da pagina (extensao de sitemap de imagem do Google). SO as que a
+   * propria pagina EXIBE sob licenca — o sitemap nunca anuncia imagem que a tela
+   * nao mostra.
+   *
+   * Existe desde 2026-09-11 como a compensacao da decisao do dono D1: a galeria
+   * saiu do indice como pagina propria, e a descoberta da imagem passa a vir da
+   * ENTIDADE dona, nao de uma URL fina por galeria.
+   */
+  images?: readonly SitemapXmlImage[] | null;
 }
+
+/** Uma `<image:image>` dentro de um `<url>`. */
+export interface SitemapXmlImage {
+  /**
+   * URL absoluta da imagem. O Google retirou `caption`, `title`, `license` e
+   * `geo_location` do protocolo em 2022; `loc` e o que resta, e e o que se emite.
+   */
+  loc: string;
+}
+
+/** Namespace da extensao de imagem (declarado so quando ha imagem). */
+export const SITEMAP_IMAGE_NAMESPACE = "http://www.google.com/schemas/sitemap-image/1.1";
 
 /** Uma entrada `<sitemap>` do sitemap-index (aponta para um shard). */
 export interface SitemapIndexXmlEntry {
@@ -72,9 +94,18 @@ function trimmedOrNull(value: string | null | undefined): string | null {
  * Sempre XML valido, mesmo com lista vazia.
  */
 export function renderUrlset(urls: readonly SitemapXmlUrl[]): string {
+  const imagesOf = (url: SitemapXmlUrl): string[] =>
+    (url.images ?? [])
+      .map((image) => trimmedOrNull(image.loc))
+      .filter((loc): loc is string => loc !== null);
+  // O namespace de imagem so e declarado quando ALGUMA url tem imagem: um
+  // sitemap sem imagem continua saindo byte a byte como sempre saiu.
+  const hasImages = urls.some((url) => imagesOf(url).length > 0);
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    hasImages
+      ? `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="${SITEMAP_IMAGE_NAMESPACE}">`
+      : '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
   ];
   for (const url of urls) {
     lines.push("  <url>");
@@ -87,6 +118,11 @@ export function renderUrlset(urls: readonly SitemapXmlUrl[]): string {
     }
     const priority = priorityString(url.priority);
     if (priority !== null) lines.push(`    <priority>${priority}</priority>`);
+    for (const loc of imagesOf(url)) {
+      lines.push("    <image:image>");
+      lines.push(`      <image:loc>${escapeXml(loc)}</image:loc>`);
+      lines.push("    </image:image>");
+    }
     lines.push("  </url>");
   }
   lines.push("</urlset>");

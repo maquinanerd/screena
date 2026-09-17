@@ -34,7 +34,9 @@ const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
 const POSTER_IMAGE_SPEC: LocalImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "original" };
+// `w300`, nao `original` (2026-09-11): card de pessoa numa grade de posteres —
+// o mesmo desperdicio medido nas fotos de elenco (ver `cast-presenter.ts`).
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "w300" };
 
 const MOVIE_PATH_PREFIX = "/pt/filmes/";
 const SERIES_PATH_PREFIX = "/pt/series/";

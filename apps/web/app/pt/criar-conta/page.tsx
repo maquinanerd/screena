@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AuthShell } from '../entrar/auth-shell'
 import { SignupForm } from './signup-form'
+import '../entrar/auth.css'
 
 /**
  * Criar conta — tela 16 do canônico (modo Cadastrar): mesmo card central com

@@ -20,11 +20,13 @@ import {
   type ArticleBodyBlock,
   type ArticleBodyHydration,
 } from "../lib/article-body-presenter";
+import { buildAuthorDirectory, type AuthorProfileView } from "../lib/author-presenter";
 import { SITE_URL } from "../lib/site";
 import {
   buildNewsArticleView,
   buildNewsCard,
   buildNewsIndexView,
+  buildPublishableNewsCards,
   evaluateArticleIndexability,
   evaluateNewsIndexIndexability,
   isNewsAttributionSatisfied,
@@ -96,7 +98,15 @@ function newsCanonicalUrl(slug: string): string {
   return `${SITE_URL}${NEWS_INDEX_PATH}${slug}/`;
 }
 
-export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
+/**
+ * Os itens crus de TODAS as materias renderizaveis, com o vinculo de vertical.
+ *
+ * Uma leitura por requisicao (`cache`), compartilhada pela listagem
+ * (`getNewsIndexData`) e pelas paginas de autor (`getAuthorDirectoryData`): as
+ * duas decidem "publicavel" sobre o MESMO conjunto — senao uma materia no ar
+ * linkaria para uma pagina de autor que nao a lista.
+ */
+const loadNewsListItems = cache(async (): Promise<NewsListItemInput[]> => {
   const prisma = getPrismaClient();
 
   const rows = await prisma.articleTranslation.findMany({
@@ -172,6 +182,11 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
     translationPublishedAtIso: isoDate(row.publishedAt),
   }));
 
+  return items;
+});
+
+export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
+  const items = await loadNewsListItems();
   // Instante da avaliacao: mantem materia agendada (published_at futuro) fora
   // da listagem. Capturado UMA vez para que todos os cards do mesmo request
   // sejam avaliados contra o mesmo relogio.
@@ -180,6 +195,24 @@ export const getNewsIndexData = cache(async (): Promise<NewsIndexData> => {
     view,
     indexability: evaluateNewsIndexIndexability({ itemCount: view.totalCount }),
     canonicalUrl: `${SITE_URL}${NEWS_INDEX_PATH}`,
+  };
+});
+
+export interface AuthorDirectoryData {
+  /** Uma entrada por assinatura com materia no ar, da mais recente para a mais antiga. */
+  readonly authors: readonly AuthorProfileView[];
+}
+
+/**
+ * Quem assina as materias publicaveis, e as materias de cada um.
+ *
+ * O MESMO gate da listagem (`buildPublishableNewsCards`), sem o teto de
+ * `NEWS_INDEX_LIMIT`: a pagina de autor lista todas as materias dele.
+ */
+export const getAuthorDirectoryData = cache(async (): Promise<AuthorDirectoryData> => {
+  const items = await loadNewsListItems();
+  return {
+    authors: buildAuthorDirectory(buildPublishableNewsCards(items, new Date().toISOString())),
   };
 });
 
@@ -208,6 +241,11 @@ export const getNewsArticleData = cache(
         indexStatus: true,
         publishedAt: true,
         updatedAt: true,
+        // A correcao que a redacao registrou no CMS ("Corrigida em" + "Nota de
+        // correcao"). Materia retratada grava a data e o motivo aqui tambem, mas
+        // o gate abaixo a devolve como 404 antes de qualquer render.
+        correctedAt: true,
+        correctionNote: true,
         article: {
           select: {
             authorName: true,
@@ -299,6 +337,8 @@ export const getNewsArticleData = cache(
         indexStatus: String(translation.indexStatus),
         translationPublishedAtIso: isoDate(translation.publishedAt),
         translationUpdatedAtIso: isoDate(translation.updatedAt),
+        translationCorrectedAtIso: isoDate(translation.correctedAt),
+        correctionNote: translation.correctionNote,
       },
       related,
       entityCard,

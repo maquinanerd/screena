@@ -30,8 +30,8 @@ export interface CastStripProps {
   readonly members: readonly CastMemberView[]
   /**
    * Classe da `<ul>`. Default `cast-strip` — a mesma da ficha de filme/série,
-   * que já existe em `globals.css`. Inventar um vocabulário visual novo aqui
-   * criaria uma segunda grade de retratos para a mesma coisa.
+   * que vive em `app/_components/detail.css`. Inventar um vocabulário visual
+   * novo aqui criaria uma segunda grade de retratos para a mesma coisa.
    */
   readonly className?: string
 }

@@ -22,7 +22,6 @@
  * Todos os e-mails e hashes deste arquivo sao FICTICIOS.
  */
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -30,6 +29,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 import { PrismaClient } from "@prisma/client";
 
 import { createPrismaAccountLifecycleStore } from "../src/persistence/prisma/index.js";
@@ -401,7 +401,7 @@ async function main(): Promise<void> {
     await pg.createDatabase("c7d");
     const url = `postgresql://postgres:postgres@127.0.0.1:${port}/c7d?schema=public`;
 
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: "pipe",
       cwd: dbDir,

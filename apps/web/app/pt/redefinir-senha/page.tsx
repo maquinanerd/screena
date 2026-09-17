@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AuthShell } from '../entrar/auth-shell'
 import { PasswordResetTokenForm } from './token-form'
+import '../entrar/auth.css'
 
 /**
  * Pagina que recebe o link de RECUPERACAO DE SENHA (C7C).
@@ -18,7 +19,7 @@ import { PasswordResetTokenForm } from './token-form'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Redefinicao de senha',
+  title: 'Redefinição de senha',
   robots: { index: false, follow: false },
   referrer: 'no-referrer',
 }
@@ -26,7 +27,7 @@ export const metadata: Metadata = {
 export default function RedefinirSenhaPage() {
   return (
     <main data-vertical="account">
-      <h1 className="visually-hidden">Redefinicao de senha</h1>
+      <h1 className="visually-hidden">Redefinição de senha</h1>
       <AuthShell active="entrar" lede="Defina uma nova senha para sua conta" showTabs={false}>
         <PasswordResetTokenForm />
       </AuthShell>
