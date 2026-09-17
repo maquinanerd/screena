@@ -13,12 +13,15 @@
  * vigentes JÁ COM decisões vigentes penduradas —, e é exatamente aí que a ordem
  * das desativações importa.
  *
- * Então aqui o banco é levado ao estado de produção pelo caminho real (aplicar a
- * leva ANTERIOR de autorização) antes de aplicar a leva nova. Números que este
- * script reproduz e confere, os mesmos observados em produção:
- *   - 8 licenças vigentes de 13 totais (as 5 sementes supersedidas, não apagadas)
- *   - 13 decisões vigentes, 5 delas rating_display/BR com display_allowed=true
- *   - plano da leva nova: supersede=5, licenças mantidas=3, decisões create=10
+ * Então aqui o banco é levado à FORMA do estado de produção pelo caminho real
+ * (aplicar a leva ANTERIOR de autorização) antes de aplicar a leva nova: toda
+ * licença de rating vigente já com decisões vigentes penduradas, e a semente
+ * supersedida (não apagada). Em 2026-08-12 essa forma deu exatamente os números
+ * de produção — 8 licenças vigentes de 13, 13 decisões vigentes (5
+ * rating_display/BR), plano supersede=5/keep=3/create=10 — e eles estavam
+ * escritos aqui como literais. O spec andou, os literais envelheceram sem
+ * ninguém ver (este validador não roda na CI), e desde 2026-09-17 toda contagem
+ * esperada sai do `STATIC_AUTHORIZATION` vigente (`./spec-expectations.ts`).
  *
  * Fecha com o CONTROLE NEGATIVO: reexecuta a ordem defeituosa à mão e exige que
  * o banco ainda barre com a mesma mensagem. Sem ele, este validador ficaria
@@ -51,6 +54,7 @@ import {
   type AuthorizationEntry,
 } from "../src/authorization-spec.js";
 import { planAuthorization } from "../src/plan.js";
+import { describeSpecExpectations, specExpectations } from "./spec-expectations.js";
 
 const require = createRequire(import.meta.url);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -103,28 +107,63 @@ async function safeRm(dir: string): Promise<void> {
 }
 
 /**
+ * Recua uma versão de política trocando o ÚLTIMO segmento por `2026-07-v0`.
+ *
+ * Era `replace(/\/2026-0[0-9]-v1$/, "/2026-07-v0")`, que só casava versão
+ * terminada em `-v1`. O spec mudou o sufixo — `-v2-revogada` em Letterboxd e
+ * FilmAffinity (86b9996, 2026-08-13), `-v2` em IMDb, Rotten Tomatoes e
+ * Metacritic (3eb22ed, 2026-08-20) — e o regex parou de casar EM SILÊNCIO: a
+ * leva "anterior" saiu igual à nova em 3 das 5 licenças de rating, e o validador
+ * passou a exercitar o supersede em 2 delas (as que ainda diferiam pelo
+ * linkback). O check 11 seguiu verde, porque a cadeia das outras 3 apontava para
+ * a SEMENTE.
+ *
+ * Trocar o segmento inteiro não depende do formato do sufixo. E a recusa abaixo
+ * faz a próxima degradação reprovar o check 2 em voz alta, em vez de encolher o
+ * supersede calada.
+ */
+function recuarPolicy(policyVersion: string): string {
+  const anterior = policyVersion.replace(/\/[^/]*$/, "/2026-07-v0");
+  if (anterior === policyVersion) {
+    throw new Error(
+      `previousLeva: a versao "${policyVersion}" nao recua — a leva anterior sairia igual a nova e o supersede nao seria exercitado`,
+    );
+  }
+  return anterior;
+}
+
+/**
  * A leva ANTERIOR de autorização — o que já estava gravado no banco de produção
  * quando o apply de 2026-08-12 rodou.
  *
- * Construída a partir do spec ATUAL: nas cinco licenças de `rating` recua a
- * versão de política e restaura o linkback obrigatório (o estado anterior à
- * dispensa de 2026-08-12); as três não-rating (TMDB metadados, TMDB imagens,
- * Movie of the Night) ficam idênticas.
+ * Construída a partir do spec ATUAL: em TODA licença de `rating` recua a versão
+ * de política (da licença e de cada decisão dela) e restaura o linkback
+ * obrigatório (o estado anterior à dispensa de 2026-08-12); as demais entradas
+ * ficam idênticas.
  *
  * As strings exatas de `policy_version` gravadas em produção não são
  * reconstrutíveis a partir do repositório. O que este helper fixa — e é o que
- * importa — é a FORMA do plano que produção imprimiu no dry-run: supersede=5,
- * licenças mantidas=3, decisões create=10, decisões mantidas=3, e **cada
- * licença a supersedir já carregando decisões vigentes** (checks 5 e 6).
+ * importa — é a FORMA do plano que produção imprimiu no dry-run: toda licença de
+ * rating supersedida, toda outra mantida, nenhuma criada, e **cada licença a
+ * supersedir já carregando decisões vigentes** (checks 5 e 6). Em 2026-08-12
+ * essa forma deu supersede=5, keep=3, decisões create=10, decisões mantidas=3;
+ * hoje os números saem de `specExpectations`.
  */
 function previousLeva(entries: readonly AuthorizationEntry[]): readonly AuthorizationEntry[] {
   return entries.map((entry) => {
     if (entry.license.contentType !== "rating") return entry;
-    const policyVersion = entry.license.policyVersion.replace(/\/2026-0[0-9]-v1$/, "/2026-07-v0");
     return {
       ...entry,
-      license: { ...entry.license, requiresLinkback: true, policyVersion },
-      decisions: entry.decisions.map((d) => ({ ...d, linkbackRequired: true, policyVersion })),
+      license: {
+        ...entry.license,
+        requiresLinkback: true,
+        policyVersion: recuarPolicy(entry.license.policyVersion),
+      },
+      decisions: entry.decisions.map((d) => ({
+        ...d,
+        linkbackRequired: true,
+        policyVersion: recuarPolicy(d.policyVersion),
+      })),
     };
   });
 }
@@ -143,10 +182,12 @@ async function runChecks(url: string): Promise<void> {
     });
 
   try {
-    // Produção não tem NENHUM provedor canônico de streaming registrado, então
-    // `streamingProviderEntries` devolve lista vazia lá. Reproduzir isso é o que
-    // faz os totais baterem (8 licenças / 13 decisões).
+    // Só a leva ESTÁTICA: as licenças de provedor de streaming nascem de
+    // `watch_providers` (`streamingProviderEntries`), que este banco efêmero não
+    // tem. É dela que sai toda contagem esperada abaixo — nunca de literal.
     const entries = STATIC_AUTHORIZATION;
+    const esperado = specExpectations(entries);
+    console.log(describeSpecExpectations(esperado));
 
     // ============ 1. ESTADO INICIAL: só a semente conservadora ============
     const seedLicenses = await q<{ source_key: string; license_status: string; display_allowed: boolean }>(
@@ -170,29 +211,52 @@ async function runChecks(url: string): Promise<void> {
     record(2, "leva ANTERIOR aplica sobre a semente (nenhuma decisao vigente a desativar)",
       levaAnteriorErro === "", levaAnteriorErro === "" ? "aplicada" : `FALHOU: ${levaAnteriorErro.slice(0, 160)}`);
 
-    // ============ 3. O ESTADO INICIAL DE PRODUCAO, REPRODUZIDO ============
+    // ============ 3. A FORMA DO ESTADO INICIAL DE PRODUCAO, REPRODUZIDA ============
     const licCurrent = await count(`FROM source_licenses WHERE is_current=true`);
     const licTotal = await count(`FROM source_licenses`);
     const decCurrent = await count(`FROM data_usage_decisions WHERE is_current=true`);
     const ratingDisplayCurrent = await count(
       `FROM data_usage_decisions WHERE is_current=true AND use_case='rating_display' AND territory='BR' AND display_allowed=true`,
     );
-    const productionShape = licCurrent === 8 && licTotal === 13 && decCurrent === 13 && ratingDisplayCurrent === 5;
-    record(3, "estado inicial == producao (8 licencas vigentes de 13; 13 decisoes vigentes; 5 rating_display/BR display=true)",
+    // A leva anterior inteira vigente, e a semente inteira no total como histórico.
+    const licTotalEsperado = esperado.licenses + seedLicenses.length;
+    const productionShape =
+      licCurrent === esperado.licenses && licTotal === licTotalEsperado &&
+      decCurrent === esperado.decisions && ratingDisplayCurrent === esperado.ratingDisplayBR;
+    record(3, `estado inicial tem a forma de producao (${esperado.licenses} licencas vigentes de ${licTotalEsperado}; ${esperado.decisions} decisoes vigentes; ${esperado.ratingDisplayBR} rating_display/BR display=true)`,
       productionShape, `vigentes=${licCurrent}/${licTotal} decisoes=${decCurrent} rating_display/BR=${ratingDisplayCurrent}`);
 
     // A semente NÃO foi apagada: virou histórico.
     const seedSuperseded = await count(`FROM source_licenses WHERE is_current=false AND license_status='unknown'`);
     record(4, "semente conservadora preservada como historico (is_current=false, nao apagada)",
-      seedSuperseded === 5, `linhas unknown is_current=false: ${seedSuperseded}`);
+      seedSuperseded === seedLicenses.length, `linhas unknown is_current=false: ${seedSuperseded} de ${seedLicenses.length}`);
 
-    // ============ 5. O DRY-RUN DA LEVA NOVA, IGUAL AO DE PRODUCAO ============
+    // As licenças de rating da leva anterior, lidas do BANCO antes da leva nova:
+    // a testemunha do check 11, independente do plano.
+    const ratingLevaAnterior = new Set(
+      (await q<{ id: bigint }>(`SELECT id FROM source_licenses WHERE is_current=true AND content_type='rating'`))
+        .map((l) => String(l.id)),
+    );
+
+    // ============ 5. O DRY-RUN DA LEVA NOVA, NA FORMA DO DE PRODUCAO ============
     const { licenses, decisions } = await readCurrentState(prisma);
     const plan = planAuthorization(entries, licenses, decisions);
     const s = plan.summary;
-    record(5, "dry-run da leva nova reproduz o plano de producao (supersede=5, keep=3, decisoes create=10)",
-      s.licensesSupersede === 5 && s.licensesKeep === 3 && s.licensesCreate === 0 && s.decisionsCreate === 10,
-      `supersede=${s.licensesSupersede} keep=${s.licensesKeep} create=${s.licensesCreate} decCreate=${s.decisionsCreate} decKeep=${s.decisionsKeep}`);
+    // A leva anterior difere da nova em TODA licença de rating (`previousLeva`
+    // recua a versão de todas, ou recusa) e em nenhuma outra. Logo: supersede =
+    // licenças de rating, keep = o resto, nenhuma licença criada; toda decisão
+    // de rating nasce de novo e toda outra é mantida, sem supersede de decisão.
+    const planoEsperado = {
+      supersede: esperado.ratingLicenses,
+      keep: esperado.licenses - esperado.ratingLicenses,
+      decisionsCreate: esperado.ratingDecisions,
+      decisionsKeep: esperado.decisions - esperado.ratingDecisions,
+    };
+    record(5, `dry-run da leva nova tem a forma do plano de producao (supersede=${planoEsperado.supersede}, keep=${planoEsperado.keep}, decisoes create=${planoEsperado.decisionsCreate}, mantidas=${planoEsperado.decisionsKeep})`,
+      s.licensesSupersede === planoEsperado.supersede && s.licensesKeep === planoEsperado.keep && s.licensesCreate === 0 &&
+        s.decisionsCreate === planoEsperado.decisionsCreate && s.decisionsKeep === planoEsperado.decisionsKeep &&
+        s.decisionsSupersede === 0,
+      `supersede=${s.licensesSupersede} keep=${s.licensesKeep} create=${s.licensesCreate} decCreate=${s.decisionsCreate} decKeep=${s.decisionsKeep} decSupersede=${s.decisionsSupersede}`);
 
     // A CONDIÇÃO QUE O OUTRO VALIDADOR NUNCA TINHA: toda licença a supersedir já
     // carrega decisões vigentes. É este laço — e só ele — que o defeito habitava.
@@ -231,22 +295,33 @@ async function runChecks(url: string): Promise<void> {
     );
     const apontandoParaAntiga = ratingDecisions.filter((d) => antigas.has(String(d.source_license_id)));
     record(9, "decisoes novas apontam para as licencas NOVAS (nenhuma para a licenca supersedida)",
-      ratingDecisions.length === 5 && apontandoParaAntiga.length === 0,
-      `rating_display vigentes=${ratingDecisions.length} apontando p/ licenca antiga=${apontandoParaAntiga.length}`);
+      ratingDecisions.length === esperado.ratingDisplay && apontandoParaAntiga.length === 0,
+      `rating_display vigentes=${ratingDecisions.length} (esperado ${esperado.ratingDisplay}) apontando p/ licenca antiga=${apontandoParaAntiga.length}`);
 
-    // Histórico: as decisões da leva anterior continuam lá, desativadas.
+    // Histórico: as decisões da leva anterior continuam lá, desativadas. Saem de
+    // cena as decisões das licenças supersedidas (as de rating) e nascem outras
+    // tantas; nenhuma é apagada.
     const decTotal = await count(`FROM data_usage_decisions`);
     const decDesativadas = await count(`FROM data_usage_decisions WHERE is_current=false`);
+    const decTotalEsperado = esperado.decisions + esperado.ratingDecisions;
     record(10, "historico preservado: decisoes da leva anterior desativadas, nunca apagadas",
-      decTotal === 23 && decDesativadas === 10, `total=${decTotal} desativadas=${decDesativadas} vigentes=${decTotal - decDesativadas}`);
+      decTotal === decTotalEsperado && decDesativadas === esperado.ratingDecisions,
+      `total=${decTotal} desativadas=${decDesativadas} vigentes=${decTotal - decDesativadas} (esperado total=${decTotalEsperado} desativadas=${esperado.ratingDecisions})`);
 
-    // A cadeia supersedes_id da licença aponta para a versão anterior.
-    const cadeia = await count(
-      `FROM source_licenses novo JOIN source_licenses antigo ON antigo.id = novo.supersedes_id
-        WHERE novo.is_current = true AND novo.content_type = 'rating' AND antigo.is_current = false`,
+    // A cadeia supersedes_id de TODA licença de rating vigente aponta para a
+    // licença da leva ANTERIOR — não para a semente. A forma original contava
+    // "supersedes_id aponta para licença não vigente", que aceita as duas: com o
+    // helper degradado (ver `recuarPolicy`), 3 das 5 apontavam para a semente e
+    // este check seguia verde.
+    const cadeia = await q<{ supersedes_id: bigint | null }>(
+      `SELECT supersedes_id FROM source_licenses WHERE is_current = true AND content_type = 'rating'`,
     );
-    record(11, "cadeia supersedes_id das licencas de rating aponta para a leva anterior",
-      cadeia === 5, `licencas de rating com supersedes_id valido: ${cadeia}`);
+    const paraLevaAnterior = cadeia.filter(
+      (l) => l.supersedes_id !== null && ratingLevaAnterior.has(String(l.supersedes_id)),
+    ).length;
+    record(11, "cadeia supersedes_id de TODA licenca de rating aponta para a leva anterior (nao para a semente)",
+      cadeia.length === esperado.ratingLicenses && paraLevaAnterior === esperado.ratingLicenses,
+      `licencas de rating vigentes=${cadeia.length} apontando p/ leva anterior=${paraLevaAnterior} (esperado ${esperado.ratingLicenses})`);
 
     // ============ 12. IDEMPOTENCIA ============
     const licAntes = await count(`FROM source_licenses`);
@@ -382,8 +457,8 @@ async function runChecks(url: string): Promise<void> {
         WHERE d.is_current = true AND l.is_current = false`,
     );
     record(16, "controle negativo nao deixou residuo (transacao voltou atras inteira)",
-      orfasFinal === 0 && (await count(`FROM source_licenses WHERE is_current=true`)) === 8,
-      `orfas=${orfasFinal} licencas vigentes=${await count(`FROM source_licenses WHERE is_current=true`)}`);
+      orfasFinal === 0 && (await count(`FROM source_licenses WHERE is_current=true`)) === esperado.licenses,
+      `orfas=${orfasFinal} licencas vigentes=${await count(`FROM source_licenses WHERE is_current=true`)} (esperado ${esperado.licenses})`);
   } catch (e) {
     record(0, "execucao", false, (e as Error).message.replace(/\s+/g, " ").trim().slice(0, 200));
   } finally {
