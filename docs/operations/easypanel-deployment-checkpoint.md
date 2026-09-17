@@ -94,7 +94,7 @@ exemplo que pode ter envelhecido.
 | Porta | 3002 (`EXPOSE`, `ENV PORT=3002`) |
 | HEALTHCHECK | `GET /healthz` a cada 30s, `start-period` 90s, 3 retries |
 | Migration | `pnpm --filter @screena/cms cms:migrations:deploy` **antes** do start; falha ⇒ container não sobe |
-| Start | `exec pnpm --filter @screena/cms start` (o `pnpm` vira PID 1; o Next **nao** recebe o SIGTERM, porque o `start` nao faz `exec` — medido em 17/09/2026, ver [`sigterm-e-pid1.md`](./sigterm-e-pid1.md)) |
+| Start | `exec pnpm --filter @screena/cms start` (o `pnpm` vira PID 1 e repassa o SIGTERM ao Next, porque o `start` faz `exec next start`; ate 17/09/2026 nao fazia, e o Next morria com o container no meio das requisicoes — ver [`sigterm-e-pid1.md`](./sigterm-e-pid1.md)) |
 | Copiados | `COPY . .` (repo inteiro; `pnpm install --frozen-lockfile`) |
 | Build sem banco | `ARG PAYLOAD_SECRET` / `ARG PAYLOAD_DATABASE_URL` apontando para `127.0.0.1:1` (inalcançável de propósito), driver de build `s3` com endpoint morto |
 

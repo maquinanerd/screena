@@ -824,11 +824,212 @@ jobs:
           fi
           echo "OK: o SIGTERM chega ao agendador e aos dois workers; os controles negativos provam a diferenca."
 
+      # O admin e o CMS nunca tiveram a IMAGEM construida na CI, so o `next build`
+      # de cada app. Entram aqui porque o passo seguinte para os tres apps Next com
+      # `docker stop` — e o CMD que o orquestrador roda so existe na imagem.
+      - name: Build das imagens do admin e do CMS
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile.admin -t cinerie-admin:ci .
+          docker build -f Dockerfile.cms -t cinerie-cms:ci .
+
+      # O SIGTERM DO `docker stop` CHEGA AO NEXT — site, admin e CMS.
+      #
+      # O CMD das tres imagens termina em `exec pnpm --filter <app> start`: o PID 1 e
+      # o pnpm, e ele repassa o SIGTERM so ao processo que roda o script. Com `start`
+      # = `next start`, esse processo era um `sh -c` que morria sem repassar: o pnpm
+      # saia 1 e o Next morria junto com o container, no meio das requisicoes
+      # (medido em 17/09/2026 nas imagens reais: 175-240 ms, requisicao derrubada).
+      # Com `exec next start` o processo do script E o Next, que trata o sinal
+      # sozinho: fecha o servidor, espera o que esta em curso e sai 0.
+      #
+      # A PROVA E UMA REQUISICAO EM CURSO. O PostgreSQL PAUSADO segura a requisicao
+      # dentro do handler; o `docker stop` chega com ela aberta e o banco volta 3 s
+      # depois. So um Next que recebeu o sinal e esperou entrega a resposta. E um
+      # CONTROLE NEGATIVO por imagem: a MESMA imagem, com o `exec` tirado do `start`
+      # dentro do container, tem de derrubar a requisicao e sair diferente de 0.
+      #
+      # Depois dos servicos de proposito: pausar o banco nao pode atingir o agendador
+      # nem os workers, que pararam no passo anterior.
+      - name: SIGTERM chega ao Next (site, admin e CMS)
+        run: |
+          set -euo pipefail
+          DB=postgresql://screen:screen@pg:5432
+          falhas=0
+          falha() { echo "::error::$*"; falhas=$((falhas + 1)); }
+          # Nenhuma saida deste passo deixa o banco congelado.
+          trap 'docker unpause pg >/dev/null 2>&1 || true' EXIT
+
+          esperar_200() {
+            local url=$1
+            shift
+            for _ in $(seq 1 90); do
+              [ "$(curl -s -o /dev/null -w '%{http_code}' "$@" "$url" || true)" = "200" ] && return 0
+              sleep 2
+            done
+            return 1
+          }
+
+          # Do Next ate o PID 1, como `pid:comm|`. O Next se renomeia para
+          # `next-server (vX)` ao subir, e o nome tem espaco: o pai sai do `stat`
+          # depois do ULTIMO `) `.
+          cadeia_do_next() {
+            docker exec "$1" /bin/dash -c '
+              alvo=
+              for p in /proc/[0-9]*; do
+                case "$(tr "\0" " " <"$p/cmdline" 2>/dev/null)" in "next-server "*) alvo=${p#/proc/} ;; esac
+              done
+              pid=$alvo
+              while [ -n "$pid" ] && [ "$pid" != 0 ]; do
+                read -r linha <"/proc/$pid/stat"
+                printf "%s:%s|" "$pid" "$(cat "/proc/$pid/comm")"
+                set -f; set -- ${linha##*) }; set +f
+                pid=$2
+              done'
+          }
+
+          # Tira o `exec` do `start` DENTRO do container criado — a forma de antes, na
+          # MESMA imagem — e confere que a imagem tinha o `exec` a tirar.
+          tirar_exec() {
+            docker cp "$1:/app/$2" "/tmp/$1.json"
+            jq '.scripts.start |= sub("^exec "; "")' "/tmp/$1.json" >"/tmp/$1-sem-exec.json"
+            local antes depois
+            antes="$(jq -r .scripts.start "/tmp/$1.json")"
+            depois="$(jq -r .scripts.start "/tmp/$1-sem-exec.json")"
+            echo "$1: start da imagem [${antes}] -> no controle negativo [${depois}]"
+            [ "exec ${depois}" = "${antes}" ] || falha "$1: o start da imagem nao comeca com exec: ${antes}"
+            docker cp "/tmp/$1-sem-exec.json" "$1:/app/$2"
+          }
+
+          # Para o container com uma requisicao em curso e anota o codigo de saida, o
+          # tempo do stop e se a resposta chegou ao cliente (curl 0 + marcador no corpo).
+          parar_com_requisicao() {
+            local c=$1 url=$2 marcador=$3
+            shift 3
+            # a conexao do pool com o banco abre ANTES da pausa
+            curl -s -o /dev/null "$@" "$url" || true
+            docker pause pg >/dev/null
+            (
+              set +e
+              curl -s -o "/tmp/corpo-$c" -w '%{http_code}' --max-time 60 "$@" "$url" >"/tmp/http-$c"
+              echo $? >"/tmp/curl-$c"
+            ) &
+            local p_curl=$! p_volta inicio fim
+            sleep 1
+            ( sleep 3; docker unpause pg >/dev/null ) &
+            p_volta=$!
+            inicio=$(date +%s%N)
+            docker stop -t 30 "$c" >/dev/null
+            fim=$(date +%s%N)
+            wait "${p_volta}" || true
+            wait "${p_curl}" || true
+            saida="$(docker inspect -f '{{.State.ExitCode}}' "$c")"
+            entregue=nao
+            if [ "$(cat "/tmp/curl-$c")" = "0" ] && grep -c -- "${marcador}" "/tmp/corpo-$c" >/dev/null; then
+              entregue=sim
+            fi
+            echo "$c: saida [${saida}] stop_ms [$(( (fim - inicio) / 1000000 ))] curl [$(cat "/tmp/curl-$c")] http [$(cat "/tmp/http-$c")] requisicao_entregue [${entregue}]"
+          }
+
+          # O conserto: o Next e filho DIRETO do pnpm no PID 1, drena e sai 0.
+          provar_conserto() {
+            local rotulo=$1 c=$2 url=$3 marcador=$4 cadeia
+            shift 4
+            cadeia="$(cadeia_do_next "$c")"
+            echo "${rotulo}: cadeia do Next ate o PID 1: ${cadeia}"
+            local direto='^[0-9]+:next-server [^|]*[|]1:node[|]$'
+            [[ "${cadeia}" =~ ${direto} ]] || falha "${rotulo}: o Next nao e filho direto do pnpm no PID 1: ${cadeia}"
+            parar_com_requisicao "$c" "$url" "$marcador" "$@"
+            [ "${saida}" = "0" ] || falha "${rotulo}: docker stop saiu ${saida} (esperado 0)"
+            [ "${entregue}" = "sim" ] || falha "${rotulo}: a requisicao em curso nao chegou ao cliente — o Next nao drenou"
+          }
+
+          # O controle negativo: sem o `exec`, um shell fica entre o pnpm e o Next, o
+          # sinal nao chega, e a requisicao morre com o container.
+          provar_controle_negativo() {
+            local rotulo=$1 c=$2 url=$3 marcador=$4
+            shift 4
+            echo "${rotulo} (controle negativo): cadeia do Next ate o PID 1: $(cadeia_do_next "$c")"
+            parar_com_requisicao "$c" "$url" "$marcador" "$@"
+            [ "${saida}" != "0" ] || falha "${rotulo}: o controle negativo saiu 0 — este passo nao distingue o conserto"
+            [ "${entregue}" = "nao" ] || falha "${rotulo}: o controle negativo entregou a requisicao — este passo nao distingue o conserto"
+          }
+
+          # 1) SITE: o container `web` dos passos anteriores, com o CMD da imagem.
+          provar_conserto site web http://localhost:3000/api/health/ '"database":"ok"'
+          docker create --name web-sem-exec --network cinerie-ci \
+            -e DATABASE_URL="${DB}/screen" \
+            -e CINERIE_PUBLIC_SITE_URL=http://localhost:3100 \
+            -e CINERIE_PUBLIC_INDEXING_ENABLED=0 \
+            -p 3100:3000 cinerie-web:ci >/dev/null
+          tirar_exec web-sem-exec apps/web/package.json
+          docker start web-sem-exec >/dev/null
+          if esperar_200 http://localhost:3100/api/health/; then
+            provar_controle_negativo site web-sem-exec http://localhost:3100/api/health/ '"database":"ok"'
+          else
+            falha "o controle negativo do site nao subiu"
+          fi
+
+          # 2) ADMIN: o banco do site e o Basic Auth que o middleware exige em producao.
+          admin_env=(
+            -e DATABASE_URL="${DB}/screen"
+            -e ADMIN_BASIC_AUTH_USER=ci
+            -e ADMIN_BASIC_AUTH_PASSWORD=senha-de-prova-nao-e-credencial
+          )
+          admin_auth=(-u ci:senha-de-prova-nao-e-credencial)
+          docker run -d --name admin --network cinerie-ci "${admin_env[@]}" -p 3006:3006 cinerie-admin:ci >/dev/null
+          if esperar_200 http://localhost:3006/health "${admin_auth[@]}"; then
+            provar_conserto admin admin http://localhost:3006/health 'Conectado' "${admin_auth[@]}"
+          else
+            falha "o admin nao subiu"
+          fi
+          docker create --name admin-sem-exec --network cinerie-ci "${admin_env[@]}" -p 3106:3006 cinerie-admin:ci >/dev/null
+          tirar_exec admin-sem-exec apps/admin/package.json
+          docker start admin-sem-exec >/dev/null
+          if esperar_200 http://localhost:3106/health "${admin_auth[@]}"; then
+            provar_controle_negativo admin admin-sem-exec http://localhost:3106/health 'Conectado' "${admin_auth[@]}"
+          else
+            falha "o controle negativo do admin nao subiu"
+          fi
+
+          # 3) CMS: banco proprio (nunca o do site), storage local declarado e as
+          #    migrations do Payload, que o CMD aplica antes do start.
+          docker exec pg psql -U screen -d screen -c "CREATE DATABASE cms_ci;" >/dev/null
+          cms_env=(
+            -e PAYLOAD_DATABASE_URL="${DB}/cms_ci"
+            -e PAYLOAD_SECRET=segredo-de-prova-nao-e-credencial-0123456789
+            -e PAYLOAD_UPLOAD_STORAGE_DRIVER=local
+            -e PAYLOAD_UPLOAD_LOCAL_ROOT=/app/apps/cms/media
+            -e PAYLOAD_UPLOAD_LOCAL_PERSISTENT_CONFIRMED=true
+          )
+          docker run -d --name cms --network cinerie-ci "${cms_env[@]}" \
+            -e PAYLOAD_PUBLIC_SERVER_URL=http://localhost:3002 -p 3002:3002 cinerie-cms:ci >/dev/null
+          if esperar_200 http://localhost:3002/healthz; then
+            provar_conserto cms cms http://localhost:3002/readyz '"service":"cinerie-cms"'
+          else
+            falha "o CMS nao subiu"
+          fi
+          docker create --name cms-sem-exec --network cinerie-ci "${cms_env[@]}" \
+            -e PAYLOAD_PUBLIC_SERVER_URL=http://localhost:3102 -p 3102:3002 cinerie-cms:ci >/dev/null
+          tirar_exec cms-sem-exec apps/cms/package.json
+          docker start cms-sem-exec >/dev/null
+          if esperar_200 http://localhost:3102/healthz; then
+            provar_controle_negativo cms cms-sem-exec http://localhost:3102/readyz '"service":"cinerie-cms"'
+          else
+            falha "o controle negativo do CMS nao subiu"
+          fi
+
+          if [ "${falhas}" -gt 0 ]; then
+            echo "${falhas} falha(s) — ver as linhas ::error:: acima"
+            exit 1
+          fi
+          echo "OK: o Next dos tres apps recebe o SIGTERM, entrega a requisicao em curso e sai 0; sem o exec, a derruba."
+
       - name: Logs do container (sempre)
         if: always()
         run: |
           docker logs web 2>&1 || true
-          for c in sched sched-dash catalogo projecao projecao-dash; do
+          for c in sched sched-dash catalogo projecao projecao-dash web-sem-exec admin admin-sem-exec cms cms-sem-exec; do
             echo "== ${c} =="
             docker logs "${c}" 2>&1 || true
           done

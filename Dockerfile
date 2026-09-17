@@ -134,10 +134,13 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 # `prisma migrate deploy` (packages/db/package.json), o unico comando que so
 # aplica migrations pendentes e jamais reescreve/derruba schema.
 #
-# `exec` no start: o `pnpm` vira PID 1 e recebe o SIGTERM do orquestrador. O
-# Next, NAO: o pnpm repassa o sinal ao `sh -c` do script `start` de apps/web, e
-# esse shell morre sem repassar — o mesmo encadeamento medido nos workers, ainda
-# aberto aqui (ver docs/operations/sigterm-e-pid1.md).
+# DOIS `exec` entregam o SIGTERM ao Next, e cada um corta um elo. O deste CMD faz
+# o `pnpm` virar o PID 1 (o PID 1 NAO e o Next). O pnpm repassa o sinal so ao
+# processo que roda o script `start` de apps/web, e o `exec next start` DO SCRIPT
+# faz desse processo o proprio Next — que fecha o servidor, espera as requisicoes
+# em curso e sai 0. Ate 17/09/2026 o script nao fazia `exec`: um `sh -c` ficava no
+# meio e morria sem repassar, o pnpm saia 1 em 175 ms e o Next morria com o
+# container, derrubando a requisicao em curso. Medidas: docs/operations/sigterm-e-pid1.md.
 #
 # REPLICAS: o Prisma serializa migrate deploy com advisory lock do Postgres
 # (`SELECT pg_advisory_lock(72707369)`), entao N replicas nao corrompem o

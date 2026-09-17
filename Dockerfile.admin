@@ -98,5 +98,15 @@ EXPOSE 3006
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3006/health').then(r=>process.exit((r.status===200||r.status===401)?0:1)).catch(()=>process.exit(1))"
 
-# `exec` mantem o Next como PID 1 para receber SIGTERM diretamente.
+# O PID 1 e o PNPM, nao o Next. Este `exec` tira o dash do caminho, e o pnpm
+# repassa o SIGTERM so ao processo que roda o script `start`; e o `exec next start`
+# DO SCRIPT que faz desse processo o proprio Next — que fecha o servidor, espera o
+# que esta em curso e sai 0. Ate 17/09/2026 o script nao fazia `exec`: um `sh -c`
+# morria sem repassar, o pnpm saia 1 em 240 ms e o Next morria com o container,
+# derrubando a requisicao em curso.
+#
+# Esta imagem NAO tem o /bin/sh que vira init (scripts/container/pid1-shell.sh). Um
+# "Comando" no painel do EasyPanel passa por cima deste CMD e poe o dash no PID 1,
+# que descarta o SIGTERM: medido, 137 depois da carencia inteira. Medidas e regra:
+# docs/operations/sigterm-e-pid1.md.
 CMD ["sh", "-c", "exec pnpm --filter @screena/admin start"]

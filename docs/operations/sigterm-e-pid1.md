@@ -1,9 +1,10 @@
 # SIGTERM e o PID 1 dos containers de servico
 
-> Por que o `docker stop` de todo redeploy matava o agendador e os workers com
-> SIGKILL, com o desligamento gracioso escrito e testado, e o que entrega o sinal
-> hoje. Leia antes de mexer no **comando de um servico no painel**, no **`/bin/sh`
-> das imagens** ou num script **`*:start`** de `services/*`.
+> Por que o `docker stop` de todo redeploy matava o agendador, os workers e o Next
+> dos tres apps sem desligamento gracioso, com o codigo de drenagem escrito e
+> testado, e o que entrega o sinal hoje. Leia antes de mexer no **comando de um
+> servico no painel**, no **`/bin/sh` das imagens**, num script **`*:start`** de
+> `services/*` ou no **`start`** de `apps/*`.
 
 ---
 
@@ -178,6 +179,66 @@ marcador `scheduler:start` continua em `/proc/1/cmdline` (travado em
 
 ---
 
+## 4b. O Next dos tres apps (`screen-app`, `cinerie-admin`, `cinerie-cms`)
+
+O CMD das tres imagens termina em `exec pnpm --filter <app> start`: o PID 1 e o
+**pnpm**, nao o Next. O pnpm repassa o SIGTERM so ao processo que roda o script
+`start` — e o `start` de cada app era `next start`, sem `exec`. O elo 2 da secao 2.
+
+O Next trata o SIGTERM sozinho. Lido em `next/dist/server/lib/start-server.js` nas
+duas versoes do lockfile (15.5.25 no site e no admin, 15.4.11 no CMS): fecha o
+servidor, espera as requisicoes em curso, fecha o resto e sai 0. Nem o Payload nem
+o codigo dos apps registra outro handler. Faltava o sinal chegar.
+
+### Laboratorio (CI, imagens REAIS, `docker stop -t 12` com uma requisicao em curso)
+
+A requisicao fica presa no handler pelo PostgreSQL PAUSADO (`/api/health/` no site,
+`/health` no admin, `/readyz` no CMS); o `docker stop` chega com ela aberta, e o
+banco volta 3 s depois. So um Next que recebeu o sinal e esperou entrega a
+resposta. Run [35223972539](https://github.com/maquinanerd/screena/actions/runs/35223972539).
+
+**Como estava** (CMD da imagem, `start` sem `exec`):
+
+| app | cadeia | saida | tempo do stop | requisicao em curso |
+| --- | --- | --- | --- | --- |
+| site | pnpm (PID 1) -> `sh -c next start` (nao trata SIGTERM) -> Next | **1** | 0,18 s | **derrubada** (curl 52, resposta vazia) |
+| admin | a mesma | **1** | 0,24 s | **derrubada** |
+| CMS | a mesma, com `--port ${PORT:-3002} --hostname 0.0.0.0` | **1** | 0,24 s | **derrubada** |
+
+**Com `exec next start`:**
+
+| app | formato | saida | tempo do stop | requisicao em curso |
+| --- | --- | --- | --- | --- |
+| site | CMD da imagem: pnpm (PID 1) -> Next | 0 | 3,1 s | entregue (200) |
+| admin | CMD da imagem | 0 | 3,2 s | entregue |
+| CMS | CMD da imagem | 0 | 3,2 s | entregue |
+| site | "Tini Init" ligado (`--init`) | 0 | 3,1 s | entregue |
+| site | comando simples no painel (o init da secao 4) | 0 | 3,1 s | entregue |
+| admin | comando simples no painel | **137** | 12,2 s | entregue — e SIGKILL no fim da carencia |
+| CMS | comando simples no painel | **137** | 12,2 s | entregue — e SIGKILL no fim da carencia |
+
+Os 3 s sao o banco pausado: o Next esperou a requisicao. Nas duas ultimas linhas o
+PID 1 e o dash, porque as imagens do admin e do CMS nao tem o `/bin/sh` da secao 4:
+o SIGTERM e descartado, e o Next — que nunca o viu — continua servindo ate o
+SIGKILL. O `start` antigo com comando no painel, na imagem do site, tambem da
+**137** (12,1 s): o init repassa o sinal ao pnpm, o `sh -c` morre, e o Next orfao
+segura o container ate a carencia acabar.
+
+A arvore medida com o conserto tem dois processos — pnpm e `next-server` —, nenhum
+zumbi. O PID 1 continua sendo o pnpm, como sempre foi nesses apps: o `exec` do
+script nao muda quem colhe orfaos, e o `next start` nao cria processo filho em
+regime.
+
+### O conserto
+
+- **`start` de `apps/*` = `exec next start ...`.** O CMS mantem
+  `--port ${PORT:-3002} --hostname 0.0.0.0`: o `exec` e do mesmo shell, que ainda
+  expande a variavel. Cadeia: `PID 1 pnpm -> next-server`, sem shell no meio. Como
+  os `*:start` de `services/*`, sao entrypoints de container (POSIX): no Windows,
+  `pnpm --filter @screena/web exec next start`.
+
+---
+
 ## 5. O que continua aberto — deliberadamente
 
 - **O comando do painel do `cinerie-publication-worker` ainda passa pela CLI
@@ -201,9 +262,6 @@ marcador `scheduler:start` continua em `/proc/1/cmdline` (travado em
 - **Lote longo EM PROCESSO do agendador** so olha o desligamento entre filas.
   Se um lote passa da carencia, o SIGKILL chega no meio — sem perda de estado (o
   progresso vive no banco), mas sem drenagem.
-- **O Next** (`screen-app`, `cinerie-admin`, `cinerie-cms`): o `start` de cada
-  app e `next start` sem `exec`, entao o Next continua sem receber o SIGTERM — o
-  mesmo elo 2.
 - **Console `docker exec` aberto durante o stop**: o init ignora a raiz da sessao
   (pai 0), mas nao os filhos dela (o `bash` que o console abre). Com um console
   aberto, o container espera ate o SIGKILL da carencia — a drenagem do servico ja
@@ -230,17 +288,32 @@ No log de cada redeploy: `scheduler_draining` e `scheduler_stopped` no
 `catalog_service_stopped` no `screen-catalog-worker`. Antes do conserto essas
 linhas nunca apareciam.
 
+Nos tres apps Next (`screen-app`, `cinerie-admin`, `cinerie-cms`) o Next nao
+escreve nada ao parar; confere-se a cadeia. No console de cada um, uma linha:
+
+```sh
+for p in /proc/[0-9]*; do case "$(tr '\0' ' ' < $p/cmdline)" in next-server*) echo "next ${p#/proc/} pai $(sed 's/.*) //' $p/stat | cut -d' ' -f2)";; esac; done
+```
+
+Esperado: `next <pid> pai 1`. Antes do conserto, o pai era o `sh -c next start`.
+
 ---
 
 ## 7. Travas
 
 - [`tests/operations/container-signals.test.ts`](../../tests/operations/container-signals.test.ts)
-  — a forma dos scripts `*:start` (com controle negativo de cada forma que
-  cortava o sinal), os comandos de container que apontam para eles, o `/bin/sh`
+  — a forma dos scripts `*:start` e do `start` de todo app de `apps/*` (com
+  controle negativo de cada forma que cortava o sinal), o CMD de TODA imagem da
+  raiz terminando no `exec pnpm` de um script que entrega o sinal, o `/bin/sh`
   como ultimo `RUN` em cada imagem com comando no painel, e a equivalencia com o
   dash fora do PID 1.
 - CI, job `docker-image`, passo "SIGTERM chega ao agendador e aos workers": as
   imagens reais no formato do painel, `docker stop` em cada servico com codigo de
   saida e linha de drenagem, e **um controle negativo por imagem** — o mesmo
   comando com o dash direto no PID 1 tem de sair 137 sem drenar.
+- CI, job `docker-image`, passo "SIGTERM chega ao Next (site, admin e CMS)": as
+  tres imagens reais com o CMD delas, a cadeia `next-server <- PID 1`, e
+  `docker stop` com uma requisicao em curso — saida 0 e resposta entregue. **Um
+  controle negativo por imagem**: a mesma imagem, com o `exec` tirado do `start`
+  dentro do container, tem de sair diferente de 0 e derrubar a requisicao.
 - CI, job `build`: `dash -n` no `pid1-shell.sh`.

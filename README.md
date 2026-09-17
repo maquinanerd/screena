@@ -140,7 +140,7 @@ Parar o banco: `docker compose -f docker-compose.dev.yml down` · Resetar e apag
 | --- | --- |
 | `pnpm install` | Instala as dependências do monorepo. |
 | `pnpm dev` | Servidor de desenvolvimento do app público. |
-| `pnpm start` | Inicia o app público buildado (`@screena/web`). |
+| `pnpm start` | Inicia o app público buildado (`@screena/web`). É o entrypoint do container (`exec next start`, POSIX); no Windows, `pnpm --filter @screena/web exec next start`. |
 | `pnpm test` | Testes (Vitest): invariantes e utilitários puros. |
 | `pnpm lint` | ESLint em todo o repositório. |
 | `pnpm typecheck` | Checagem de tipos (`tsc --noEmit`). |
