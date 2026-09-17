@@ -2,7 +2,14 @@ import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 
-import { buildSameAs, serializeJsonLd, buildMetaDescription } from '@screena/seo'
+import {
+  buildMetaDescription,
+  buildSameAs,
+  describeSeriesFactually,
+  schemaImageUrls,
+  schemaPeople,
+  serializeJsonLd,
+} from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
@@ -17,11 +24,7 @@ import {
   decideCinerieScore,
   type CinerieScoreView,
 } from '../../../../src/lib/cinerie-score-presenter'
-import {
-  HERO_SYNOPSIS_MAX_CHARS,
-  breadcrumbGenre,
-  heroGenreChips,
-} from '../../../../src/lib/detail-hero'
+import { HERO_SYNOPSIS_MAX_CHARS, heroGenreChips } from '../../../../src/lib/detail-hero'
 import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { SimilarTitles } from '../../../_components/similar-titles'
 import { TrailerModal } from '../../../_components/trailer-modal'
@@ -33,6 +36,7 @@ import {
 } from '../../../../src/lib/section-absence'
 import type { SeriesEpisodeView, SeriesSeasonView } from '../../../../src/lib/series-presenter'
 import { NEWS_INDEX_PATH, SITE_URL, gatePublicRobots, seasonPath } from '../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getSeriesPageData } from '../../../../src/server/series-page'
 import { buildMediaBand } from '../../../../src/lib/media-band-presenter'
 import { imagesGalleryPath, videosGalleryPath } from '../../../../src/lib/routes'
@@ -236,19 +240,42 @@ export async function generateMetadata({
     }
   }
 
-  const { view, seo, canonicalUrl } = data
+  const { view, seo, canonicalUrl, genres, cast } = data
   const title =
     view.metaTitle ??
     `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ''} — Série`
+  // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
+  // que a ficha ja mostra — antes a tag nao saia (auditoria de SEO, achado M4).
+  const description =
+    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      describeSeriesFactually({
+        title: view.title,
+        periodLabel: view.periodLabel,
+        genres,
+        seasonsCount: view.seasonsCount,
+        cast: cast.map((member) => member.name),
+      }),
+    )
 
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
+    // A arte que a ficha exibe, sob a mesma licenca (decisao do dono D4): o
+    // backdrop, depois o poster; sem nenhum dos dois, a marca.
+    ...socialMetadata({
+      type: 'video.tv_show',
+      title,
+      description,
+      canonicalUrl,
+      images: [
+        socialArt(view.media.backdrop, view.title, 'landscape'),
+        socialArt(view.media.poster, view.title, 'portrait'),
+      ],
+    }),
   }
-  if (view.metaDescription !== null) {
-    metadata.description = buildMetaDescription(view.metaDescription) ?? view.metaDescription
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 
@@ -267,13 +294,12 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, firstAirDateIso, lastAirDateIso, ended } =
     data
   const isUnderReview = seo.decision !== 'index'
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')
-  const crumbGenre = breadcrumbGenre(genres)
   const genreChips = heroGenreChips(genres)
   const scoreDecision = decideCinerieScore(score)
 
@@ -394,7 +420,10 @@ export default async function SeriesPage({
     reason: 'no_recommendation_dataset',
   })
 
-  // Espelha a trilha VISIVEL do topo canonico: `Séries / <genero> / titulo`.
+  // Espelha a trilha VISIVEL do topo: `Séries / titulo`. O degrau de genero saiu
+  // dos dois lados em 11/09/2026 (decisao do dono): apontava para a listagem
+  // geral, porque nao existe pagina de genero (auditoria de SEO, M8). Ver a nota
+  // gemea na ficha de filme.
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
@@ -405,19 +434,9 @@ export default async function SeriesPage({
         name: 'Séries',
         item: `${SITE_URL}${SERIES_INDEX_PATH}`,
       },
-      ...(crumbGenre !== null
-        ? [
-            {
-              '@type': 'ListItem',
-              position: 2,
-              name: crumbGenre,
-              item: `${SITE_URL}${SERIES_INDEX_PATH}`,
-            },
-          ]
-        : []),
       {
         '@type': 'ListItem',
-        position: crumbGenre !== null ? 3 : 2,
+        position: 2,
         name: view.title,
         item: canonicalUrl,
       },
@@ -432,9 +451,25 @@ export default async function SeriesPage({
     url: canonicalUrl,
     mainEntityOfPage: canonicalUrl,
   }
-  if (view.firstAirYear !== null) seriesJsonLd.startDate = String(view.firstAirYear)
-  if (view.lastAirYear !== null) seriesJsonLd.endDate = String(view.lastAirYear)
+  // Datas COMPLETAS quando o banco as tem (auditoria de SEO: o `TVSeries` saia so
+  // com o ano). `endDate` so quando a serie ACABOU: o schema antigo declarava a
+  // ultima exibicao como fim de TODA serie, inclusive das que seguem no ar.
+  const startDate = firstAirDateIso ?? (view.firstAirYear !== null ? String(view.firstAirYear) : null)
+  if (startDate !== null) seriesJsonLd.startDate = startDate
+  if (ended) {
+    const endDate = lastAirDateIso ?? (view.lastAirYear !== null ? String(view.lastAirYear) : null)
+    if (endDate !== null) seriesJsonLd.endDate = endDate
+  }
   if (view.metaDescription !== null) seriesJsonLd.description = view.metaDescription
+  // O que a ficha MOSTRA (auditoria de SEO, 3.5): a arte, os generos, as
+  // contagens de temporada e episodio e o elenco da faixa.
+  const images = schemaImageUrls([view.media.poster?.src, view.media.backdrop?.src], SITE_URL)
+  if (images.length > 0) seriesJsonLd.image = images
+  if (genres.length > 0) seriesJsonLd.genre = genres
+  if (view.seasonsCount !== null) seriesJsonLd.numberOfSeasons = view.seasonsCount
+  if (view.episodesCount !== null) seriesJsonLd.numberOfEpisodes = view.episodesCount
+  const actorList = schemaPeople(visibleCast, SITE_URL)
+  if (actorList.length > 0) seriesJsonLd.actor = actorList
   const sameAs = buildSameAs(externalIds, 'tv')
   if (sameAs.length > 0) seriesJsonLd.sameAs = sameAs
 
@@ -448,11 +483,6 @@ export default async function SeriesPage({
               <li>
                 <a href={SERIES_INDEX_PATH}>Séries</a>
               </li>
-              {crumbGenre !== null ? (
-                <li>
-                  <a href={SERIES_INDEX_PATH}>{crumbGenre}</a>
-                </li>
-              ) : null}
               <li aria-current="page">{view.title}</li>
             </ol>
           </nav>
@@ -547,7 +577,9 @@ export default async function SeriesPage({
               {view.media.poster !== null ? (
                 <img
                   alt={`Pôster de ${view.title}`}
-                  fetchPriority="high"
+                  // O poster NAO e o LCP quando ha destaque — ver a mesma nota na
+                  // ficha de filme. Sem destaque, ele volta a `high`.
+                  fetchPriority={view.media.backdrop === null ? 'high' : 'low'}
                   height={view.media.poster.height}
                   src={view.media.poster.src}
                   width={view.media.poster.width}
@@ -558,8 +590,10 @@ export default async function SeriesPage({
               {view.media.backdrop !== null ? (
                 <img
                   alt=""
+                  // O LCP da ficha em toda largura — carregava `lazy` (medido na
+                  // auditoria de SEO, 2026-09-11). Ver a nota na ficha de filme.
+                  fetchPriority="high"
                   height={view.media.backdrop.height}
-                  loading="lazy"
                   src={view.media.backdrop.src}
                   width={view.media.backdrop.width}
                 />

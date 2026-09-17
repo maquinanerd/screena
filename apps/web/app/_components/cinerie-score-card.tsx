@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { CINERIE_SCORE_LOGO } from "../../src/lib/brand-logos";
 import type { CinerieScoreView } from "../../src/lib/cinerie-score-presenter";
+import { SCORE_METHODOLOGY_PATH } from "../../src/lib/routes";
 
 /**
  * CinerieScoreCard — o número do canônico: 47px/800, a MARCA "cinérie score" ao
@@ -45,7 +46,14 @@ export function CinerieScoreCard({ view }: CinerieScoreCardProps): ReactNode {
         </span>
         <span className="score-card__scale">de {view.scale} · crítica + público</span>
       </div>
-      <p className="score-card__composition">{view.compositionLine}</p>
+      {/* A composição nomeia as fontes; o link leva à conta inteira
+          (`/pt/cinerie-score/`) — o número nunca fica sem explicação. */}
+      <p className="score-card__composition">
+        {view.compositionLine}{" "}
+        <a className="score-card__method" href={SCORE_METHODOLOGY_PATH}>
+          Como é calculado
+        </a>
+      </p>
     </div>
   );
 }

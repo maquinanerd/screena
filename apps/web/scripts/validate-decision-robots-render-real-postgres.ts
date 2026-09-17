@@ -94,7 +94,15 @@ function freePort(): Promise<number> {
 /** Primeira linha da mensagem de erro (split devolve string | undefined). */
 function primeiraLinha(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
-  return msg.split("\n")[0] ?? msg;
+  // A primeira linha NAO VAZIA: erro do Prisma comeca com quebra de linha, e a
+  // primeira linha crua saia vazia no resumo. A causa inteira continua indo para
+  // o `console.error` do catch.
+  return (
+    msg
+      .split("\n")
+      .map((linha) => linha.trim())
+      .find((linha) => linha !== "") ?? msg
+  );
 }
 
 function prismaBin(): string {
@@ -224,6 +232,10 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
   // (o teste estaria confirmando o ambiente). Temporada/episodio ja saem
   // `noindex,follow` pela valvula de emergencia de 2026-08-27, e e por isso que
   // a expectativa e por tipo.
+  //
+  // Desde 2026-09-11 ha uma segunda pessoa, identica a primeira menos o status
+  // da biografia: ela sai `noindex,follow` sem decisao nenhuma, pelo portao de
+  // pessoa (D2). E o controle negativo de que o portao chega a pagina.
   const robotsBaseMedido = new Map<string, string>();
   for (const alvo of alvos) {
     const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
@@ -460,6 +472,11 @@ async function main(): Promise<void> {
         name: "Pessoa Alvo",
         profilePath: "/profile.jpg",
         biography: "Biografia propria da pessoa alvo.",
+        // COMPLETA de verdade desde 2026-09-11: biografia com status que LIBERA
+        // exibicao. Sem este campo a coluna nasce `unknown` — texto que a
+        // invariante 6 nao deixa ir para a tela, e que o portao de pessoa (D2)
+        // corretamente barra. A fixture se dizia "completa" e nao era.
+        biographySourceStatus: "licensed",
       },
       select: { id: true },
     });
@@ -487,6 +504,46 @@ async function main(): Promise<void> {
         personId: person.id,
         billingOrder: 1,
         character: "Protagonista",
+      },
+    });
+
+    // CONTROLE NEGATIVO do portao de pessoa (D2): igual a pessoa acima em tudo —
+    // foto, credito no MESMO filme, texto de biografia — menos o status que libera
+    // a biografia. Se as duas saissem com o mesmo robots, o portao nao estaria
+    // chegando a pagina renderizada.
+    const personSemBio = await prisma.person.create({
+      data: {
+        tmdbId: 97_000_004,
+        name: "Pessoa Sem Bio Liberada",
+        profilePath: "/profile-2.jpg",
+        biography: "Biografia ingerida, mas sem liberacao de exibicao.",
+      },
+      select: { id: true },
+    });
+    await prisma.slug.create({
+      data: {
+        entityType: "person",
+        entityId: personSemBio.id,
+        languageCode: LANGUAGE,
+        slug: "pessoa-sem-bio-liberada",
+        isCanonical: true,
+      },
+    });
+    await prisma.entityTranslation.create({
+      data: {
+        entityType: "person",
+        entityId: personSemBio.id,
+        languageCode: LANGUAGE,
+        title: "Pessoa Sem Bio Liberada",
+      },
+    });
+    await prisma.castMember.create({
+      data: {
+        entityType: "movie",
+        entityId: movie.id,
+        personId: personSemBio.id,
+        billingOrder: 2,
+        character: "Coadjuvante",
       },
     });
 
@@ -545,6 +602,15 @@ async function main(): Promise<void> {
         params: { slug: "pessoa-alvo", __id: String(person.id) },
         generateMetadata: personRoute.generateMetadata,
         robotsBase: "index,follow",
+      },
+      {
+        tipo: "person",
+        rotulo: "/pt/pessoas/pessoa-sem-bio-liberada/",
+        params: { slug: "pessoa-sem-bio-liberada", __id: String(personSemBio.id) },
+        generateMetadata: personRoute.generateMetadata,
+        // Portao de pessoa (D2, 2026-09-11): biografia sem status que libera
+        // exibicao -> noindex, FOLLOW, sem nenhuma linha na tabela de decisoes.
+        robotsBase: "noindex,follow",
       },
     ];
 

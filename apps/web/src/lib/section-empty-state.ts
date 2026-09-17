@@ -91,6 +91,12 @@ export function emptyStateFor(reason: SectionAbsenceReason): SectionEmptyState |
     case "no_authorized_provider":
       // NAO sabemos nada sobre este titulo. A frase fala de NOS, e nao dele.
       return { text: "Ainda não temos a disponibilidade deste título no Brasil." };
+    case "offer_hidden_for_entity":
+      // O titulo TEM oferta no catalogo, so nao aprovada para exibicao. "Nao
+      // encontramos" seria mentira (encontramos, so nao liberamos), e nomear o
+      // servico seria exibir dado sem licenca (invariante 6). Resta a mesma frase
+      // que fala de NOS: a disponibilidade existe e ainda nao e nossa para mostrar.
+      return { text: "Ainda não temos a disponibilidade deste título no Brasil." };
 
     /* ---------------------------------------------------------------- */
     /* Notas                                                            */

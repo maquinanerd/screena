@@ -27,14 +27,19 @@
 
 import { PUBLISHED_LOCALES } from "@screena/config";
 
+import type { QualityGateVerdict } from "./entity-quality-gates.js";
+
 /** Nome da politica de indexabilidade vigente. */
 export const SEO_POLICY = "total-indexing" as const;
 
 /**
  * Versao da politica. Bump manual quando a regra de precedencia muda. Repassado
  * na resolucao para rastrear qual politica decidiu cada pagina.
+ *
+ * 2026-09: entram duas causas novas na precedencia — o portao de qualidade
+ * (decisoes do dono D1-D3) e a decisao ausente com o gate do tipo armado.
  */
-export const SEO_POLICY_VERSION = "2026-07" as const;
+export const SEO_POLICY_VERSION = "2026-09" as const;
 
 /**
  * Locales publicados/indexaveis (invariante 7). Fonte de verdade:
@@ -69,8 +74,15 @@ export type DecisionSource =
   | "stale-invalidation"
   | "entity-not-published"
   | "technical-invalid"
+  /** Portao de qualidade da entidade (decisoes do dono D1-D3, 2026-09-11). */
+  | "quality-gate"
   | "total-indexing"
-  | "persisted-decision";
+  | "persisted-decision"
+  /**
+   * Sem decisao persistida, com o gate daquele tipo ARMADO: a mesma regra que o
+   * sitemap aplica ("sem linha, fora") chegando a pagina.
+   */
+  | "absent-decision-armed";
 
 /**
  * Gate de atribuicao/linkback de noticia (invariante 6, regras de ratings/news).
@@ -129,6 +141,12 @@ export interface PageSeoFacts {
   thinContentScore?: number;
   /** Blocos de IA em estado publicavel (informativo p/ exibicao). Default: true. */
   reviewStatusOk?: boolean;
+  /**
+   * Portao de qualidade da entidade (D1 galeria, D2 pessoa, D3 localizacao).
+   * Barrado => `noindex, follow`, fora do sitemap. Omitido => nao se aplica.
+   * A regra e o porque vivem em `entity-quality-gates.ts`.
+   */
+  qualityGate?: QualityGateVerdict;
 }
 
 /** Resolucao completa e unica consumida por metadata, sitemap e validadores. */
@@ -185,7 +203,8 @@ function newsAttributionBlocks(facts: NewsAttributionFacts | undefined): boolean
  *  5. Conteudo invalidado (stale)            -> `stale`.
  *  6. Entidade nao publicada                 -> `noindex` (entity-not-published).
  *  7. Caso tecnico (sem dados estruturados)  -> `noindex` (technical-invalid).
- *  8. Caso contrario                         -> `index`   (indexacao total).
+ *  8. Portao de qualidade barrado            -> `noindex, follow` (quality-gate).
+ *  9. Caso contrario                         -> `index`   (indexacao total).
  *
  * `includeInSitemap` e sempre `decision === 'index'`: sitemap e meta robots
  * nunca podem discordar, porque derivam da MESMA resolucao.
@@ -298,7 +317,23 @@ export function resolvePageSeo(facts: PageSeoFacts): PageSeoResolution {
     };
   }
 
-  // 8. Indexacao total (invariante 5, politica 2026-07).
+  // 8. Portao de qualidade (decisoes do dono D1-D3, 2026-09-11). Vem DEPOIS do
+  //    caso tecnico porque dado invalido e causa mais basica que dado
+  //    insuficiente: os dois dao noindex,follow, e o `reason` tem de nomear a
+  //    causa de raiz. `follow` fica ligado — a pagina e valida, e os links dela
+  //    sustentam as que indexam.
+  if (facts.qualityGate !== undefined && !facts.qualityGate.passed) {
+    return {
+      ...base,
+      decision: "noindex",
+      robots: { index: false, follow: true },
+      includeInSitemap: false,
+      decisionSource: "quality-gate",
+      reason: facts.qualityGate.reason,
+    };
+  }
+
+  // 9. Indexacao total (invariante 5, politica 2026-07).
   return {
     ...base,
     decision: "index",
@@ -368,16 +403,49 @@ function robotsForPersistedDecision(decision: IndexDecision): {
  * stale, draft), mas NUNCA relaxa um bloqueio vivo — um `index` persistido
  * desatualizado jamais reabre uma pagina que a licenca (invariante 6), o idioma
  * (invariante 7) ou o caso tecnico ja bloquearam ao vivo. Sem decisao persistida
- * (`null`), devolve a resolucao viva inalterada (politica de indexacao total).
+ * (`null`), devolve a resolucao viva — salvo quando o chamador informa que o gate
+ * daquele tipo esta ARMADO (`absentDecision: 'noindex'`), a mesma regra do sitemap.
  *
  * `includeInSitemap === (decision === 'index')` continua valendo apos a fusao —
  * metadata e sitemap nunca discordam.
  */
+/** Opcoes da fusao entre a resolucao viva e a decisao persistida. */
+export interface MergePersistedDecisionOptions {
+  /**
+   * O que uma decisao AUSENTE vale. `index` (default) preserva a indexacao
+   * total; `noindex` e o gate ARMADO do sitemap chegando a pagina. Quem conhece
+   * a cobertura de decisoes do tipo e quem passa isto.
+   */
+  readonly absentDecision?: "index" | "noindex";
+}
+
 export function mergePersistedDecision(
   live: PageSeoResolution,
   persisted: PersistedDecisionFacts | null,
+  options: MergePersistedDecisionOptions = {},
 ): PageSeoResolution {
-  if (persisted === null) return live;
+  if (persisted === null) {
+    // SEM LINHA. Ate 2026-09-11 isto devolvia `live` sempre — enquanto o sitemap
+    // tratava a mesma ausencia como `noindex` assim que o gate do tipo armava. A
+    // pagina dizia `index` para uma entidade que o sitemap nao listava: a
+    // divergencia (d) da auditoria. Agora a pagina recebe a MESMA regra.
+    //
+    // So rebaixa `index`. Um bloqueio vivo (licenca, idioma, portao) ja e mais
+    // restritivo e segue valendo, com o motivo dele — reescrever aqui apagaria a
+    // auditoria de por que a pagina saiu do indice.
+    if (options.absentDecision === "noindex" && live.decision === "index") {
+      return {
+        ...live,
+        decision: "noindex",
+        robots: { index: false, follow: true },
+        includeInSitemap: false,
+        decisionSource: "absent-decision-armed",
+        reason:
+          "Sem decisao vigente em page_indexability_decisions, com o gate deste tipo ARMADO (a politica ja decidiu o bastante do catalogo): a entidade ainda nao avaliada fica fora do indice e do sitemap ate ter decisao. E a mesma regra do sitemap.",
+      };
+    }
+    return live;
+  }
 
   const liveSeverity = DECISION_SEVERITY[live.decision];
   const persistedSeverity = DECISION_SEVERITY[persisted.decision];

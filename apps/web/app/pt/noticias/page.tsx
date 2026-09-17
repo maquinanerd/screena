@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { AdSlot } from '../../_components/ad-slot'
 import { EmptyState } from '../../_components/ds'
 import type { NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 
 /**
@@ -20,6 +21,9 @@ import { getNewsIndexData } from '../../../src/server/news-pages'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Notícias'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Notícias" (ver a
+// nota gemea em /pt/filmes/).
+const META_TITLE = 'Notícias de cinema e séries'
 const DESCRIPTION =
   'Últimas notícias e análises editoriais da Cinerie sobre cinema e séries, em português.'
 
@@ -27,10 +31,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
+    ...socialMetadata({ type: 'website', title: META_TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 
@@ -81,6 +86,8 @@ export default async function NewsIndexPage() {
     name: TITLE,
     url: canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
   if (orderedCards.length > 0) {
     collectionJsonLd.mainEntity = {

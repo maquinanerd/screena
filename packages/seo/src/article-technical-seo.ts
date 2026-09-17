@@ -18,8 +18,23 @@
 // do mesmo tipo divergem no primeiro estado novo, e o TypeScript nao avisa
 // enquanto os valores coincidirem.
 import type { IndexDecision } from './resolver.js'
+import {
+  organizationId,
+  profilePersonId,
+  publicHomeUrl,
+  publishingPrinciplesUrl,
+} from './site-identity.js'
+import { toOpenGraphLocale } from './social-metadata.js'
 
 export type { IndexDecision }
+
+/** Uma obra ou pessoa CITADA na materia, com a pagina publica dela. */
+export interface ArticleSchemaMention {
+  readonly type: 'Movie' | 'TVSeries' | 'Person'
+  readonly name: string
+  /** Absoluta. */
+  readonly url: string
+}
 
 export interface ArticleSeoFacts {
   /** URL canonica DERIVADA de `slugs`/`redirects`. Absoluta. */
@@ -43,8 +58,22 @@ export interface ArticleSeoFacts {
   readonly publishedAtIso: string | null
   readonly updatedAtIso: string | null
   readonly authorName: string | null
+  /**
+   * A pagina de autor, absoluta, quando existe. Ausente ou `null`: a assinatura
+   * nao tem pagina, e o JSON-LD nao promete uma.
+   */
+  readonly authorUrl?: string | null
+  /** Obras e pessoas CITADAS e visiveis na materia ("Entidades citadas"). */
+  readonly mentions?: readonly ArticleSchemaMention[]
   readonly siteName: string
+  /** Idioma BCP-47 (`pt-BR`) — o formato do JSON-LD. O Open Graph o converte. */
   readonly locale: string
+  /**
+   * O cartao social da materia SEM capa: a ultima candidata da decisao do dono D4
+   * (a marca). So o cartao a usa — o `image` do JSON-LD continua sendo so a capa
+   * real, porque logo nao e foto da materia.
+   */
+  readonly socialFallbackImage?: { readonly url: string; readonly alt: string } | null
 }
 
 /* ------------------------------------------------------------------ */
@@ -100,7 +129,12 @@ export function resolveCanonical(facts: ArticleSeoFacts): CanonicalVerdict {
 export interface RobotsDirective {
   readonly index: boolean
   readonly follow: boolean
-  readonly googleBot?: { readonly index: boolean; readonly follow: boolean }
+  readonly 'max-image-preview'?: 'large'
+  readonly googleBot?: {
+    readonly index: boolean
+    readonly follow: boolean
+    readonly 'max-image-preview'?: 'large'
+  }
 }
 
 /**
@@ -113,7 +147,17 @@ export interface RobotsDirective {
  */
 export function articleRobots(decision: IndexDecision): RobotsDirective {
   const index = decision === 'index'
-  return { index, follow: true, googleBot: { index, follow: true } }
+  if (!index) return { index, follow: true, googleBot: { index, follow: true } }
+  // `max-image-preview:large` (auditoria de SEO de 11/09/2026, secao 3.3):
+  // nenhuma pagina o emitia, nem a materia — a que mais vive de imagem grande no
+  // Discover. So em pagina que indexa, e nos DOIS metas, para `robots` e
+  // `googlebot` dizerem a mesma coisa.
+  return {
+    index,
+    follow: true,
+    'max-image-preview': 'large',
+    googleBot: { index, follow: true, 'max-image-preview': 'large' },
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -171,14 +215,18 @@ export function buildOpenGraph(facts: ArticleSeoFacts): OpenGraphPayload {
     // social entre duas paginas.
     url: canonical.href,
     siteName: facts.siteName,
-    locale: facts.locale,
+    // O Open Graph escreve o idioma com sublinhado (`pt_BR`); `facts.locale` e
+    // BCP-47 (`pt-BR`), o formato do JSON-LD. Passar direto era o `og:locale`
+    // invalido que a auditoria de SEO achou em toda materia.
+    locale: toOpenGraphLocale(facts.locale),
     ...(facts.publishedAtIso === null ? {} : { publishedTime: facts.publishedAtIso }),
-    ...(facts.updatedAtIso === null ? {} : { modifiedTime: facts.updatedAtIso }),
+    ...(facts.updatedAtIso === null
+      ? {}
+      : { modifiedTime: modifiedIsoOf(facts) ?? facts.updatedAtIso }),
     ...(section === '' ? {} : { section }),
     ...(author === '' ? {} : { authors: [author] }),
-    ...(facts.imageUrl === null
-      ? {}
-      : {
+    ...(facts.imageUrl !== null
+      ? {
           images: [
             {
               url: facts.imageUrl,
@@ -188,7 +236,16 @@ export function buildOpenGraph(facts: ArticleSeoFacts): OpenGraphPayload {
               alt: (facts.imageAlt ?? '').trim() === '' ? facts.title : (facts.imageAlt as string),
             },
           ],
-        }),
+        }
+      : facts.socialFallbackImage
+        ? // Sem capa, o cartao leva a MARCA (decisao do dono D4) em vez de sair
+          // sem imagem nenhuma.
+          {
+            images: [
+              { url: facts.socialFallbackImage.url, alt: facts.socialFallbackImage.alt },
+            ],
+          }
+        : {}),
   }
 }
 
@@ -204,15 +261,16 @@ export interface TwitterPayload {
  *
  * `summary_large_image` exige imagem. Declarar o card grande SEM imagem produz
  * um card degradado — por isso o tipo acompanha a existencia da imagem em vez
- * de ser fixo.
+ * de ser fixo. A marca de reserva e 1200x630 e cabe no recorte do card grande.
  */
 export function buildTwitter(facts: ArticleSeoFacts): TwitterPayload {
   const description = socialDescriptionOf(facts)
+  const imageUrl = facts.imageUrl ?? facts.socialFallbackImage?.url ?? null
   return {
-    card: facts.imageUrl === null ? 'summary' : 'summary_large_image',
+    card: imageUrl === null ? 'summary' : 'summary_large_image',
     title: socialTitleOf(facts),
     ...(description === null ? {} : { description }),
-    ...(facts.imageUrl === null ? {} : { images: [facts.imageUrl] }),
+    ...(imageUrl === null ? {} : { images: [imageUrl] }),
   }
 }
 
@@ -290,15 +348,26 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
   if (facts.publishedAtIso !== null) jsonLd.datePublished = facts.publishedAtIso
   // `dateModified` ausente faz o buscador presumir que a materia nunca mudou.
   // Quando nao ha data de atualizacao, a de publicacao e a verdade disponivel.
-  const modified = facts.updatedAtIso ?? facts.publishedAtIso
+  const modified = modifiedIsoOf(facts)
   if (modified !== null) jsonLd.dateModified = modified
   if (author !== '') {
-    // SEM `url`, e de proposito. O banco publico guarda so `authorName` — nao ha
-    // pagina de autor, nem slug para apontar. Emitir `author.url` para uma
-    // pagina que nao existe e pior que omitir: promete perfil verificavel e
-    // entrega 404. Quando a pagina de autor existir, o campo entra aqui.
-    jsonLd.author = { '@type': 'Person', name: author }
+    // `url` SO com pagina de autor de verdade. Ate a auditoria de SEO de
+    // 11/09/2026 ela nao existia, e omitir era a resposta certa: `url` para uma
+    // pagina inexistente promete perfil verificavel e entrega 404. Quem decide se
+    // a pagina existe e o lado publico; aqui so se recusa URL que nao e absoluta.
+    const authorUrl = absoluteHttpUrl(facts.authorUrl)
+    jsonLd.author =
+      authorUrl === null
+        ? { '@type': 'Person', name: author }
+        : { '@type': 'Person', '@id': profilePersonId(authorUrl), name: author, url: authorUrl }
   }
+
+  // `mentions`: o que a materia CITA e mostra ("Entidades citadas nesta materia").
+  // `about` NAO e emitido: o banco nao marca qual entidade e o ASSUNTO da materia
+  // — a ficha exibida e a da primeira citada, e chamar isso de assunto seria
+  // afirmar o que ninguem declarou.
+  const mentions = mentionsOf(facts.mentions)
+  if (mentions.length > 0) jsonLd.mentions = mentions
 
   /*
    * PUBLISHER — estava AUSENTE, e a ausencia e um defeito de verdade.
@@ -315,12 +384,19 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
     ...(publisherUrl === null
       ? {}
       : {
-          url: publisherUrl,
+          // O MESMO no da home (`@id`) e a mesma URL publica, a home canonica.
+          // Ate 11/09/2026 o publisher apontava para a origem sem barra, a home
+          // para `/pt/` e o WebSite para `/` — tres enderecos para uma
+          // organizacao, sem `@id` (auditoria de SEO, M7).
+          '@id': organizationId(publisherUrl),
+          url: publicHomeUrl(publisherUrl),
           // A marca-mãe raster (PNG 672x163) — o mesmo arquivo de
           // `CINERIE_ORGANIZATION_LOGO` (apps/web/src/lib/brand-logos.ts),
           // amarrado por teste. Sem origem nao ha logo absoluto: o publisher
           // degrada inteiro, nunca aponta para caminho relativo.
           logo: { '@type': 'ImageObject', url: `${publisherUrl}/brand/cinerie-logo.png` },
+          // Como a organizacao publica — o mesmo valor do no da home.
+          publishingPrinciples: publishingPrinciplesUrl(publisherUrl),
         }),
   }
 
@@ -345,6 +421,43 @@ function originOf(href: string): string | null {
   } catch {
     return null
   }
+}
+
+/**
+ * A data de modificacao declarada: a da ultima gravacao, mas NUNCA anterior a da
+ * publicacao. Materia agendada e gravada antes de ir ao ar, e `dateModified`
+ * antes de `datePublished` seria uma contradicao dentro do proprio JSON-LD.
+ */
+function modifiedIsoOf(facts: ArticleSeoFacts): string | null {
+  const published = facts.publishedAtIso
+  const updated = facts.updatedAtIso
+  if (updated === null) return published
+  if (published === null) return updated
+  return Date.parse(updated) < Date.parse(published) ? published : updated
+}
+
+/** http(s) absoluta, com host. Relativa, vazia ou de outro esquema nao passa. */
+const ABSOLUTE_HTTP_URL = /^https?:\/\/[^\s/?#]+(?:[/?#]\S*)?$/i
+
+function absoluteHttpUrl(value: string | null | undefined): string | null {
+  const trimmed = (value ?? '').trim()
+  return ABSOLUTE_HTTP_URL.test(trimmed) ? trimmed : null
+}
+
+/** As citacoes validas, uma por URL, na ordem em que chegaram. */
+function mentionsOf(
+  mentions: readonly ArticleSchemaMention[] | undefined,
+): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const out: Record<string, unknown>[] = []
+  for (const mention of mentions ?? []) {
+    const name = mention.name.trim()
+    const url = absoluteHttpUrl(mention.url)
+    if (name === '' || url === null || seen.has(url)) continue
+    seen.add(url)
+    out.push({ '@type': mention.type, name, url })
+  }
+  return out
 }
 
 /**

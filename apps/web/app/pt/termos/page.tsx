@@ -11,6 +11,7 @@ import {
   canonicalPublicUrl,
   legalDocRobots,
 } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 
 /**
  * Termos de Uso.
@@ -41,6 +42,20 @@ import {
  * (`app/pt/criar-conta/signup-form.tsx`), que até aqui apontava para 404.
  */
 
+/**
+ * `force-dynamic` — o `<meta robots>` desta página lê a chave de indexação do
+ * AMBIENTE (`legalDocRobots()`), e essa chave só existe em RUNTIME: o release
+ * constrói sem env pública (ver o `Dockerfile`).
+ *
+ * Prerenderizada no build, a página saía com o robots do BUILD — `noindex,
+ * nofollow` — e nenhuma env de runtime o alcançava: a chave própria dos
+ * documentos legais ficava inerte. Medido em 15/09/2026 no HTML que o build
+ * gravou em `.next/server/app/pt/termos.html`. Sem banco, renderizar por
+ * requisição custa pouco. Travado por
+ * `tests/web/prerendered-routes-robots-runtime.test.ts`.
+ */
+export const dynamic = 'force-dynamic'
+
 const TITLE = 'Termos de Uso'
 const DESCRIPTION =
   'Regras de uso da Cinerie: o que o serviço é, requisitos de conta, conduta, ' +
@@ -52,6 +67,12 @@ export function generateMetadata(): Metadata {
     description: DESCRIPTION,
     robots: legalDocRobots(),
     alternates: { canonical: canonicalPublicUrl(TERMS_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(TERMS_PATH),
+    }),
   }
 }
 

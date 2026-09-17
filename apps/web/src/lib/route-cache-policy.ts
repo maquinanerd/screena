@@ -13,8 +13,10 @@
  * em `next/dist/server/lib/cache-control.js` devolve exatamente essa string
  * quando `revalidate === 0`, e devolve `s-maxage=<n>` quando ha revalidacao.
  * A prova executada esta em `validate-route-cache-real-postgres.ts`: a MESMA
- * instalacao do Next emite `s-maxage=31536000` para `/pt/termos/` (estatica) e
- * `no-store` para `/pt/` (dinamica), sem uma linha nossa de `Cache-Control`.
+ * instalacao do Next emite `s-maxage=31536000` para uma rota prerenderizada e
+ * `no-store` para `/pt/` (dinamica), sem uma linha nossa de `Cache-Control`. A
+ * rota de prova era `/pt/termos/`; desde 15/09/2026 — motivo (d) abaixo — e o
+ * alias `/filmes/`, medido nesse dia: `308 s-maxage=31536000`.
  *
  * Ou seja: nao ha "header global para remover". Ha rota dinamica para deixar de
  * ser dinamica. O header e CONSEQUENCIA, e este registro e o lugar unico onde a
@@ -43,12 +45,18 @@
  *                       janela do `revalidate` (ISR).
  *  - `public-dynamic` — publica, renderizada A CADA requisicao. Nao vaza dado
  *                       pessoal; simplesmente nao pode (ou nao deve) ser
- *                       guardada. Tres motivos distintos aparecem hoje, e cada
+ *                       guardada. Quatro motivos distintos aparecem hoje, e cada
  *                       entrada diz qual e o seu:
  *                         (a) a resposta depende de `searchParams` (`/pt/explorar`);
  *                         (b) envelhecer e proibido (despublicacao editorial);
  *                         (c) o RELEASE NAO CONSEGUE PRERENDERIZAR o caminho —
- *                             ver abaixo.
+ *                             ver abaixo;
+ *                         (d) o `<meta robots>` le a chave de indexacao de
+ *                             RUNTIME, e o release constroi sem env publica:
+ *                             prerenderizada, a pagina gravaria o robots do BUILD
+ *                             (`noindex, nofollow`). Medido em 15/09/2026 nos
+ *                             documentos legais; travado por
+ *                             `tests/web/prerendered-routes-robots-runtime.test.ts`.
  *
  * ============================================================================
  * (c) POR QUE A HOME E AS LISTAGENS FICARAM DINAMICAS, MEDIDO
@@ -148,11 +156,16 @@ export const CATALOG_SURFACE_REVALIDATE_SECONDS = 3600;
 export const EDITORIAL_SURFACE_REVALIDATE_SECONDS = 300;
 
 /**
- * Paginas SEM banco: o documento legal e os dois aliases de entrada.
+ * Paginas SEM banco e SEM env de runtime: os dois aliases de entrada, a casca do
+ * 404 e os harnesses de desenvolvimento.
  *
- * Elas ja eram prerenderizadas no build antes desta leva e continuam sendo — nao
- * leem PostgreSQL, entao o build sem `DATABASE_URL` as alcanca. O Next as serve
- * com `s-maxage` de um ano, e a revalidacao aqui e o proprio deploy.
+ * Prerenderizadas no build — nao leem PostgreSQL, entao o build sem
+ * `DATABASE_URL` as alcanca. O Next as serve com `s-maxage` de um ano, e a
+ * revalidacao aqui e o proprio deploy.
+ *
+ * Os documentos legais MORARAM aqui ate 15/09/2026 e sairam pelo motivo (d): o
+ * robots deles le a env de indexacao, e o que o build grava e o robots do build.
+ * Pagina que le env de runtime nao pertence a esta classe.
  */
 export const BUILD_PRERENDERED = null;
 
@@ -254,6 +267,9 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   "/robots.txt": publicDynamic("gate de indexacao por ambiente — fora de escopo"),
   "/sitemap.xml": publicDynamic("sitemap paginado no banco (#241/#242) — fora de escopo"),
   "/sitemaps/[shard]": publicDynamic("shard paginado no banco (#241/#242) — fora de escopo"),
+  // A MESMA chave de ambiente do robots.txt, lida por request: um arquivo assado
+  // no build ignoraria o kill switch de indexacao (auditoria de SEO, 2026-09-11).
+  "/llms.txt": publicDynamic("indice do site para ferramentas de IA; gate de indexacao por ambiente"),
 
   // ----------------------------------------------------- aliases de entrada
   "/filmes": publicStatic(BUILD_PRERENDERED, "alias que redireciona para /pt/filmes/"),
@@ -355,11 +371,40 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     CATALOG_SURFACE_REVALIDATE_SECONDS,
     "galeria de fotos da pessoa: midia de catalogo, sem dado pessoal — a mesma classe das galerias de filme, serie e episodio",
   ),
-  "/pt/creditos-de-dados": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
-  "/pt/privacidade": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
-  "/pt/termos": publicStatic(BUILD_PRERENDERED, "documento legal, sem banco"),
 
   // ---------------------------------------------- publica, mas nao cacheavel
+  // Os tres documentos SEM banco estao aqui pelo motivo (d) do cabecalho: o
+  // `<meta robots>` le a chave de indexacao de RUNTIME. Ate 15/09/2026 eram
+  // `public-static` prerenderizados, e o HTML do build saia `noindex, nofollow`.
+  "/pt/creditos-de-dados": publicDynamic(
+    "documento sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/privacidade": publicDynamic(
+    "documento legal sem banco; o robots le a chave propria de RUNTIME — motivo (d)",
+  ),
+  "/pt/termos": publicDynamic(
+    "documento legal sem banco; o robots le a chave propria de RUNTIME — motivo (d)",
+  ),
+  // Paginas institucionais (auditoria de SEO de 11/09/2026, secao 3.6): texto
+  // fixo, sem banco — e dinamicas pelo MESMO motivo (d) dos documentos legais.
+  "/pt/cinerie-score": publicDynamic(
+    "metodologia do Cinerie Score, sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/contato": publicDynamic(
+    "pagina institucional sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/politica-editorial": publicDynamic(
+    "pagina institucional sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/sobre": publicDynamic(
+    "pagina institucional sem banco; o robots le a chave de indexacao de RUNTIME — motivo (d)",
+  ),
+  "/pt/autores": publicDynamic(
+    "lista de autores: le as materias no ar — DESPUBLICACAO DE EMERGENCIA depende de leitura por requisicao (motivo b)",
+  ),
+  "/pt/autores/[slug]": publicDynamic(
+    "pagina de autor: lista as materias no ar — DESPUBLICACAO DE EMERGENCIA depende de leitura por requisicao (motivo b)",
+  ),
   "/pt/explorar": publicDynamic(
     "busca: a resposta depende de `?q=` — legitimamente por requisicao",
   ),

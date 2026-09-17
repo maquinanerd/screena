@@ -19,12 +19,20 @@ nenhum componente escreve caminho de marca à mão.
 | notícias | `/pt/noticias/**` | `cinerie-wordmark-black-news.webp` | `cinerie-wordmark-white-news.webp` | 1208 × 181 |
 | Cinerie Score | cartão do Score, ficha da matéria | `cinerie-score.webp` (degradê, versão única) | — | 1156 × 163 |
 | Organization (JSON-LD) | home e `publisher` das matérias | `cinerie-logo.png` | — | 672 × 163 |
+| Cartão social (`og:image` de reserva) | página sem arte própria (decisão do dono D4) | `cinerie-social-card.png` | — | 1200 × 630 |
 
 - **WEBP sem perda.** Os pixels visíveis são idênticos aos dos PNG entregues
   (conferido pixel a pixel na conversão); o arquivo cai para ~40%.
 - **PNG só onde o formato importa.** `cinerie-logo.png` é a arte neutra preta sem
   recodificação: é ela que o JSON-LD `Organization` e o `publisher` das matérias
   apontam — raster, acima dos 112 px de altura mínima que o Google pede.
+- **O cartão social é derivado, não desenhado.** `cinerie-social-card.png` é a
+  `cinerie-logo.png` colada, sem escala nem recolor, no centro (x = 264, y = 233)
+  de uma tela 1200 × 630 pintada de `#fdfdfd` (`--c-bg-page`, o fundo do site).
+  Existe porque a palavra-marca sozinha não serve de `og:image`: 163 px de altura
+  ficam abaixo do mínimo de 200 px do Facebook. Para regerar: Pillow,
+  `Image.new("RGBA", (1200, 630), (253, 253, 253, 255))`, `alpha_composite` do
+  logo nesse ponto, salvo em RGB.
 - **Onde cada cor aparece.** A "preta" vai na barra sólida e nas páginas claras;
   a "branca", na barra transparente sobre o hero (home, `/pt/filmes`,
   `/pt/series`, capa da matéria) e no rodapé escuro, que usa sempre a marca-mãe.

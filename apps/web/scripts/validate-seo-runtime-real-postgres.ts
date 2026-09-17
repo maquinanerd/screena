@@ -8,7 +8,8 @@
  *
  *   - Indexabilidade persistida (page_indexability_decisions): decisao vigente
  *     (is_current), historico, index/noindex/blocked/stale, ausencia (indexacao
- *     total) e fail-closed em falha de banco.
+ *     total), falha de banco que LANCA (5xx, desde 2026-09-11) e a PARIDADE
+ *     pagina x sitemap dos portoes de qualidade (D1, D3) e da ausencia armada.
  *   - Redirects persistidos (redirects): 301/302, alias, cadeia, loop, none.
  *   - Sitemap PAGINADO NO BANCO: index por contagem, shard por LIMIT/OFFSET de UM
  *     tipo, exclusao durante a consulta, multiplos shards, 404 estrito, prova de
@@ -109,7 +110,7 @@ const BODY = "Corpo editorial proprio e substancial para a noticia. ".repeat(6);
 
 async function seedMovie(
   prisma: PrismaLike,
-  opts: { tmdbId: number; slug: string; title: string },
+  opts: { tmdbId: number; slug: string; title: string; withTranslation?: boolean },
 ): Promise<bigint> {
   const movie = await prisma.movie.create({
     data: { tmdbId: opts.tmdbId, titleOriginal: opts.title },
@@ -124,14 +125,18 @@ async function seedMovie(
       isCanonical: true,
     },
   });
-  await prisma.entityTranslation.create({
-    data: {
-      entityType: "movie",
-      entityId: movie.id,
-      languageCode: LANGUAGE,
-      title: opts.title,
-    },
-  });
+  // `withTranslation: false` e o caso do portao de localizacao (D3): ficha que
+  // chegou do TMDB sem titulo em pt-BR.
+  if (opts.withTranslation !== false) {
+    await prisma.entityTranslation.create({
+      data: {
+        entityType: "movie",
+        entityId: movie.id,
+        languageCode: LANGUAGE,
+        title: opts.title,
+      },
+    });
+  }
   return movie.id;
 }
 
@@ -213,8 +218,16 @@ interface Seams {
   clearRedirectCache: () => void;
   getSitemapIndexXml: (opts?: { limit?: number }, client?: unknown) => Promise<SitemapXml>;
   getSitemapShardXml: (id: string, opts?: { limit?: number }, client?: unknown) => Promise<SitemapXml | null>;
+  defaultStaticHubDecisions: () => Promise<{
+    people: boolean;
+    watch: boolean;
+    anticipated: boolean;
+    watchUpdatedAtIso: string | null;
+    authors: readonly { path: string; lastmod: string | null }[];
+  }>;
   getNewsArticleData: (slug: string) => Promise<unknown | null>;
   serializeJsonLd: (value: unknown) => string;
+  resetDecisionCoverageMemo: () => void;
 }
 
 async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
@@ -270,9 +283,22 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   const seoStale = await seams.resolveEntityPageSeo({ entityType: "movie", entityId: idStale, languageCode: LANGUAGE }, facts);
   record(8, "decisao persistida stale -> stale/fora do sitemap", seoStale.decision === "stale" && seoStale.includeInSitemap === false, `decision=${seoStale.decision}`);
 
+  // MUDOU EM 2026-09-11: falha de banco nao e decisao de SEO. Ate essa data este
+  // check afirmava `noindex` — que a rota servia com 200 e o ISR GUARDAVA. Agora
+  // a leitura que falha LANCA, e a rota responde 5xx (o Next nao cacheia erro).
+  // Um `noindex` aqui voltaria a ser regressao, nao "fail-closed".
   const throwingClient = { pageIndexabilityDecision: { findFirst: async () => { throw new Error("db down"); } } };
-  const seoFailClosed = await seams.resolveEntityPageSeo({ entityType: "movie", entityId: idIndexed, languageCode: LANGUAGE }, facts, throwingClient);
-  record(9, "fail-closed: erro ao ler decisao vigente -> noindex", seoFailClosed.decision === "noindex", `decision=${seoFailClosed.decision}`);
+  let falhaLancou = false;
+  let nomeDoErro = "nenhum";
+  let decisaoIndevida = "nenhuma";
+  try {
+    const resolucao = await seams.resolveEntityPageSeo({ entityType: "movie", entityId: idIndexed, languageCode: LANGUAGE }, facts, throwingClient);
+    decisaoIndevida = resolucao.decision;
+  } catch (error) {
+    falhaLancou = true;
+    nomeDoErro = (error as Error).name;
+  }
+  record(9, "falha ao ler decisao vigente LANCA (5xx), nunca vira noindex cacheavel", falhaLancou && nomeDoErro === "IndexabilityDecisionUnavailableError", `lancou=${falhaLancou} erro=${nomeDoErro} decisao-devolvida=${decisaoIndevida}`);
 
   // ---- Redirects ---------------------------------------------------------
   seams.clearRedirectCache();
@@ -332,12 +358,30 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
 
   const stat = await seams.getSitemapShardXml("sitemap-pt-BR-static-1.xml", { limit: LIMIT });
   const statLocs = stat === null ? [] : locsInXml(stat.xml);
-  const statOk = statLocs.length === 4
-    && statLocs.some((u) => u.endsWith("/pt/filmes/"))
+  // Os hubs que dependem do loader da PROPRIA pagina (pessoas, onde assistir, em
+  // breve) entram no shard exatamente quando a pagina diz `index` — a divergencia
+  // da auditoria de SEO de 11/09/2026 (secao 3.7). A expectativa vem da mesma
+  // funcao que a pagina usa, e nao de um numero fixo desta fixture.
+  const hubs = await seams.defaultStaticHubDecisions();
+  const hubConfere = (sufixo: string, elegivel: boolean): boolean =>
+    statLocs.some((u) => u.endsWith(sufixo)) === elegivel;
+  const statOk = statLocs.some((u) => u.endsWith("/pt/filmes/"))
     && statLocs.some((u) => u.endsWith("/pt/noticias/"))
     && statLocs.some((u) => u.endsWith("/pt/explorar/"))
-    && !statLocs.some((u) => u.endsWith("/pt/series/"));
-  record(25, "shard estatico = rotas elegiveis (home/filmes/noticias/explorar; sem series/pessoas)", statOk, `n=${statLocs.length}`);
+    && !statLocs.some((u) => u.endsWith("/pt/series/"))
+    && hubConfere("/pt/pessoas/", hubs.people)
+    && hubConfere("/pt/onde-assistir/", hubs.watch)
+    && hubConfere("/pt/em-breve/", hubs.anticipated)
+    // Autores: a listagem entra quando ha autor com materia no ar, e cada pagina de
+    // autor entra com ela — a MESMA lista que as paginas usam.
+    && hubConfere("/pt/autores/", hubs.authors.length > 0)
+    && hubs.authors.every((author) => statLocs.some((u) => u.endsWith(author.path)))
+    // Paginas institucionais: texto fixo, sempre no shard.
+    && ["/pt/sobre/", "/pt/politica-editorial/", "/pt/cinerie-score/", "/pt/contato/"].every(
+      (sufixo) => statLocs.some((u) => u.endsWith(sufixo)),
+    );
+  record(25, "shard estatico = rotas elegiveis; pessoas, onde assistir, em breve e autores seguem a decisao da PROPRIA pagina", statOk,
+    `n=${statLocs.length} pessoas=${hubs.people} onde_assistir=${hubs.watch} em_breve=${hubs.anticipated} autores=${hubs.authors.length}`);
 
   const throwing = { $queryRaw: () => { throw new Error("db down"); } };
   const shardFail = await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: LIMIT }, throwing);
@@ -468,6 +512,90 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   const shardsDeFilme = (armadoIndex.xml.match(/sitemap-pt-BR-movies-\d+\.xml/g) ?? []).length;
   record(41, "ARMADO: contagem do index e pagina do shard concordam (1 shard para 600 URLs)",
     shardsDeFilme === 1, `shards_de_filme=${shardsDeFilme}`);
+
+  // ---- Remediacao 2026-09-11: PAGINA e SITEMAP concordam (SQL real) -------
+  //
+  // O banco falso da suite de governanca NAO avalia o predicado de localizacao
+  // (D3) — ele ignora os parametros que nao conhece. Quem executa
+  // `s.slug ~ $n AND NOT EXISTS (...)` e o PostgreSQL. Por isso a prova de que a
+  // meta tag e o sitemap dizem a MESMA coisa mora aqui, e nao la.
+  //
+  // O gate de filme esta ARMADO desde o check 37, e a cobertura da PAGINA e
+  // memorizada por um minuto: sem este reset, a pagina leria a cobertura de
+  // antes do check 37 (desarmada) e os casos abaixo passariam pelo motivo errado.
+  seams.resetDecisionCoverageMemo();
+
+  // (d) A AUSENCIA de decisao, com o gate armado, agora tambem tira da PAGINA.
+  const semLinhaNaPagina = await seams.resolveEntityPageSeo(
+    { entityType: "movie", entityId: idIndexed, languageCode: LANGUAGE },
+    facts,
+  );
+  record(42, "ARMADO: filme SEM decisao sai tambem da PAGINA (noindex, follow) — o sitemap ja o excluia (39)",
+    semLinhaNaPagina.decision === "noindex" &&
+      semLinhaNaPagina.robots.follow === true &&
+      semLinhaNaPagina.decisionSource === "absent-decision-armed",
+    `decision=${semLinhaNaPagina.decision} source=${semLinhaNaPagina.decisionSource}`);
+
+  // D3. Todo filme daqui para baixo recebe decisao vigente `index`: com o gate
+  // armado, sem ela a AUSENCIA explicaria a exclusao — e o caso passaria pelo
+  // motivo errado. A unica variavel sob teste e o portao.
+  // Titulo original em ASCII DE PROPOSITO: o cluster efemero no Windows sobe em
+  // WIN1252 e recusa kana (22P05). O portao nao le `title_original` — le so a
+  // traducao nos idiomas publicados —, entao a grafia nao muda o que se prova.
+  const idFallback = await seedMovie(prisma, {
+    tmdbId: 96_200_001,
+    slug: "tmdb-96200001",
+    title: "Galerie",
+    withTranslation: false,
+  });
+  await seedDecision(prisma, { entityId: idFallback, slug: "tmdb-96200001", decision: "index", isCurrent: true, origin: "catalog_policy_engine" });
+  const idLegivel = await seedMovie(prisma, {
+    tmdbId: 96_200_002,
+    slug: "titulo-legivel",
+    title: "Titulo Legivel",
+    withTranslation: false,
+  });
+  await seedDecision(prisma, { entityId: idLegivel, slug: "titulo-legivel", decision: "index", isCurrent: true, origin: "catalog_policy_engine" });
+
+  const locsDeFilme = async (): Promise<string[]> => {
+    const shard = await seams.getSitemapShardXml("sitemap-pt-BR-movies-1.xml", { limit: BIG });
+    return shard === null ? [] : locsInXml(shard.xml);
+  };
+  const noSitemap = (locs: string[], slug: string): boolean =>
+    locs.some((u) => u.endsWith(`/pt/filmes/${slug}/`));
+
+  const fallbackAntes = await seams.getMoviePageData("tmdb-96200001");
+  const locsAntes = await locsDeFilme();
+  record(43, "D3: ficha tmdb-N sem titulo e sem descricao => PAGINA noindex pelo portao de qualidade",
+    fallbackAntes?.seo.decision === "noindex" && fallbackAntes?.seo.decisionSource === "quality-gate",
+    `decision=${fallbackAntes?.seo.decision} source=${fallbackAntes?.seo.decisionSource}`);
+  record(44, "D3: a MESMA ficha fica fora do SITEMAP (o predicado rodando no PostgreSQL)",
+    !noSitemap(locsAntes, "tmdb-96200001"), `presente=${noSitemap(locsAntes, "tmdb-96200001")}`);
+
+  const legivel = await seams.getMoviePageData("titulo-legivel");
+  record(45, "D3: slug LEGIVEL sem traducao nao entra no portao — pagina index E presente no sitemap",
+    legivel?.seo.decision === "index" && noSitemap(locsAntes, "titulo-legivel"),
+    `decision=${legivel?.seo.decision} presente=${noSitemap(locsAntes, "titulo-legivel")}`);
+
+  // Enriquecida: ganhou titulo em pt-BR. O slug CONTINUA tmdb-N — e mesmo assim a
+  // ficha volta, na pagina e no sitemap, sem ninguem rodar comando nenhum.
+  await prisma.entityTranslation.create({
+    data: { entityType: "movie", entityId: idFallback, languageCode: LANGUAGE, title: "A Galeria" },
+  });
+  const fallbackDepois = await seams.getMoviePageData("tmdb-96200001");
+  const locsDepois = await locsDeFilme();
+  record(46, "D3: ao ganhar titulo em pt-BR, a ficha volta a indexar na PAGINA",
+    fallbackDepois?.seo.decision === "index", `decision=${fallbackDepois?.seo.decision}`);
+  record(47, "D3: e volta ao SITEMAP pelo mesmo motivo — pagina e sitemap concordam nos dois sentidos",
+    noSitemap(locsDepois, "tmdb-96200001"), `presente=${noSitemap(locsDepois, "tmdb-96200001")}`);
+
+  // D1: galeria fora do sitemap. O shard antigo responde 404, e o index nao a anuncia.
+  const galeriaImagens = await seams.getSitemapShardXml("sitemap-pt-BR-imagens-1.xml", { limit: BIG });
+  const galeriaVideos = await seams.getSitemapShardXml("sitemap-pt-BR-videos-1.xml", { limit: BIG });
+  const indexFinal = await seams.getSitemapIndexXml({ limit: BIG });
+  record(48, "D1: shard de galeria responde 404 e o index nao anuncia galeria",
+    galeriaImagens === null && galeriaVideos === null && !/-(imagens|videos)-\d+\.xml/.test(indexFinal.xml),
+    `imagens=${galeriaImagens === null ? "404" : "obj"} videos=${galeriaVideos === null ? "404" : "obj"}`);
 }
 
 async function main(): Promise<void> {
@@ -511,10 +639,14 @@ async function main(): Promise<void> {
     const redirectMod = (await import("../src/server/seo/redirect-lookup.ts")) as Pick<Seams, "lookupRedirect" | "clearRedirectCache">;
     const sitemapMod = (await import("../src/server/seo/sitemap-index.ts")) as Pick<
       Seams,
-      "getSitemapIndexXml" | "getSitemapShardXml"
+      "getSitemapIndexXml" | "getSitemapShardXml" | "defaultStaticHubDecisions"
     >;
     const newsMod = (await import("../src/server/news-pages.ts")) as Pick<Seams, "getNewsArticleData">;
     const seoMod = (await import("@screena/seo")) as Pick<Seams, "serializeJsonLd">;
+    const coverageMod = (await import("../src/server/seo/decision-coverage.ts")) as Pick<
+      Seams,
+      "resetDecisionCoverageMemo"
+    >;
 
     const seams: Seams = {
       resolveEntityPageSeo: indexabilityMod.resolveEntityPageSeo,
@@ -524,14 +656,27 @@ async function main(): Promise<void> {
       clearRedirectCache: redirectMod.clearRedirectCache,
       getSitemapIndexXml: sitemapMod.getSitemapIndexXml,
       getSitemapShardXml: sitemapMod.getSitemapShardXml,
+      defaultStaticHubDecisions: sitemapMod.defaultStaticHubDecisions,
       getNewsArticleData: newsMod.getNewsArticleData,
       serializeJsonLd: seoMod.serializeJsonLd,
+      resetDecisionCoverageMemo: coverageMod.resetDecisionCoverageMemo,
     };
 
     const prisma = dbServer.getPrismaClient();
     await runChecks(prisma, seams);
   } catch (e) {
-    record(0, "execucao", false, (e as Error).message.split("\n")[0]);
+    // A causa INTEIRA vai para o log. Ate 2026-09-11 so a primeira linha da
+    // mensagem era registrada — e erro do Prisma COMECA com quebra de linha, entao
+    // o validador morria dizendo "execucao — " e mais nada. Medido: foi assim que
+    // uma queda depois do check 42 apareceu sem causa nenhuma.
+    console.error(e);
+    const mensagem = e instanceof Error ? e.message : String(e);
+    const primeiraLinha =
+      mensagem
+        .split("\n")
+        .map((linha) => linha.trim())
+        .find((linha) => linha !== "") ?? "(erro sem mensagem)";
+    record(0, "execucao", false, primeiraLinha);
   } finally {
     if (disconnect) await disconnect();
     if (started) await pg.stop();

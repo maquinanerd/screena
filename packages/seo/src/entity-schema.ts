@@ -37,6 +37,21 @@ const WIKIDATA_ID = /^Q\d+$/;
  */
 const SOURCE_ORDER = ["imdb", "tmdb", "wikidata"] as const;
 
+/**
+ * O TMDB como a ingestao o GRAVA: com namespace por tipo (`tmdb_movie`,
+ * `tmdb_tv`, `tmdb_person` — ver `services/ingestion/src/normalizers/
+ * external-ids.ts`), porque o TMDB reusa ids entre filme, serie e pessoa.
+ *
+ * Ate 2026-09-11 so `tmdb` generico era reconhecido. Como o banco nunca grava
+ * esse valor, nenhuma ficha emitia o TMDB no `sameAs` — o "sameAs so com IMDb"
+ * da auditoria de SEO. `tmdb` generico continua aceito.
+ */
+const TMDB_NAMESPACED_SOURCE: Readonly<Record<EntitySchemaKind, string>> = {
+  movie: "tmdb_movie",
+  tv: "tmdb_tv",
+  person: "tmdb_person",
+};
+
 function imdbUrl(kind: EntitySchemaKind, id: string): string | null {
   if (kind === "person") {
     return IMDB_NAME_ID.test(id) ? `https://www.imdb.com/name/${id}/` : null;
@@ -71,7 +86,10 @@ export function buildSameAs(
 ): string[] {
   const bySource = new Map<string, string>();
   for (const row of ids) {
-    const source = row.source.trim().toLowerCase();
+    const rawSource = row.source.trim().toLowerCase();
+    // O namespace do PROPRIO tipo e o TMDB; o de outro tipo segue desconhecido
+    // e e ignorado — um id de serie nunca vira URL de filme.
+    const source = rawSource === TMDB_NAMESPACED_SOURCE[kind] ? "tmdb" : rawSource;
     const externalId = row.externalId.trim();
     if (externalId === "" || bySource.has(source)) continue;
 

@@ -32,6 +32,26 @@ export const LISTS_PATH = `/${PT_LOCALE_SEGMENT}/listas/`;
 /** Caminho do hub "Onde assistir" (com barra final). */
 export const WATCH_PATH = `/${PT_LOCALE_SEGMENT}/onde-assistir/`;
 
+/** Caminho de "Mais aguardados" (com barra final). A pagina e o sitemap usam este valor. */
+export const ANTICIPATED_PATH = `/${PT_LOCALE_SEGMENT}/em-breve/`;
+
+/**
+ * Paginas institucionais (auditoria de SEO, 11/09/2026, secao 3.6: nao existiam).
+ * O rodape, o sitemap e as proprias paginas usam estes valores.
+ */
+export const ABOUT_PATH = `/${PT_LOCALE_SEGMENT}/sobre/`;
+export const EDITORIAL_POLICY_PATH = `/${PT_LOCALE_SEGMENT}/politica-editorial/`;
+export const CONTACT_PATH = `/${PT_LOCALE_SEGMENT}/contato/`;
+export const SCORE_METHODOLOGY_PATH = `/${PT_LOCALE_SEGMENT}/cinerie-score/`;
+
+/** Listagem de autores das materias (com barra final). */
+export const AUTHORS_INDEX_PATH = `/${PT_LOCALE_SEGMENT}/autores/`;
+
+/** Caminho da pagina de um autor, pelo slug do nome que assina as materias. */
+export function authorPath(slug: string): string {
+  return `${AUTHORS_INDEX_PATH}${slug}/`;
+}
+
 /**
  * Documentos legais. Sao os destinos dos dois links do aceite OBRIGATORIO do
  * cadastro (`app/pt/criar-conta/signup-form.tsx`): exigir o aceite e apontar

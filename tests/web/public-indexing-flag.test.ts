@@ -131,7 +131,11 @@ describe("publicRobots — kill switch global sobre o <meta robots>", () => {
 
   it("com a flag ligada ('true' e '1'), a decisao da entidade passa a valer", () => {
     for (const on of ["true", "1"]) {
-      expect(publicRobots(true, withFlag(on)), `flag=${on}`).toEqual({ index: true, follow: true });
+      expect(publicRobots(true, withFlag(on)), `flag=${on}`).toEqual({
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+      });
     }
   });
 
@@ -181,9 +185,12 @@ describe("gatePublicRobots — mesmo gate para paginas de detalhe (seo.robots)",
   });
 
   it("com a flag ligada, preserva a decisao — inclusive noindex,follow", () => {
+    // A pagina que indexa ganha a previa grande de imagem (auditoria de SEO,
+    // 2026-09-11); a decisao em si passa intacta.
     expect(gatePublicRobots({ index: true, follow: true }, withFlag("1"))).toEqual({
       index: true,
       follow: true,
+      "max-image-preview": "large",
     });
     // `resolvePageSeo` emite noindex,follow para entidade sem decisao vigente:
     // a nuance nao pode ser perdida quando o ambiente pode indexar.
@@ -218,7 +225,7 @@ describe("robots.txt e <meta robots> nunca discordam (mesmo gate)", () => {
       "https://cinerie.com/sitemap.xml",
       "https://cinerie.com/news-sitemap.xml",
     ]);
-    expect(publicRobots(true, env)).toEqual({ index: true, follow: true });
+    expect(publicRobots(true, env)).toEqual({ index: true, follow: true, "max-image-preview": "large" });
     expect(publicRobots(false, env)).toEqual({ index: false, follow: false });
   });
 

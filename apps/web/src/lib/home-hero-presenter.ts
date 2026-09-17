@@ -141,6 +141,11 @@ export interface HeroSlide {
    * fallback por vertical. Nunca é path local nem de filesystem.
    */
   imageUrl: string | null;
+  /**
+   * `srcset` da MESMA arte de `imageUrl`, em larguras que o TMDB serve — ou null
+   * quando não há arte. Ver `resolveHeroImageSrcSet`.
+   */
+  imageSrcSet: string | null;
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -199,6 +204,36 @@ export function resolveHeroImage(
     buildTmdbImageUrl(backdropPath, HERO_BACKDROP_SIZE) ??
     buildTmdbImageUrl(posterPath, HERO_POSTER_SIZE)
   );
+}
+
+/**
+ * `srcset` da MESMA arte que `resolveHeroImage` escolhe (2026-09-11).
+ *
+ * O hero servia `w1280` fixo a qualquer tela. Medido na auditoria de SEO: no
+ * celular, a mesma arte em `w780` pesava 165 KB a menos no slide medido. Com o
+ * `srcset` o navegador pega a largura que a tela usa; o `src` continua o de
+ * sempre, entao navegador sem suporte recebe exatamente o que recebia.
+ *
+ * A MESMA precedencia de `resolveHeroImage`: backdrop quando ha, senao poster.
+ * Misturar as duas artes num `srcset` so faria a tela trocar de IMAGEM ao mudar de
+ * largura, e nao so de resolucao. Os descritores sao as larguras reais dos
+ * tamanhos do TMDB (backdrop `w780` = 780 px; poster `w500` = 500 px).
+ */
+export function resolveHeroImageSrcSet(
+  backdropPath: string | null | undefined,
+  posterPath: string | null | undefined,
+): string | null {
+  const backdropMedio = buildTmdbImageUrl(backdropPath, "w780");
+  const backdropGrande = buildTmdbImageUrl(backdropPath, HERO_BACKDROP_SIZE);
+  if (backdropMedio !== null && backdropGrande !== null) {
+    return `${backdropMedio} 780w, ${backdropGrande} 1280w`;
+  }
+  const posterMedio = buildTmdbImageUrl(posterPath, "w500");
+  const posterGrande = buildTmdbImageUrl(posterPath, HERO_POSTER_SIZE);
+  if (posterMedio !== null && posterGrande !== null) {
+    return `${posterMedio} 500w, ${posterGrande} 780w`;
+  }
+  return null;
 }
 
 /**
@@ -284,6 +319,7 @@ export function buildHeroSlide(input: HeroSlideInput): HeroSlide | null {
     cast: buildHeroCast(input.cast),
     synopsis: trimSynopsis(input.summary),
     imageUrl: resolveHeroImage(input.backdropPath, input.posterPath),
+    imageSrcSet: resolveHeroImageSrcSet(input.backdropPath, input.posterPath),
   };
 }
 

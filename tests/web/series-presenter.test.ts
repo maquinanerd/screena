@@ -299,9 +299,10 @@ describe("buildSeriesPageView", () => {
       2,
     ]);
     expect(view.seasons[0]?.episodes[0]?.still?.src).toBe("/uploads/series/e1.webp");
-    // Episode still com file_path cru do TMDB -> URL remota (original).
+    // Episode still com file_path cru do TMDB -> URL remota em w500. Ate
+    // 2026-09-11 este teste afirmava `original`, e fixava o desperdicio.
     expect(view.seasons[0]?.episodes[1]?.still?.src).toBe(
-      "https://image.tmdb.org/t/p/original/still.jpg",
+      "https://image.tmdb.org/t/p/w500/still.jpg",
     );
   });
 
