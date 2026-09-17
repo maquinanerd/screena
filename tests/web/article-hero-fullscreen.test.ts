@@ -27,7 +27,19 @@ function read(relativePath: string): string {
   return readFileSync(path.join(ROOT, relativePath), 'utf8')
 }
 
-const css = read('apps/web/app/globals.css')
+/**
+ * As folhas que a materia carrega, NA ORDEM de carga: a global (layout), a coluna
+ * de leitura compartilhada com a pessoa e a da rota. Desde a divisao do CSS por
+ * rota, o hero de capa (`.art-hero`) segue no global — o header o le — e o resto
+ * da materia mora nas duas folhas da rota.
+ */
+const css = [
+  'apps/web/app/globals.css',
+  'apps/web/app/_components/art-body.css',
+  'apps/web/app/pt/noticias/[slug]/article.css',
+]
+  .map(read)
+  .join('\n')
 const header = read('apps/web/app/_components/site-header.tsx')
 const article = read('apps/web/app/pt/noticias/[slug]/page.tsx')
 const body = read('apps/web/app/_components/article-body.tsx')

@@ -19,6 +19,9 @@
  *  5. REMOVIDA SO SE NAO USADA: regra que sumiu de todas as folhas nao pode citar
  *     classe que o codigo do app ainda usa.
  *
+ * Empate que a heuristica acusa e que foi revisado contra o markup
+ * (`lab/css-order-reviewed.ts`) sai como [REVISADO], com o motivo — nao some.
+ *
  * Uso: CSS_MOVE_BASE_REF=<ref git antes da mudanca> pnpm --filter @screena/web css:move-check
  */
 
@@ -27,7 +30,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { orderConflicts } from "./lab/css-order";
+import { type OrderConflict, orderConflictDetails } from "./lab/css-order";
+import { REVIEWED_ORDER_PAIRS, type ReviewedOrderPair, reviewedPairFor } from "./lab/css-order-reviewed";
 import { classTokens, type CssRule, parseCssRules, subjectBlocks } from "./lab/css-rules";
 import { classUsedInSource } from "./lab/css-usage";
 
@@ -83,6 +87,20 @@ function main(): void {
   for (const rule of baseRules) pending.set(rule.identity, [...(pending.get(rule.identity) ?? []), rule.index]);
 
   const errors: string[] = [];
+  const reviewed: string[] = [];
+  const usedReviews = new Set<ReviewedOrderPair>();
+  const describe = (conflict: OrderConflict): string =>
+    `${conflict.movedSelector} × ${conflict.laterSelector}: ${conflict.movedProperty}/${conflict.laterProperty}`;
+  /** O empate vira erro, ou [REVISADO] quando uma revisao registrada o cobre. */
+  const judge = (label: string, where: string, conflict: OrderConflict): void => {
+    const review = reviewedPairFor(conflict);
+    if (review === undefined) {
+      errors.push(`[${label}] ${where} — ${describe(conflict)}`);
+      return;
+    }
+    usedReviews.add(review);
+    reviewed.push(`[REVISADO] ${where} — ${describe(conflict)} — ${review.evidence}`);
+  };
   const sheets = discoverSheets().map((file) => {
     const rules = parseCssRules(readFileSync(path.join(repoRoot, file), "utf8"));
     const baseIndexes = rules.map((rule) => {
@@ -117,8 +135,8 @@ function main(): void {
       if (movedIndex < 0) return;
       globals.rules.forEach((later, j) => {
         if ((globals.baseIndexes[j] as number) <= movedIndex) return;
-        for (const conflict of orderConflicts(moved, later)) {
-          errors.push(`[ORDEM INVERTIDA] ${sheet.file}:${moved.line} × ${GLOBALS}:${later.line} — ${conflict}`);
+        for (const conflict of orderConflictDetails(moved, later)) {
+          judge("ORDEM INVERTIDA", `${sheet.file}:${moved.line} × ${GLOBALS}:${later.line}`, conflict);
         }
       });
     });
@@ -133,13 +151,19 @@ function main(): void {
     for (const other of routeSheets.slice(s + 1)) {
       for (const left of sheet.rules) {
         for (const right of other.rules) {
-          for (const conflict of orderConflicts(left, right)) {
-            errors.push(`[ORDEM ENTRE FOLHAS] ${sheet.file}:${left.line} × ${other.file}:${right.line} — ${conflict}`);
+          for (const conflict of orderConflictDetails(left, right)) {
+            judge("ORDEM ENTRE FOLHAS", `${sheet.file}:${left.line} × ${other.file}:${right.line}`, conflict);
           }
         }
       }
     }
   });
+
+  for (const review of REVIEWED_ORDER_PAIRS) {
+    if (!usedReviews.has(review)) {
+      errors.push(`[REVISAO SEM USO] ${review.selectors.join(" × ")}: ${review.property} nao corresponde a nenhum empate`);
+    }
+  }
 
   // 4. exclusividade de bloco (como sujeito)
   const owners = new Map<string, Set<string>>();
@@ -185,6 +209,7 @@ function main(): void {
     process.stdout.write(`  ${sheet.file}: ${sheet.rules.length} regras, ${totalBytes(sheet.rules)} B\n`);
   }
   process.stdout.write(`  removidas de todas as folhas: ${removed.length} regras, ${totalBytes(removed)} B\n`);
+  for (const line of reviewed) process.stdout.write(`  ${line}\n`);
   for (const error of errors.slice(0, 80)) process.stdout.write(`  ${error}\n`);
   if (errors.length > 80) process.stdout.write(`  ... e mais ${errors.length - 80}\n`);
   process.stdout.write(

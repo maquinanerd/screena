@@ -8,7 +8,7 @@ import { HOME_PATH } from '../../src/lib/routes'
  * Reusa a linguagem visual JA existente das telas claras de /pt: `container` +
  * `breadcrumb` do padrão de listagem (ver `app/pt/em-breve/page.tsx`) e uma
  * coluna de leitura de 720px equivalente à do corpo de matéria
- * (`.art-body`, globals.css:4040). Base CLARA: nenhum bloco escuro — o
+ * (`.art-body`, app/_components/art-body.css). Base CLARA: nenhum bloco escuro — o
  * `art-hero` da matéria é escuro de propósito e não serve aqui.
  *
  * A DATA DE VIGÊNCIA é campo próprio (`<time>` semântico no cabeçalho), nunca

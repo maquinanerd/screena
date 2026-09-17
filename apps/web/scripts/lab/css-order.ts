@@ -143,18 +143,62 @@ export function contextsMayOverlap(a: readonly string[], b: readonly string[]): 
  * as duas nao decide nada.
  */
 export function orderConflicts(moved: CssRule, later: CssRule): string[] {
+  return orderConflictDetails(moved, later).map(
+    (conflict) =>
+      `${conflict.movedSelector} × ${conflict.laterSelector}: ${conflict.movedProperty}/${conflict.laterProperty}`,
+  );
+}
+
+export interface OrderConflict {
+  readonly movedSelector: string;
+  readonly laterSelector: string;
+  readonly movedProperty: string;
+  readonly laterProperty: string;
+}
+
+/**
+ * O tipo de elemento EXPLICITO do sujeito de um seletor (`p`, `blockquote`), ou
+ * `null` quando o sujeito e so classe, atributo ou `*`.
+ */
+export function subjectTypeOf(selector: string): string | null {
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i] as string;
+    if (ch === "(" || ch === "[") depth += 1;
+    else if (ch === ")" || ch === "]") depth -= 1;
+    else if (depth === 0 && /[\s>+~]/.test(ch)) start = i + 1;
+  }
+  const match = /^([a-zA-Z][\w-]*)/.exec(selector.slice(start).trim());
+  return match === null ? null : (match[1] as string).toLowerCase();
+}
+
+/**
+ * A forma estruturada de `orderConflicts`. Alem das regras de empate, descarta o
+ * par cujos SUJEITOS tem tipos de elemento explicitos e diferentes: um `p` nunca e
+ * um `blockquote`, e entre regras que nao alcancam o mesmo elemento a ordem nao
+ * decide nada. Medido: `[data-vertical='news'] .art-body > p` x
+ * `.art-body > .art-quote blockquote` era acusado por dividirem a classe do
+ * contexto (`art-body`).
+ */
+export function orderConflictDetails(moved: CssRule, later: CssRule): OrderConflict[] {
   if (moved.kind !== "style" || later.kind !== "style") return [];
   if (!contextsMayOverlap(moved.context, later.context)) return [];
-  const found: string[] = [];
+  const found: OrderConflict[] = [];
   for (const sm of moved.selectors) {
     const tokens = new Set(classTokens(sm));
+    const movedType = subjectTypeOf(sm);
     for (const sl of later.selectors) {
       if (!classTokens(sl).some((token) => tokens.has(token))) continue;
+      const laterType = subjectTypeOf(sl);
+      if (movedType !== null && laterType !== null && movedType !== laterType) continue;
       if (compareSpecificity(specificityOf(sm), specificityOf(sl)) !== 0) continue;
       for (const dm of moved.declarations) {
         for (const dl of later.declarations) {
           if (dm.important !== dl.important) continue;
-          if (propertiesOverlap(dm.property, dl.property)) found.push(`${sm} × ${sl}: ${dm.property}/${dl.property}`);
+          if (propertiesOverlap(dm.property, dl.property)) {
+            found.push({ movedSelector: sm, laterSelector: sl, movedProperty: dm.property, laterProperty: dl.property });
+          }
         }
       }
     }
