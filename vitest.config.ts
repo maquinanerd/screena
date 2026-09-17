@@ -63,6 +63,9 @@ export default defineConfig({
       '@screena/db/source-fingerprint': fileURLToPath(
         new URL('./packages/db/src/source-fingerprint.ts', import.meta.url),
       ),
+      '@screena/db/async-child-process': fileURLToPath(
+        new URL('./packages/db/src/async-child-process.ts', import.meta.url),
+      ),
       '@screena/db': fileURLToPath(new URL('./packages/db/src/index.ts', import.meta.url)),
       '@screena/public-contracts': fileURLToPath(
         new URL('./packages/public-contracts/src/index.ts', import.meta.url),

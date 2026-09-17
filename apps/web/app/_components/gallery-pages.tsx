@@ -13,13 +13,19 @@
  * runtime, quando hoje o próprio roteador já rejeita.
  *
  * ============================================================================
- * A INDEXAÇÃO, E POR QUE ELA NÃO CONTRARIA A INVARIANTE 5
+ * A INDEXAÇÃO: GALERIA NUNCA INDEXA COMO PÁGINA PRÓPRIA (desde 2026-09-11)
  * ============================================================================
- * "Indexação total" vale para a ENTIDADE: todo filme e toda série indexam. Uma
- * galeria com duas imagens não é uma entidade — é uma sub-página cujo conteúdo
- * já cabia na ficha, e indexá-la cria uma URL que compete com a do título sem
- * entregar nada a mais. `noindex` aqui é o CASO TÉCNICO da invariante 5, e a
- * entidade dona segue indexando normalmente.
+ * Decisão do dono D1 (`docs/seo/DECISOES-DO-DONO-2026-09-11.md`), medida pela
+ * auditoria de SEO: 69.016 URLs de galeria, 42,7% do sitemap, com 0 palavras de
+ * conteúdo principal. Elas só pediam rastreio, sem alimentar Google Imagens.
+ *
+ * Até essa data o PISO de quantidade decidia o índice (abaixo dele, `noindex`).
+ * Agora toda galeria sai `noindex, follow` pelo portão `evaluateGalleryGate` —
+ * a página continua acessível, e é a ENTIDADE dona quem se oferece ao índice. O
+ * piso continua existindo, mas decide só o aviso da tela (`belowFloor`).
+ *
+ * "Indexação total" (invariante 5) vale para a ENTIDADE, e a entidade segue
+ * indexando: uma galeria não é uma entidade, é uma sub-página dela.
  *
  * Invariantes 3/4: zero API externa e zero IA no render.
  */
@@ -27,12 +33,13 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { serializeJsonLd } from '@screena/seo'
+import { QUALITY_GATE_ROBOTS, serializeJsonLd } from '@screena/seo'
 
 import { GalleryImageGrid, GalleryVideoList, PersonPhotoGrid } from './gallery-grids'
 import { GalleryShell } from './gallery-shell'
 import { imagesGalleryPath, personPhotosPath, videosGalleryPath } from '../../src/lib/routes'
 import { PEOPLE_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../src/lib/site'
+import { socialMetadata } from '../../src/lib/social-metadata'
 import {
   getImagesGalleryPageData,
   getVideosGalleryPageData,
@@ -97,15 +104,18 @@ export async function imagesGalleryMetadata(
     return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
   }
   const title = `Imagens e pôsteres de ${data.entityTitle}`
+  const description = `${data.gallery.total} imagens de ${data.entityTitle}, fornecidas pelo TMDB.`
   return {
     title,
-    description: `${data.gallery.total} imagens de ${data.entityTitle}, fornecidas pelo TMDB.`,
-    robots: gatePublicRobots({
-      index: data.gallery.indexable,
-      follow: true,
-    }),
+    description,
+    // D1 (decisão do dono, 2026-09-11): galeria nunca indexa como página
+    // própria. O piso de quantidade continua decidindo o aviso da tela
+    // (`belowFloor`), e não mais o índice.
+    robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: { canonical: data.canonicalUrl },
-    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl: data.canonicalUrl }),
   }
 }
 
@@ -119,12 +129,16 @@ export async function videosGalleryMetadata(
     return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
   }
   const title = `Trailers e vídeos de ${data.entityTitle}`
+  const description = `${data.gallery.total} vídeos de ${data.entityTitle}, fornecidos pelo TMDB.`
   return {
     title,
-    description: `${data.gallery.total} vídeos de ${data.entityTitle}, fornecidos pelo TMDB.`,
-    robots: gatePublicRobots({ index: data.gallery.indexable, follow: true }),
+    description,
+    // D1: galeria nunca indexa como página própria (ver a nota do cabeçalho).
+    robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: { canonical: data.canonicalUrl },
-    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl: data.canonicalUrl }),
   }
 }
 
@@ -248,12 +262,16 @@ export async function personPhotosGalleryMetadata(slug: string): Promise<Metadat
     return { title: 'Galeria não encontrada', robots: { index: false, follow: false } }
   }
   const title = `Fotos de ${data.personName}`
+  const description = `${data.gallery.total} fotos de ${data.personName}, fornecidas pelo TMDB.`
   return {
     title,
-    description: `${data.gallery.total} fotos de ${data.personName}, fornecidas pelo TMDB.`,
-    robots: gatePublicRobots({ index: data.gallery.indexable, follow: true }),
+    description,
+    // D1: galeria nunca indexa como página própria (ver a nota do cabeçalho).
+    robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
     alternates: { canonical: data.canonicalUrl },
-    openGraph: { title, url: data.canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl: data.canonicalUrl }),
   }
 }
 

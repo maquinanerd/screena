@@ -36,7 +36,6 @@
  * Uso (a partir da raiz): pnpm validate:source-authorization-legacy-grants
  */
 
-import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import net from "node:net";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -44,6 +43,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 import { PrismaClient } from "@prisma/client";
 
 import { applyAuthorizationWithin } from "../src/apply.js";
@@ -129,7 +129,7 @@ const CLOBBER_SQL = `
          updated_at=now()
    WHERE is_current=true AND content_type='rating'`;
 
-async function runChecks(url: string, runSeed: () => void): Promise<void> {
+async function runChecks(url: string, runSeed: () => Promise<void>): Promise<void> {
   const prisma = new PrismaClient({ datasourceUrl: url });
   const q = <T>(sql: string): Promise<T[]> => prisma.$queryRawUnsafe<T[]>(sql);
   const exec = (sql: string): Promise<number> => prisma.$executeRawUnsafe(sql);
@@ -172,7 +172,7 @@ async function runChecks(url: string, runSeed: () => void): Promise<void> {
       `licencas=${await count(`FROM source_licenses WHERE is_current=true`)} decisoes=${await count(`FROM data_usage_decisions WHERE is_current=true`)}`);
 
     const antesDoSeed = await snapshot();
-    runSeed();
+    await runSeed();
     const depoisDoSeed = await snapshot();
     record(2, "(b1) db:seed rodado DEPOIS do apply nao muda NADA em source_licenses",
       antesDoSeed === depoisDoSeed,
@@ -402,14 +402,14 @@ async function main(): Promise<void> {
     started = true;
     await pg.createDatabase("cinerie_legal");
     const env = { ...process.env, DATABASE_URL: url };
-    const runSeed = (): void => {
-      execFileSync("node", [prismaBin(), "db", "seed", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
+    const runSeed = async (): Promise<void> => {
+      await runChild("node", [prismaBin(), "db", "seed", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
     };
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], { env, stdio: "inherit", cwd: dbDir });
     record(-1, "migrate deploy", true, "ok");
     console.log("--- db seed (1a vez) ---");
-    runSeed();
+    await runSeed();
     record(-2, "db seed", true, "ok");
     await runChecks(url, runSeed);
   } catch (e) {

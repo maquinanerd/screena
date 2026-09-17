@@ -18,6 +18,12 @@
  *
  * Le pela porta unica (`readSourceWithoutComments`): exemplo dentro de
  * comentario nao conta como codigo.
+ *
+ * UM SALTO DE VARIAVEL (2026-09-11). A ficha calcula a descricao UMA vez, porque
+ * ela vai para a tag e para o cartao social, e depois atribui a variavel:
+ * `metadata.description = description`. Isso vale quando a MESMA fonte declara
+ * `const description = buildMetaDescription(...)`. Variavel que nasce crua, ou de
+ * nome so parecido, continua reprovando — os controles negativos provam.
  */
 
 import { readdirSync, statSync } from 'node:fs'
@@ -34,6 +40,9 @@ const EXTENSOES = ['.ts', '.tsx']
 /** Atribuicao direta a `metadata.description`. */
 const ATRIBUICAO = /\bmetadata\.description\s*=/
 
+/** `metadata.description = identificador` — o valor veio de uma variavel. */
+const ATRIBUICAO_DE_VARIAVEL = /\bmetadata\.description\s*=\s*([A-Za-z_$][\w$]*)\s*;?\s*$/
+
 /** `const ALGO_DESCRIPTION = 'literal'` numa linha so. */
 const CONSTANTE_LITERAL = /^\s*const\s+([A-Z_]*DESCRIPTION[A-Z_]*)\s*=\s*(['"])([^'"]*)\2\s*;?\s*$/
 
@@ -41,9 +50,12 @@ const CONSTANTE_LITERAL = /^\s*const\s+([A-Z_]*DESCRIPTION[A-Z_]*)\s*=\s*(['"])(
  * Detector PURO, para ter teste proprio: um detector que so roda sobre o
  * repositorio nao tem como ser provado errado.
  */
-export function atribuicaoSemHelper(linha: string): boolean {
+export function atribuicaoSemHelper(linha: string, fonte = ''): boolean {
   if (!ATRIBUICAO.test(linha)) return false
-  return !linha.includes('buildMetaDescription(')
+  if (linha.includes('buildMetaDescription(')) return false
+  const variavel = ATRIBUICAO_DE_VARIAVEL.exec(linha)?.[1]
+  if (variavel === undefined) return true
+  return !new RegExp(`\\bconst\\s+${variavel}\\s*=\\s*buildMetaDescription\\(`).test(fonte)
 }
 
 function arquivosDeRender(): readonly string[] {
@@ -87,9 +99,10 @@ describe('governanca: meta description passa pelo helper unico', () => {
   it('toda atribuicao a metadata.description chama buildMetaDescription', () => {
     const infratores: string[] = []
     for (const arquivo of arquivos) {
-      const linhas = readSourceWithoutComments(arquivo).split(/\r?\n/)
+      const fonte = readSourceWithoutComments(arquivo)
+      const linhas = fonte.split(/\r?\n/)
       linhas.forEach((linha, i) => {
-        if (atribuicaoSemHelper(linha)) {
+        if (atribuicaoSemHelper(linha, fonte)) {
           const rel = path.relative(REPO_ROOT, arquivo).split(path.sep).join('/')
           infratores.push(`${rel}:${i + 1} -> ${linha.trim()}`)
         }
@@ -137,5 +150,18 @@ describe('governanca: meta description passa pelo helper unico', () => {
     ).toBe(false)
     // Linha sem atribuicao nenhuma nao e infracao.
     expect(atribuicaoSemHelper('  const description = view.metaDescription ?? view.deck')).toBe(false)
+  })
+
+  it('CONTROLE NEGATIVO: a variavel so vale quando nasce do helper', () => {
+    const atribuicao = '  if (description !== null) metadata.description = description'
+    expect(
+      atribuicaoSemHelper(atribuicao, 'const description =\n    buildMetaDescription(view.metaDescription)'),
+    ).toBe(false)
+    // A MESMA linha, com a variavel nascendo crua, e infracao.
+    expect(atribuicaoSemHelper(atribuicao, 'const description = view.metaDescription ?? view.deck')).toBe(true)
+    // Sem declaracao nenhuma na fonte, tambem.
+    expect(atribuicaoSemHelper(atribuicao, '')).toBe(true)
+    // Um nome PARECIDO nao empresta a garantia de outro.
+    expect(atribuicaoSemHelper(atribuicao, 'const descriptionCrua = buildMetaDescription(x)')).toBe(true)
   })
 })

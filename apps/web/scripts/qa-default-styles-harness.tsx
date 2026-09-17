@@ -1,7 +1,7 @@
 /**
  * qa-default-styles-harness.tsx — Monta um HTML estatico com componentes REAIS
- * + o `globals.css` REAL, para que um navegador de verdade meca o ESTILO
- * COMPUTADO de cada elemento.
+ * + as folhas de estilo REAIS do app (`globals.css` primeiro), para que um
+ * navegador de verdade meca o ESTILO COMPUTADO de cada elemento.
  *
  * Por que um harness e nao jsdom: jsdom nao tem folha de estilo de UA. Um
  * `<button>` sem reset devolve `backgroundColor: ''` la, e o defeito que foi
@@ -29,7 +29,38 @@ import { RANKING_TABS, type RankedTitle } from '../src/lib/popular-rankings'
 const root = path.resolve(import.meta.dirname, '..')
 const outDir = process.argv[2] ?? path.join(root, '.qa-default-styles')
 
-const css = readFileSync(path.join(root, 'app/globals.css'), 'utf8')
+/**
+ * TODAS as folhas do app, com o `globals.css` primeiro — e nao so a global.
+ *
+ * Desde a divisao do CSS por rota, parte das regras mora em folhas que as
+ * paginas importam (`app/pt/onde-assistir/watch.css`, por exemplo). Um harness
+ * so com a global mede essas classes SEM o estilo delas: a sonda de lista de
+ * `watch-brand-routes` passa a mostrar o marcador do navegador, e a pagina real
+ * nao mostra. Juntar todas as folhas nao empresta regra de uma classe a outra:
+ * cada bloco e estilizado numa folha so (`tests/web/css-sheets-exclusive.test.ts`).
+ */
+function appSheets(): string[] {
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue
+        walk(full)
+      } else if (entry.name.endsWith('.css')) {
+        found.push(full)
+      }
+    }
+  }
+  walk(path.join(root, 'app'))
+  walk(path.join(root, 'src'))
+  const globals = path.join(root, 'app', 'globals.css')
+  if (!found.includes(globals)) throw new Error(`globals.css nao encontrado em ${globals}`)
+  return [globals, ...found.filter((file) => file !== globals).sort()]
+}
+
+const sheets = appSheets()
+const css = sheets.map((file) => readFileSync(file, 'utf8')).join('\n')
 
 function titles(count: number): RankedTitle[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -138,4 +169,6 @@ writeFileSync(
 <style>${css}</style>
 </head><body>${markup}<section id="list-probes">${probes}</section></body></html>`,
 )
-console.log(`harness em ${outDir} (${String(listClasses.size)} classes de lista sondadas)`)
+console.log(
+  `harness em ${outDir} (${String(listClasses.size)} classes de lista sondadas, ${String(sheets.length)} folha(s) de estilo)`,
+)

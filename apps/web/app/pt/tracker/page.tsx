@@ -13,7 +13,7 @@ import { TrackerPanel } from './tracker-panel'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Tracker de series',
+  title: 'Tracker de séries',
   robots: { index: false, follow: false },
 }
 
@@ -22,7 +22,7 @@ export default function Pagina() {
     <main data-vertical="account">
       <div className="container">
         <header>
-          <h1>Tracker de series</h1>
+          <h1>Tracker de séries</h1>
         </header>
         <TrackerPanel />
         <p>

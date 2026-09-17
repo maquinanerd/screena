@@ -9,12 +9,20 @@
  * Invariantes 3/4: le SO PostgreSQL local via `@screena/db/server`; nunca chama
  * API externa nem Gemini. Read-only: nao escreve no banco.
  *
- * FAIL-CLOSED: qualquer erro ao ler a decisao vigente resolve para
- * `noindex`/fora do sitemap (nao indexa por duvida). SO consulta linhas
- * `is_current = true`; o historico (via `supersedes_id`) e ignorado.
+ * FALHA DE BANCO NAO E DECISAO DE SEO (mudou em 2026-09-11): erro ao ler a
+ * decisao vigente LANCA `IndexabilityDecisionUnavailableError`, e a rota
+ * responde 5xx. Ate essa data virava `noindex` — ver o motivo na classe. SO
+ * consulta linhas `is_current = true`; o historico (via `supersedes_id`) e
+ * ignorado.
  */
 
 import { getPrismaClient } from "@screena/db/server";
+
+import {
+  absentDecisionFor,
+  readDecisionCoverageForPage,
+  type DecisionCoverage,
+} from "./decision-coverage";
 import {
   mergePersistedDecision,
   resolvePageSeo,
@@ -53,8 +61,9 @@ export interface CurrentPageIndexabilityDecision extends PersistedDecisionFacts 
 /**
  * Le a decisao VIGENTE (`is_current = true`) para (entityType, entityId,
  * idioma). Retorna `null` quando nao ha linha persistida — nesse caso a politica
- * de indexacao total (`resolvePageSeo`) governa. LANCA em falha de banco; o
- * chamador (`resolveEntityPageSeo`) trata como fail-closed.
+ * de indexacao total (`resolvePageSeo`) governa. LANCA em falha de banco, e o
+ * chamador (`resolveEntityPageSeo`) propaga como
+ * `IndexabilityDecisionUnavailableError`.
  */
 export async function getCurrentPageIndexabilityDecision(
   key: CurrentDecisionKey,
@@ -92,23 +101,50 @@ export async function getCurrentPageIndexabilityDecision(
   };
 }
 
-/** Resolucao fail-closed para quando a leitura da decisao vigente falha. */
-function failClosed(live: PageSeoResolution): PageSeoResolution {
-  return {
-    ...live,
-    decision: "noindex",
-    robots: { index: false, follow: false },
-    includeInSitemap: false,
-    decisionSource: "persisted-decision",
-    reason:
-      "Falha ao ler a decisao vigente de indexabilidade (page_indexability_decisions); fail-closed para noindex ate a leitura ser confiavel.",
-  };
+/**
+ * A leitura da decisao vigente FALHOU — e isso nao e uma decisao de SEO.
+ *
+ * ATE 2026-09-11 este caso virava `noindex, nofollow`. Tinha nome de fail-closed
+ * e efeito oposto: a pagina respondia **200** com `noindex`, e as fichas de filme
+ * e de pessoa sao ISR — a resposta ficava GUARDADA pela janela do `revalidate`.
+ * Um soluco de segundos no PostgreSQL publicava, por minutos, a instrucao "tire
+ * esta pagina do indice" em paginas que deveriam indexar. O buscador obedece a
+ * `noindex`; ele nao tem como saber que foi um soluco.
+ *
+ * O correto e 5xx, por dois motivos independentes:
+ *  - o buscador trata 5xx como indisponibilidade TEMPORARIA: tenta de novo e nao
+ *    desindexa na primeira ocorrencia;
+ *  - o Next NAO guarda erro no cache de rota — numa revalidacao que falha, ele
+ *    continua servindo a ultima versao boa.
+ *
+ * Por isso isto LANCA. Quem chama nao deve capturar para "degradar": nao existe
+ * degradacao correta aqui, so a verdade — o dado nao pode ser lido agora.
+ * Distinguir os tres casos e o ponto: nao existe -> 404; existe e a politica diz
+ * noindex -> 200 + noindex; a infraestrutura falhou -> 5xx.
+ */
+export class IndexabilityDecisionUnavailableError extends Error {
+  readonly key: CurrentDecisionKey;
+
+  constructor(key: CurrentDecisionKey, cause: unknown) {
+    super(
+      `page_indexability_decisions indisponivel para ${key.entityType}:${key.entityId.toString()} (${key.languageCode})`,
+      { cause },
+    );
+    this.name = "IndexabilityDecisionUnavailableError";
+    this.key = key;
+  }
 }
 
 /**
  * Resolucao FINAL de SEO de uma entidade: funde os fatos vivos (via
  * `resolvePageSeo`) com a decisao vigente persistida (`mergePersistedDecision`).
- * FAIL-CLOSED: erro ao ler a decisao vigente -> `noindex`/fora do sitemap.
+ *
+ * Falha ao ler a decisao vigente LANCA `IndexabilityDecisionUnavailableError`
+ * (a rota responde 5xx) — nunca devolve uma resolucao `noindex` inventada.
+ *
+ * A AUSENCIA de decisao segue a MESMA regra do sitemap (desde 2026-09-11): com o
+ * gate do tipo armado, entidade sem linha vigente sai `noindex, follow` — como o
+ * sitemap ja a deixava de fora. Ver `decision-coverage.ts`.
  *
  * Esta e a funcao que metadata, HTML, canonical e sitemap devem consumir para a
  * pagina de detalhe de uma entidade.
@@ -120,14 +156,28 @@ export async function resolveEntityPageSeo(
 ): Promise<PageSeoResolution> {
   const live = resolvePageSeo(liveFacts);
   let persisted: PersistedDecisionFacts | null;
+  let coverage: DecisionCoverage;
   try {
-    persisted = await getCurrentPageIndexabilityDecision(key, client);
+    // Duas leituras independentes: a decisao DESTA entidade e o quanto do TIPO a
+    // politica ja decidiu. A segunda decide o que a ausencia da primeira
+    // significa. As duas falham do mesmo jeito: 5xx, nunca noindex.
+    [persisted, coverage] = await Promise.all([
+      getCurrentPageIndexabilityDecision(key, client),
+      // Memorizada por um minuto, contra o cliente de producao: a cobertura muda
+      // uma vez por produtor rodado, e o `client` injetado so serve a decisao.
+      readDecisionCoverageForPage(key.languageCode),
+    ]);
   } catch (error) {
+    // O log continua de proposito: e ele que separa "banco caiu" de qualquer
+    // outra causa de 500 no painel. O throw e o que impede o noindex de ir para
+    // o cache.
     console.error(
-      `[seo] page_indexability_decisions indisponivel para ${key.entityType}:${key.entityId.toString()} (${key.languageCode}); fail-closed noindex:`,
+      `[seo] page_indexability_decisions indisponivel para ${key.entityType}:${key.entityId.toString()} (${key.languageCode}); respondendo 5xx, NAO noindex:`,
       error,
     );
-    return failClosed(live);
+    throw new IndexabilityDecisionUnavailableError(key, error);
   }
-  return mergePersistedDecision(live, persisted);
+  return mergePersistedDecision(live, persisted, {
+    absentDecision: absentDecisionFor(coverage, key.entityType),
+  });
 }

@@ -54,9 +54,14 @@ import {
   type PersonPageView,
 } from "../lib/person-presenter";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
+import { absentDecisionFor, readDecisionCoverageForPage } from "./seo/decision-coverage";
 import { getRelatedNewsForEntity } from "./related-news";
 import type { NewsCardView } from "../lib/news-presenter";
-import type { IndexabilityResult, PageSeoResolution } from "@screena/seo";
+import {
+  evaluatePersonQualityGate,
+  type IndexabilityResult,
+  type PageSeoResolution,
+} from "@screena/seo";
 
 const LANGUAGE_CODE = "pt-BR";
 const ENTITY_TYPE = "person";
@@ -205,7 +210,7 @@ export const getPersonPageData = cache(
       reviewStatus: String(block.reviewStatus),
     }));
 
-    const credits = await resolveCredits(prisma, castRows, crewRows);
+    const { credits, targets } = await resolveCredits(prisma, castRows, crewRows);
 
     const view = buildPersonPageView({
       record: {
@@ -245,7 +250,22 @@ export const getPersonPageData = cache(
     const canonicalSlug = canonicalSlugRow?.slug ?? slug;
     const canonicalUrl = personCanonicalUrl(canonicalSlug);
 
-    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida (fail-closed).
+    // PORTAO DE PESSOA (decisao do dono D2, 2026-09-11). Os MESMOS criterios que
+    // o SQL do sitemap exige desde 2026-08-27 — nome, slug canonico, biografia
+    // com status que libera exibicao, foto e ao menos um credito em obra
+    // indexavel — agora tambem na pagina. Ate aqui a pagina dizia `index` e o
+    // sitemap listava 0 pessoas: a divergencia (a) da auditoria.
+    const qualityGate = evaluatePersonQualityGate({
+      name: person.name,
+      hasCanonicalSlug: canonicalSlugRow !== null,
+      biography: person.biography,
+      biographySourceStatus: person.biographySourceStatus,
+      profilePath: person.profilePath,
+      indexableCreditCount: await countIndexableCredits(prisma, targets),
+    });
+
+    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida. Falha de
+    // banco LANCA (5xx), nunca vira noindex.
     const seo = await resolveEntityPageSeo(
       { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
       {
@@ -254,6 +274,7 @@ export const getPersonPageData = cache(
         displayedRatings: [],
         canonicalUrl,
         valueBlocksCount: view.renderableBlockCount,
+        qualityGate,
       },
       prisma,
     );
@@ -299,7 +320,7 @@ async function resolveCredits(
   prisma: PrismaClient,
   castRows: CastRow[],
   crewRows: CrewRow[],
-): Promise<PersonCreditInput[]> {
+): Promise<{ credits: PersonCreditInput[]; targets: Map<string, ResolvedTarget> }> {
   const movieIds = new Set<bigint>();
   const tvIds = new Set<bigint>();
   for (const row of [...castRows, ...crewRows]) {
@@ -323,7 +344,67 @@ async function resolveCredits(
     const credit = toCredit(row.entityType, row.entityId, role, targets);
     if (credit !== null) credits.push(credit);
   }
-  return credits;
+  // Os alvos voltam junto: o portao de pessoa precisa saber quais obras tem slug
+  // canonico, e ja foram lidos aqui — ler de novo pagaria a mesma consulta duas
+  // vezes.
+  return { credits, targets };
+}
+
+/**
+ * Quantas obras creditadas (filme ou serie) tem slug canonico no locale E
+ * decisao EFETIVA `index` — a MESMA definicao do `EXISTS` de pessoa no SQL do
+ * sitemap: `COALESCE(decisao vigente, ausente) = 'index'`, com o "ausente" vindo
+ * da cobertura do tipo da OBRA. Se esta conta usasse outra regra, a pagina e o
+ * sitemap voltariam a discordar sobre a mesma pessoa.
+ *
+ * Uma consulta para todas as obras, nao uma por credito.
+ */
+async function countIndexableCredits(
+  prisma: PrismaClient,
+  targets: Map<string, ResolvedTarget>,
+): Promise<number> {
+  const movieIds: bigint[] = [];
+  const tvIds: bigint[] = [];
+  for (const [key, target] of targets) {
+    if (target.slug === null) continue;
+    const [type, id] = key.split(":");
+    if (id === undefined) continue;
+    if (type === "movie") movieIds.push(BigInt(id));
+    else if (type === "tv") tvIds.push(BigInt(id));
+  }
+  if (movieIds.length === 0 && tvIds.length === 0) return 0;
+
+  const [decisions, coverage] = await Promise.all([
+    prisma.pageIndexabilityDecision.findMany({
+      where: {
+        languageCode: LANGUAGE_CODE,
+        isCurrent: true,
+        OR: [
+          { entityType: "movie", entityId: { in: movieIds } },
+          { entityType: "tv", entityId: { in: tvIds } },
+        ],
+      },
+      select: { entityType: true, entityId: true, decision: true },
+    }),
+    readDecisionCoverageForPage(LANGUAGE_CODE),
+  ]);
+
+  const vigente = new Map<string, string>();
+  for (const row of decisions) {
+    if (row.entityType === null || row.entityId === null) continue;
+    vigente.set(targetKey(String(row.entityType), row.entityId), String(row.decision));
+  }
+
+  let count = 0;
+  for (const id of movieIds) {
+    const efetiva = vigente.get(targetKey("movie", id)) ?? absentDecisionFor(coverage, "movie");
+    if (efetiva === "index") count += 1;
+  }
+  for (const id of tvIds) {
+    const efetiva = vigente.get(targetKey("tv", id)) ?? absentDecisionFor(coverage, "tv");
+    if (efetiva === "index") count += 1;
+  }
+  return count;
 }
 
 function toCredit(

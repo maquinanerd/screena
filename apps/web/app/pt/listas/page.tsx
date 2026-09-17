@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AdSlot } from '../../_components/ad-slot'
 import { ListsPanel } from './lists-panel'
+import './lists.css'
 
 /**
  * Suas listas (C8) — tela 15 do canônico: Ad leaderboard → cabeçalho →

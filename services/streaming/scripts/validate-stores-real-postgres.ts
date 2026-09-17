@@ -13,7 +13,6 @@
  * Uso: pnpm --filter @screena/streaming validate:stores
  */
 
-import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -21,6 +20,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 import { STREAMING_AVAILABILITY_ATTRIBUTION_URL } from '../src/provider-identity.js'
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
 
     const env = { ...process.env, DATABASE_URL: url }
     console.log('--- prisma migrate deploy ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], { env, stdio: 'inherit', cwd: dbDir })
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], { env, stdio: 'inherit', cwd: dbDir })
 
     // Referencia minima + um filme real (a FK de entities exige entidade real).
     await prisma.$executeRawUnsafe(`INSERT INTO languages (code, name_pt, name_en, is_published, index_default) VALUES ('pt-BR','Portugues','Portuguese',true,true)`)

@@ -64,7 +64,7 @@ import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
-import type { PageSeoResolution } from "@screena/seo";
+import { evaluateLocalizationGate, type PageSeoResolution } from "@screena/seo";
 import { getImageDisplayAuthorization } from "./image-license";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
@@ -144,6 +144,14 @@ export interface MoviePageData {
    * não vira linha). Direção/Roteiro carregam href de pessoa quando há página.
    */
   fichaFacts: FichaFact[];
+  /**
+   * A DIRECAO, na ordem dos creditos — a mesma da ficha tecnica, com a pagina da
+   * pessoa quando ela existe. Alimenta a descricao factual da `<meta>` e o
+   * `director` do JSON-LD.
+   */
+  directors: readonly { readonly name: string; readonly href: string | null }[];
+  /** Estreia em ISO `YYYY-MM-DD`: a data completa do JSON-LD. */
+  releaseDateIso: string | null;
   /**
    * "Mais como este" — titulos da MESMA colecao do TMDB. `null` omite o bloco
    * (e a faixa final passa a UMA coluna, em vez de reservar metade para nada).
@@ -296,13 +304,28 @@ export const getMoviePageData = cache(
     });
     const ratings = buildRatingsView(ratingsPayload);
 
+    // PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+    // fallback tmdb-{id}, sem titulo e sem descricao no locale publicado, fica
+    // fora do indice ate ser enriquecida — e indexa sozinha quando ganhar um dos
+    // dois. Le a MESMA linha de traducao que a pagina usa para titulo e meta; o
+    // SQL do sitemap aplica o mesmo predicado.
+    const qualityGate = evaluateLocalizationGate({
+      canonicalSlug,
+      hasLocalizedTitle: (translation?.title ?? "").trim() !== "",
+      hasLocalizedDescription:
+        (translation?.summary ?? "").trim() !== "" ||
+        (translation?.metaDescription ?? "").trim() !== "",
+    });
+
     // Fonte unica da Fase 3: funde os fatos vivos com a decisao VIGENTE
-    // persistida em page_indexability_decisions (fail-closed em falha de banco).
+    // persistida em page_indexability_decisions. Falha de banco LANCA (5xx) —
+    // nunca vira um noindex guardado pelo ISR.
     const seo = await resolveEntityPageSeo(
       { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
         hasReliableStructuredData: true,
+        qualityGate,
         // Exatamente as notas RENDERIZADAS. Todas passaram pelo gate de licenca
         // de `entity-ratings` + atribuicao do presenter, entao chegam aqui com
         // `licenseDisplayAllowed: true`. Uma fonte desligada/expirada nao
@@ -320,7 +343,8 @@ export const getMoviePageData = cache(
 
     // O motivo da AUSENCIA do painel de streaming e derivado do estado, nunca
     // fixo. So consulta quando nao ha painel — quem tem oferta nao paga a sonda.
-    const watchAbsence = watch === null ? await watchAbsenceReason(prisma) : null;
+    const watchAbsence =
+      watch === null ? await watchAbsenceReason(prisma, ENTITY_TYPE, entityId) : null;
 
     // Premiacao: o FATO ("Venceu 4 Oscars"), nunca uma nota. Mesma disciplina
     // do painel de streaming — o motivo da ausencia e derivado do estado do
@@ -406,6 +430,9 @@ export const getMoviePageData = cache(
       genres,
       score,
       fichaFacts,
+      directors: crewFacts.directors,
+      releaseDateIso:
+        movie.releaseDate === null ? null : movie.releaseDate.toISOString().slice(0, 10),
       similar,
     };
   },

@@ -19,6 +19,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildSectionAbsence } from '../../apps/web/src/lib/section-absence'
+import { emptyStateFor } from '../../apps/web/src/lib/section-empty-state'
 import { watchAbsenceReasonFor } from '../../apps/web/src/server/entity-watch'
 
 const ROOT = process.cwd()
@@ -86,6 +87,40 @@ describe('os dois estados do catalogo produzem motivos diferentes', () => {
   })
 })
 
+/**
+ * O TERCEIRO ESTADO (2026-09-11). A auditoria de SEO achou "Onde assistir" vazio
+ * em 6 de 6 titulos correntes, e o log dizia `no_offer_for_entity` — "fato sobre
+ * a obra, nao acionavel". A causa real era a promocao de ofertas que nao avancava:
+ * o titulo TINHA oferta, so nao aprovada. Trabalho pendente com cara de fato.
+ */
+describe('o terceiro estado: o titulo TEM oferta, so nao aprovada', () => {
+  it('oferta oculta NESTE titulo vence os outros dois motivos', () => {
+    expect(watchAbsenceReasonFor(true, true)).toBe('offer_hidden_for_entity')
+    expect(watchAbsenceReasonFor(false, true)).toBe('offer_hidden_for_entity')
+  })
+
+  it('e ACIONAVEL: e passo pendente (a fila de promocao), nao fato sobre a obra', () => {
+    const absence = buildSectionAbsence({
+      section: 'onde-assistir',
+      reason: watchAbsenceReasonFor(true, true),
+      entityType: 'movie',
+      entityId: '9',
+    })
+    expect(absence.actionable).toBe(true)
+  })
+
+  it('CONTROLE: sem oferta oculta, os dois motivos antigos continuam iguais', () => {
+    expect(watchAbsenceReasonFor(true, false)).toBe('no_offer_for_entity')
+    expect(watchAbsenceReasonFor(false, false)).toBe('no_authorized_provider')
+  })
+
+  it('a frase publica NAO diz "nao encontramos" — encontramos, so nao liberamos', () => {
+    const texto = emptyStateFor('offer_hidden_for_entity')?.text ?? ''
+    expect(texto).not.toMatch(/não encontramos/i)
+    expect(texto).toBe(emptyStateFor('no_authorized_provider')?.text)
+  })
+})
+
 describe('as paginas nao escrevem o motivo a mao', () => {
   for (const [label, rel] of PAGES) {
     it(`${label}: le o motivo do loader, nao um literal no JSX`, () => {
@@ -111,7 +146,11 @@ describe('os loaders derivam o motivo, e so quando ha ausencia', () => {
     it(`${label}: computa o motivo a partir do estado`, () => {
       const code = withoutComments(readFileSync(path.join(ROOT, rel), 'utf8'))
       expect(code).toContain('watchAbsenceReason')
-      expect(code).toMatch(/watch === null \? await watchAbsenceReason\(prisma\) : null/)
+      // Desde 2026-09-11 a sonda recebe o TITULO: ela pergunta tambem se ha
+      // oferta oculta nele, e nao so no catalogo inteiro.
+      expect(code).toMatch(
+        /watch === null \? await watchAbsenceReason\(prisma, ENTITY_TYPE, entityId\) : null/,
+      )
     })
   }
 

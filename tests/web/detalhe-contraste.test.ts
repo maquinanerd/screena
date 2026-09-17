@@ -39,7 +39,17 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const CSS_PATH = fileURLToPath(new URL("../../apps/web/app/globals.css", import.meta.url));
+/**
+ * As folhas que uma tela de detalhe carrega, na ORDEM de carga: a global (do
+ * layout) e as do detalhe (da pagina). Ler so a global deixaria de achar o hero
+ * e o corpo das fichas, que vivem nas folhas do detalhe desde a divisao do CSS
+ * por rota.
+ */
+const CSS_PATHS = [
+  "../../apps/web/app/globals.css",
+  "../../apps/web/app/_components/detail-hero.css",
+  "../../apps/web/app/_components/detail.css",
+].map((relativo) => fileURLToPath(new URL(relativo, import.meta.url)));
 
 /**
  * Comentario dentro da regra separa o `{` do `color:` e faz o analisador dizer
@@ -53,7 +63,7 @@ function semComentarios(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
-const CSS = semComentarios(readFileSync(CSS_PATH, "utf8"));
+const CSS = semComentarios(CSS_PATHS.map((arquivo) => readFileSync(arquivo, "utf8")).join("\n"));
 
 /** Piso de contraste para texto (WCAG 2.1 AA, texto normal). */
 const AA_NORMAL = 4.5;

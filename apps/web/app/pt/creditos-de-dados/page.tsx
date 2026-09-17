@@ -6,6 +6,8 @@ import { serializeJsonLd } from '@screena/seo'
 import { DATA_CREDITS, DATA_CREDITS_PATH, TMDB_DISCLAIMER } from '../../../src/config/footer'
 import { HOME_PATH } from '../../../src/lib/routes'
 import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
+import '../../_components/legal.css'
 
 /**
  * Créditos de dados — o destino do link "Créditos de dados" do rodapé
@@ -37,6 +39,20 @@ import { SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/sit
  * chega à tela. Ele não depende desta página.
  */
 
+/**
+ * `force-dynamic` — o `<meta robots>` desta página sai de `publicRobots(true)`,
+ * que lê a chave de indexação do AMBIENTE; essa chave só existe em RUNTIME: o
+ * release constrói sem env pública (ver o `Dockerfile`).
+ *
+ * Prerenderizada no build, a página saía com o robots do BUILD — `noindex,
+ * nofollow` — e nenhuma env de runtime o alcançava: a página que o código manda
+ * indexar não podia ser indexada. Medido em 15/09/2026 no HTML que o build gravou
+ * em `.next/server/app/pt/creditos-de-dados.html`. Sem banco, renderizar por
+ * requisição custa pouco. Travado por
+ * `tests/web/prerendered-routes-robots-runtime.test.ts`.
+ */
+export const dynamic = 'force-dynamic'
+
 const TITLE = 'Créditos de dados'
 const DESCRIPTION =
   'As fontes de dados que a Cinerie exibe, com o crédito exigido por cada licença ' +
@@ -48,6 +64,12 @@ export function generateMetadata(): Metadata {
     description: DESCRIPTION,
     robots: publicRobots(true),
     alternates: { canonical: canonicalPublicUrl(DATA_CREDITS_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(DATA_CREDITS_PATH),
+    }),
   }
 }
 

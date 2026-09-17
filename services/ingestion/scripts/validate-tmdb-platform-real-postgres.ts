@@ -13,7 +13,6 @@
  * Uso: pnpm --filter @screena/ingestion validate:tmdb-platform
  */
 
-import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -21,6 +20,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 import {
   createTmdbCatalogEndpoints,
@@ -177,8 +177,8 @@ async function main(): Promise<void> {
 
     const env = { ...process.env, DATABASE_URL: url }
     console.log('--- prisma migrate deploy + db seed ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], { env, stdio: 'inherit', cwd: dbDir })
-    execFileSync('node', [prismaBin(), 'db', 'seed'], { env, stdio: 'inherit', cwd: dbDir })
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], { env, stdio: 'inherit', cwd: dbDir })
+    await runChild('node', [prismaBin(), 'db', 'seed'], { env, stdio: 'inherit', cwd: dbDir })
 
     await prisma.$executeRawUnsafe(`DELETE FROM api_cache`)
     await prisma.$executeRawUnsafe(`DELETE FROM api_sync_logs`)

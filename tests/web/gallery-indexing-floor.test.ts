@@ -1,24 +1,37 @@
 /**
- * gallery-indexing-floor.test.ts — O PISO chega ao `robots`, e não só ao view.
+ * gallery-indexing-floor.test.ts — o PISO da galeria e o que ele NAO decide mais.
  *
  * ============================================================================
- * POR QUE ESTE ARQUIVO EXISTE, E O QUE ELE CORRIGE NA MINHA PRÓPRIA PROVA
+ * O QUE MUDOU EM 2026-09-11
  * ============================================================================
- * Abri as quatro páginas no navegador e li o `<meta name="robots">` das duas
- * galerias — a rica (44 imagens) e a pobre (3). **As DUAS diziam
- * `noindex, nofollow`.** Não porque o piso falhou: porque o ambiente de dev não
- * é a origem oficial, e `gatePublicRobots` colapsa TUDO para `noindex` fora
- * dela. Certo — e por isso a captura no dev **não prova o piso**.
+ * Ate essa data, este arquivo provava que "o piso chega ao `robots`": galeria
+ * abaixo do piso de quantidade saia `noindex`, e no piso saia `index`.
  *
- * Uma medição que dá o mesmo resultado nos dois lados não separa nada. É a
- * mesma armadilha de "estado vazio não prova filtro": o `noindex` da página
- * pobre estava lá pelo motivo errado.
+ * A decisao do dono D1 (`docs/seo/DECISOES-DO-DONO-2026-09-11.md`) tirou TODA
+ * galeria do indice como pagina propria — 69.016 URLs, 42,7% do sitemap, com 0
+ * palavras de conteudo principal. E a auditoria achou o defeito que o desenho
+ * antigo permitia: a galeria de EPISODIO decidia so pelo piso, sem olhar o dono,
+ * e saia `index, follow` com o episodio suspenso.
  *
- * Aqui o gate de origem é alimentado com um ambiente que PODE indexar, e então
- * a única variável que resta é o piso.
+ * O piso nao morreu: ele continua decidindo o AVISO da tela (`belowFloor`). O que
+ * ele deixou de decidir e o indice. Manter as asserções antigas ("no piso =>
+ * index") seria um teste verde afirmando uma politica que nao vale mais.
+ *
+ * ============================================================================
+ * A ARMADILHA QUE ESTE ARQUIVO JA TINHA EVITADO, E CONTINUA EVITANDO
+ * ============================================================================
+ * Fora da origem oficial, `gatePublicRobots` colapsa TUDO para `noindex`. Uma
+ * medicao que da o mesmo resultado nos dois lados nao separa nada: o `noindex`
+ * poderia estar la pelo motivo errado. Por isso o gate de origem e alimentado com
+ * um ambiente que PODE indexar — e a unica variavel que sobra e a regra.
  */
 
+import path from 'node:path'
+
 import { describe, expect, it } from 'vitest'
+
+import { QUALITY_GATE_ROBOTS, evaluateGalleryGate } from '@screena/seo'
+import { authorizeImageDisplay, type ImageLicenseRow } from '@screena/public-contracts'
 
 import {
   IMAGES_INDEX_FLOOR,
@@ -28,8 +41,8 @@ import {
   type GalleryImageRow,
   type GalleryVideoRow,
 } from '../../apps/web/src/lib/gallery-presenter'
-import { authorizeImageDisplay, type ImageLicenseRow } from '@screena/public-contracts'
 import { gatePublicRobots } from '../../apps/web/src/lib/site'
+import { REPO_ROOT, readSourceWithoutComments } from '../support/source-text'
 
 const LICENCA: ImageLicenseRow = {
   sourceKey: 'tmdb',
@@ -41,10 +54,8 @@ const LICENCA: ImageLicenseRow = {
 const AUTORIZADA = authorizeImageDisplay([LICENCA])
 
 /**
- * Um ambiente que PODE indexar.
- *
- * Sem ele, `gatePublicRobots` devolve `noindex` para tudo e o teste passaria
- * com o piso quebrado — exatamente o que aconteceu na captura do dev.
+ * Um ambiente que PODE indexar. Sem ele, `gatePublicRobots` devolve `noindex`
+ * para tudo e os casos de D1 passariam mesmo com a galeria voltando a indexar.
  */
 const AMBIENTE_INDEXAVEL: NodeJS.ProcessEnv = {
   CINERIE_PUBLIC_SITE_URL: 'https://cinerie.com',
@@ -76,67 +87,83 @@ function videos(quantidade: number): GalleryVideoRow[] {
   }))
 }
 
-describe('o piso da galeria chega ao robots', () => {
+describe('o piso da galeria decide o AVISO da tela', () => {
   it('(1) CONTROLE DE AMBIENTE: com origem oficial, o gate NAO colapsa tudo', () => {
-    // Sem este caso, todos os demais poderiam passar com `noindex` universal —
-    // que foi o que a captura no dev mediu sem perceber.
+    // A pagina que indexa sai com a previa grande de imagem (auditoria de SEO,
+    // 2026-09-11) — e o sinal de que o gate deixou a decisao passar inteira.
     expect(gatePublicRobots({ index: true, follow: true }, AMBIENTE_INDEXAVEL)).toEqual({
       index: true,
       follow: true,
+      'max-image-preview': 'large',
     })
-    // E o inverso: fora da origem oficial, colapsa mesmo.
     expect(gatePublicRobots({ index: true, follow: true }, { NODE_ENV: 'development' })).toEqual({
       index: false,
       follow: false,
     })
   })
 
-  it('(2) IMAGENS abaixo do piso => noindex; no piso => index', () => {
-    const abaixo = buildImagesGallery(imagens(IMAGES_INDEX_FLOOR - 1), 'X', AUTORIZADA)
-    expect(abaixo.indexable).toBe(false)
-    expect(
-      gatePublicRobots({ index: abaixo.indexable, follow: true }, AMBIENTE_INDEXAVEL).index,
-    ).toBe(false)
-
-    const noPiso = buildImagesGallery(imagens(IMAGES_INDEX_FLOOR), 'X', AUTORIZADA)
-    expect(noPiso.indexable).toBe(true)
-    expect(
-      gatePublicRobots({ index: noPiso.indexable, follow: true }, AMBIENTE_INDEXAVEL).index,
-    ).toBe(true)
+  it('(2) IMAGENS: abaixo do piso a galeria e marcada fina; no piso, nao', () => {
+    expect(buildImagesGallery(imagens(IMAGES_INDEX_FLOOR - 1), 'X', AUTORIZADA).indexable).toBe(false)
+    expect(buildImagesGallery(imagens(IMAGES_INDEX_FLOOR), 'X', AUTORIZADA).indexable).toBe(true)
   })
 
-  it('(3) VIDEOS abaixo do piso => noindex; no piso => index', () => {
-    const abaixo = buildVideosGallery(videos(VIDEOS_INDEX_FLOOR - 1), null, AUTORIZADA)
-    expect(abaixo.indexable).toBe(false)
-    expect(
-      gatePublicRobots({ index: abaixo.indexable, follow: true }, AMBIENTE_INDEXAVEL).index,
-    ).toBe(false)
-
-    const noPiso = buildVideosGallery(videos(VIDEOS_INDEX_FLOOR), null, AUTORIZADA)
-    expect(noPiso.indexable).toBe(true)
-    expect(
-      gatePublicRobots({ index: noPiso.indexable, follow: true }, AMBIENTE_INDEXAVEL).index,
-    ).toBe(true)
+  it('(3) VIDEOS: abaixo do piso a galeria e marcada fina; no piso, nao', () => {
+    expect(buildVideosGallery(videos(VIDEOS_INDEX_FLOOR - 1), null, AUTORIZADA).indexable).toBe(false)
+    expect(buildVideosGallery(videos(VIDEOS_INDEX_FLOOR), null, AUTORIZADA).indexable).toBe(true)
   })
 
-  it('(4) galeria VAZIA nunca indexa — nem com o gate de origem aberto', () => {
-    // Zero imagens é o estado de produção HOJE (`tmdb_images` = 0 linhas). Se
-    // esta página indexasse, cada título publicaria uma URL vazia.
+  it('(4) galeria VAZIA e marcada fina', () => {
     const vazia = buildImagesGallery([], 'X', AUTORIZADA)
     expect(vazia.total).toBe(0)
-    expect(
-      gatePublicRobots({ index: vazia.indexable, follow: true }, AMBIENTE_INDEXAVEL).index,
-    ).toBe(false)
+    expect(vazia.indexable).toBe(false)
   })
 
-  it('(5) licenca negada => galeria vazia => noindex, mesmo com muitas linhas', () => {
-    // Os dois gates compõem: sem licença não há imagem, sem imagem não há
-    // página. Uma galeria que indexasse com licença negada publicaria uma URL
-    // que existe para não mostrar nada.
+  it('(5) licenca negada => galeria vazia, mesmo com muitas linhas', () => {
     const semLicenca = buildImagesGallery(imagens(40), 'X', authorizeImageDisplay([]))
     expect(semLicenca.total).toBe(0)
-    expect(
-      gatePublicRobots({ index: semLicenca.indexable, follow: true }, AMBIENTE_INDEXAVEL).index,
-    ).toBe(false)
+    expect(semLicenca.indexable).toBe(false)
+  })
+})
+
+describe('D1 — galeria nunca indexa como pagina propria', () => {
+  it('(6) mesmo MUITO acima do piso, e com a origem oficial aberta, a galeria sai noindex, follow', () => {
+    const rica = buildImagesGallery(imagens(IMAGES_INDEX_FLOOR * 10), 'X', AUTORIZADA)
+    expect(rica.indexable).toBe(true) // o piso diz "nao e fina"...
+    // ...e mesmo assim o indice nao a recebe.
+    expect(gatePublicRobots(QUALITY_GATE_ROBOTS, AMBIENTE_INDEXAVEL)).toEqual({
+      index: false,
+      follow: true,
+    })
+    expect(evaluateGalleryGate().passed).toBe(false)
+  })
+
+  it('(7) as QUATRO galerias emitem o portao D1 — e nenhuma passa o piso para o robots', () => {
+    const paginas = readSourceWithoutComments(
+      path.join(REPO_ROOT, 'apps', 'web', 'app', '_components', 'gallery-pages.tsx'),
+    )
+    const episodio = readSourceWithoutComments(
+      path.join(
+        REPO_ROOT,
+        'apps',
+        'web',
+        'app',
+        'pt',
+        'series',
+        '[slug]',
+        'temporadas',
+        '[season]',
+        'episodios',
+        '[episode]',
+        'imagens',
+        'page.tsx',
+      ),
+    )
+    // Imagens, videos e fotos de pessoa em um arquivo; episodio no outro.
+    expect(paginas.split('gatePublicRobots(QUALITY_GATE_ROBOTS)').length - 1).toBe(3)
+    expect(episodio.split('gatePublicRobots(QUALITY_GATE_ROBOTS)').length - 1).toBe(1)
+    // O defeito exato que a auditoria achou: o piso decidindo o indice.
+    for (const fonte of [paginas, episodio]) {
+      expect(fonte).not.toMatch(/index:\s*(data\.gallery|images)\.indexable/)
+    }
   })
 })

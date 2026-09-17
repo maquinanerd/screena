@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { AdSlot } from '../../_components/ad-slot'
 import { CardBookmark } from '../../_components/card-bookmark'
@@ -14,10 +14,12 @@ import {
   evaluatePortalIndexability,
 } from '../../../src/lib/portal-presenter'
 import { EXPLORE_PATH, HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getDiscoverData } from '../../../src/server/discover'
 import { getHomeUpcomingMixed } from '../../../src/server/home-upcoming'
 import { getAnticipatedData } from '../../../src/server/anticipated'
 import { foldSearchTerm, getSearchPageData } from '../../../src/server/search-page'
+import './explore.css'
 
 /**
  * Explorar — a superfície ÚNICA de navegação e busca.
@@ -54,6 +56,9 @@ import { foldSearchTerm, getSearchPageData } from '../../../src/server/search-pa
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Explorar'
+// O <title> da rota BASE diz o que a pagina tem; o H1 e a trilha continuam
+// "Explorar" (ver a nota gemea em /pt/filmes/).
+const META_TITLE = 'Explorar: estreias, em alta e populares'
 const DESCRIPTION =
   'Explore estreias, títulos em alta e populares da Cinerie, e continue de onde você parou.'
 /**
@@ -132,22 +137,35 @@ export async function generateMetadata({
   // resultado é infinita (uma URL por termo) e fina por natureza; deixá-la
   // depender do gate de conteúdo abriria o índice para combinações sem fim.
   if (hasTerm) {
+    const termTitle = `${query} — ${TITLE}`
     return {
-      title: `${query} — ${TITLE}`,
+      title: termTitle,
       description: DESCRIPTION,
       robots: { index: false, follow: true },
       // Canonical na rota BASE, sem o termo.
       alternates: { canonical: canonicalPublicUrl(EXPLORE_PATH) },
+      ...socialMetadata({
+        type: 'website',
+        title: termTitle,
+        description: DESCRIPTION,
+        canonicalUrl: canonicalPublicUrl(EXPLORE_PATH),
+      }),
     }
   }
 
   const { indexability } = await getExploreData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalPublicUrl(EXPLORE_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: META_TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(EXPLORE_PATH),
+    }),
   }
 }
 
@@ -177,6 +195,8 @@ export default async function ExplorePage({
     name: TITLE,
     url: canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
 
   return (

@@ -11,16 +11,20 @@ import { describe, expect, it } from "vitest";
 import {
   buildNewsArticleView,
   buildNewsCard as buildNewsCardAt,
+  buildNewsCorrection,
   buildNewsIndexView as buildNewsIndexViewAt,
   buildNewsRelated,
+  buildPublishableNewsCards,
   bodyParagraphs,
   evaluateArticleIndexability,
   evaluateNewsIndexIndexability,
   formatNewsDate,
+  formatNewsUpdatedLabel,
   formatReadTime,
   isSufficientBody,
   MIN_ARTICLE_BODY_CHARS,
   MIN_NEWS_INDEX_ITEMS,
+  NEWS_INDEX_LIMIT,
   normalizeNewsLocalImagePath,
   type ArticleFactsInput,
   type ArticleTranslationInput,
@@ -95,6 +99,8 @@ function translation(
     schemaTypeRecommendation: null,
     approvedImageAlt: null,
     translationUpdatedAtIso: null,
+    translationCorrectedAtIso: null,
+    correctionNote: null,
     reviewStatus: "published",
     indexStatus: "index",
     translationPublishedAtIso: "2026-06-30T12:00:00.000Z",
@@ -191,6 +197,91 @@ describe("buildNewsIndexView", () => {
     expect(view.featured?.title).toBe("B");
     expect(view.cards.map((c) => c.title)).toEqual(["C", "A"]);
     expect(view.hasMore).toBe(false);
+  });
+});
+
+describe("buildPublishableNewsCards", () => {
+  it("todas as publicaveis, na ordem da listagem — sem o teto da listagem", () => {
+    const items = Array.from({ length: NEWS_INDEX_LIMIT + 6 }, (_, i) =>
+      item({
+        slug: `m${i}`,
+        title: `M${i}`,
+        translationPublishedAtIso: `2026-06-${String((i % 28) + 1).padStart(2, "0")}T00:00:00.000Z`,
+      }),
+    );
+    items.push(item({ slug: "rascunho", title: "Rascunho", reviewStatus: "draft" }));
+
+    const cards = buildPublishableNewsCards(items, NOW);
+    expect(cards).toHaveLength(NEWS_INDEX_LIMIT + 6);
+
+    // A listagem e o COMECO da mesma lista: "publicavel" e "ordem" sao uma regra so.
+    const view = buildNewsIndexView(items);
+    expect(view.totalCount).toBe(cards.length);
+    expect([view.featured, ...view.cards].map((card) => card?.slug)).toEqual(
+      cards.slice(0, NEWS_INDEX_LIMIT).map((card) => card.slug),
+    );
+  });
+});
+
+describe("formatNewsUpdatedLabel", () => {
+  it("so quando a gravacao cai num dia POSTERIOR ao da publicacao", () => {
+    const publicada = "2026-06-30T12:00:00.000Z";
+    expect(formatNewsUpdatedLabel(publicada, "2026-07-02T08:00:00.000Z")).toBe("2 de julho de 2026");
+    // Mesmo dia: a gravacao e, quase sempre, a propria publicacao.
+    expect(formatNewsUpdatedLabel(publicada, "2026-06-30T23:00:00.000Z")).toBeNull();
+    // Gravada antes de ir ao ar (agendada): nao e atualizacao.
+    expect(formatNewsUpdatedLabel(publicada, "2026-06-29T08:00:00.000Z")).toBeNull();
+    expect(formatNewsUpdatedLabel(null, "2026-07-02T08:00:00.000Z")).toBeNull();
+    expect(formatNewsUpdatedLabel(publicada, null)).toBeNull();
+    expect(formatNewsUpdatedLabel(publicada, "nao-e-data")).toBeNull();
+  });
+
+  it("chega a view do artigo, e nao aparece sem gravacao posterior", () => {
+    const atualizada = buildNewsArticleView({
+      facts: facts(),
+      translation: translation({ translationUpdatedAtIso: "2026-07-02T08:00:00.000Z" }),
+      related: [],
+    });
+    expect(atualizada.updatedDateLabel).toBe("2 de julho de 2026");
+
+    const intacta = buildNewsArticleView({ facts: facts(), translation: translation(), related: [] });
+    expect(intacta.updatedDateLabel).toBeNull();
+  });
+});
+
+describe("buildNewsCorrection", () => {
+  it("so com a data E o texto que a redacao registrou — o texto sai como veio, aparado", () => {
+    expect(buildNewsCorrection("2026-07-02T08:00:00.000Z", "  Corrigido o nome do diretor.  ")).toEqual({
+      dateIso: "2026-07-02T08:00:00.000Z",
+      dateLabel: "2 de julho de 2026",
+      note: "Corrigido o nome do diretor.",
+    });
+  });
+
+  it("sem um dos dois campos, ou com data invalida, nao ha nota", () => {
+    expect(buildNewsCorrection(null, "Texto da correcao.")).toBeNull();
+    expect(buildNewsCorrection("2026-07-02T08:00:00.000Z", null)).toBeNull();
+    expect(buildNewsCorrection("2026-07-02T08:00:00.000Z", "   ")).toBeNull();
+    expect(buildNewsCorrection("nao-e-data", "Texto da correcao.")).toBeNull();
+  });
+
+  it("chega a view do artigo com as quebras de linha do CMS; sem correcao, nenhuma nota", () => {
+    const corrigida = buildNewsArticleView({
+      facts: facts(),
+      translation: translation({
+        translationCorrectedAtIso: "2026-07-02T08:00:00.000Z",
+        correctionNote: "Linha um.\nLinha dois.",
+      }),
+      related: [],
+    });
+    expect(corrigida.correction).toEqual({
+      dateIso: "2026-07-02T08:00:00.000Z",
+      dateLabel: "2 de julho de 2026",
+      note: "Linha um.\nLinha dois.",
+    });
+
+    const intacta = buildNewsArticleView({ facts: facts(), translation: translation(), related: [] });
+    expect(intacta.correction).toBeNull();
   });
 });
 

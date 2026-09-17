@@ -44,7 +44,6 @@
  * Uso: pnpm --filter @screena/ratings validate:omdb
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -56,6 +55,7 @@ import { OMDB_PROVIDER_API } from '@screena/omdb-client'
 import { STATIC_AUTHORIZATION } from '@screena/legal'
 import { computeRatingStaleAfter } from '@screena/schemas'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 
 import { mapOmdbPayload } from '../src/omdb/mapping.js'
 import {
@@ -536,7 +536,7 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url }
 
     console.log('--- prisma migrate deploy (schema existente; sem migration nova) ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
       env,
       stdio: 'inherit',
       cwd: dbDir,
@@ -544,7 +544,7 @@ async function main(): Promise<void> {
     record(1, 'migrate deploy aplica sem erro', true, 'ok')
 
     console.log('--- prisma db seed (idiomas/paises/fontes/providers) ---')
-    execFileSync('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
+    await runChild('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
       env,
       stdio: 'inherit',
       cwd: dbDir,

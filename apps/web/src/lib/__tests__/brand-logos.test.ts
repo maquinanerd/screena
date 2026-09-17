@@ -20,6 +20,7 @@ import {
   CINERIE_AREA_LOGOS,
   CINERIE_ORGANIZATION_LOGO,
   CINERIE_SCORE_LOGO,
+  CINERIE_SOCIAL_CARD,
   CINERIE_WORD_HEIGHT,
   type BrandLogoFile,
 } from "../brand-logos";
@@ -77,6 +78,7 @@ const TODOS: readonly [string, BrandLogoFile][] = [
   ),
   ["score", CINERIE_SCORE_LOGO],
   ["organization", CINERIE_ORGANIZATION_LOGO],
+  ["social-card", CINERIE_SOCIAL_CARD],
 ];
 
 describe("a área de cada rota", () => {
@@ -142,5 +144,11 @@ describe("a marca da Organization (JSON-LD) serve ao buscador", () => {
     const real = header(fileOf(CINERIE_ORGANIZATION_LOGO));
     expect(real.format).toBe("png");
     expect(real.height).toBeGreaterThanOrEqual(112);
+  });
+});
+
+describe("o cartão social da marca serve às redes", () => {
+  it("é PNG 1200 × 630, acima do mínimo de 200 px do Facebook", () => {
+    expect(header(fileOf(CINERIE_SOCIAL_CARD))).toEqual({ format: "png", width: 1200, height: 630 });
   });
 });

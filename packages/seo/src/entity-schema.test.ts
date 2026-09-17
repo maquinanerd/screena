@@ -37,6 +37,26 @@ describe("buildSameAs", () => {
     ]);
   });
 
+  it("aceita o TMDB com NAMESPACE por tipo — o formato que a ingestao grava", () => {
+    // `services/ingestion` grava `tmdb_movie`/`tmdb_tv`/`tmdb_person`, nunca
+    // `tmdb`. Ate 2026-09-11 so `tmdb` era reconhecido, e nenhuma ficha emitia o
+    // TMDB no sameAs.
+    expect(buildSameAs([{ source: "tmdb_movie", externalId: "550" }], "movie")).toEqual([
+      "https://www.themoviedb.org/movie/550",
+    ]);
+    expect(buildSameAs([{ source: "tmdb_tv", externalId: "1396" }], "tv")).toEqual([
+      "https://www.themoviedb.org/tv/1396",
+    ]);
+    expect(buildSameAs([{ source: "tmdb_person", externalId: "287" }], "person")).toEqual([
+      "https://www.themoviedb.org/person/287",
+    ]);
+  });
+
+  it("CONTROLE NEGATIVO: namespace de OUTRO tipo nao vira sameAs — o TMDB reusa ids", () => {
+    expect(buildSameAs([{ source: "tmdb_tv", externalId: "550" }], "movie")).toEqual([]);
+    expect(buildSameAs([{ source: "tmdb_movie", externalId: "287" }], "person")).toEqual([]);
+  });
+
   it("inclui Wikidata SOMENTE quando o ID existe e tem forma Q#", () => {
     expect(buildSameAs([{ source: "wikidata", externalId: "Q42" }], "movie")).toEqual([
       "https://www.wikidata.org/wiki/Q42",

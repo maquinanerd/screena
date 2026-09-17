@@ -76,7 +76,16 @@ export function HomeHeroCarousel({ slides }: { slides: readonly HeroSlide[] }): 
     >
       {slide.imageUrl !== null ? (
         // Candidato a LCP: imagem prioritaria, sem lazy.
-        <img alt="" className="hero__image" fetchPriority="high" src={slide.imageUrl} />
+        <img
+          alt=""
+          className="hero__image"
+          fetchPriority="high"
+          // O hero e full-bleed: a arte ocupa a largura da tela inteira. Com o
+          // `srcSet`, o celular deixa de baixar a arte de 1280 px (2026-09-11).
+          sizes="100vw"
+          src={slide.imageUrl}
+          srcSet={slide.imageSrcSet ?? undefined}
+        />
       ) : null}
       <div className="hero__scrim-v" />
       <div className="hero__scrim-h" />

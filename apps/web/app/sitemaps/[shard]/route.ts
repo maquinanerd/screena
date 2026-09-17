@@ -7,6 +7,7 @@
  * local. Shard inexistente -> 404.
  */
 
+import { sitemapCacheControl } from "../../../src/lib/sitemap-cache-control";
 import { getSitemapShardXml } from "../../../src/server/seo/sitemap-index";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,9 @@ export async function GET(
   }
   return new Response(result.xml, {
     status: 200,
-    headers: { "content-type": result.contentType },
+    headers: {
+      "content-type": result.contentType,
+      "cache-control": sitemapCacheControl("sitemap", result.degraded),
+    },
   });
 }

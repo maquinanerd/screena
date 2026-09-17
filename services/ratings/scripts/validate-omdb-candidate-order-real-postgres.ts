@@ -48,7 +48,6 @@
  * Uso: pnpm --filter @screena/ratings validate:omdb-order
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -57,6 +56,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 
 import { createPrismaStaleEntityCandidates } from '../src/persistence/stale-entity-candidates.js'
 
@@ -426,7 +426,7 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url }
 
     console.log('--- prisma migrate deploy ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
       env,
       stdio: 'inherit',
       cwd: dbDir,
@@ -434,7 +434,7 @@ async function main(): Promise<void> {
     record(1, 'migrate deploy aplica sem erro', true, 'ok')
 
     console.log('--- prisma db seed (fontes/providers) ---')
-    execFileSync('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
+    await runChild('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
       env,
       stdio: 'inherit',
       cwd: dbDir,

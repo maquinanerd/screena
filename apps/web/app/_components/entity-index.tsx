@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { EmptyState, PosterGrid } from './ds'
 import type { EntityIndexView } from '../../src/lib/entity-index-presenter'
@@ -60,6 +60,8 @@ export function EntityIndex({
     name: title,
     url: canonicalUrl,
     description,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
 
   if (hasItems) {

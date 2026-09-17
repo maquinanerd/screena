@@ -31,7 +31,7 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
 3. **Zero API externa no render** — paginas publicas indexaveis leem apenas PostgreSQL/cache local.
 4. **Zero Gemini no render** — a IA so gera content_blocks offline, salvos e validados.
 5. **Indexacao total** — toda entidade sincronizada e indexada em todos os idiomas publicados; noindex fica so para casos tecnicos (404, erro, entidade sem slug/traducao). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito de indexacao. _(politica atualizada 2026-07; substitui o antigo gate anti-thin de >= 2 blocos)_
-   - **UMA excecao nomeada, e ela e temporaria.** `season` e `episode` estao
+   - **Excecao temporaria de temporadas e episodios.** `season` e `episode` estao
      SUSPENSOS do indice pela valvula de emergencia de 2026-08-27
      ([`suspended-pages.ts`](apps/web/src/server/seo/suspended-pages.ts)), por
      decisao do dono e com medicao: a pagina de episodio rendia 64 palavras dentro
@@ -41,6 +41,13 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
      dias**. A excecao fica REGISTRADA aqui (e nao so no codigo) porque uma
      invariante com excecao nao escrita e uma invariante que ninguem sabe se esta
      valendo. Ela sai quando a decisao por dado da Fase 3 estiver aplicada.
+   - **Decisoes de SEO do dono de 11/09/2026 (D1-D3)**, cuja integracao foi
+     autorizada em 17/09/2026: galerias de midia ficam `noindex, follow` e fora
+     do sitemap; pessoas usam o mesmo criterio de elegibilidade na pagina e no
+     sitemap; fichas sem localizacao suficiente ficam fora do indice ate o
+     enriquecimento. Os criterios e limites estao em
+     [`DECISOES-DO-DONO-2026-09-11.md`](docs/seo/DECISOES-DO-DONO-2026-09-11.md).
+     Sao excecoes explicitas por tipo, nao a volta do gate de blocos editoriais.
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — `en` e `es` sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES**; nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.

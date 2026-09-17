@@ -12,8 +12,9 @@
  * O CRITERIO DA PROVA e ESTILO COMPUTADO, nunca `markup.includes('classe')`.
  * Uma assercao sobre a classe fica verde com `display:none` na regra, e este
  * repositorio ja teve quatro assercoes passando pelo motivo errado por medir
- * string em vez de render. O CSS injetado e EXTRAIDO de `globals.css` em tempo
- * de teste: transcreve-lo aqui provaria so que a copia concorda consigo mesma.
+ * string em vez de render. O CSS injetado e EXTRAIDO das folhas que a ficha
+ * carrega em tempo de teste: transcreve-lo aqui provaria so que a copia concorda
+ * consigo mesma.
  *
  * LIMITE HONESTO: jsdom nao faz layout. Ele resolve a cascata e devolve valores
  * computados — o suficiente para provar que o no nao foi escondido e que a
@@ -32,7 +33,16 @@ import {
   type SimilarTitleRow,
 } from '../../../src/lib/similar-titles-presenter'
 
-const GLOBALS_CSS = path.join(process.cwd(), 'apps', 'web', 'app', 'globals.css')
+/**
+ * As folhas que a ficha carrega, na ORDEM de carga: a global (do layout) e as do
+ * detalhe (da pagina). A faixa final vive em `detail.css` desde a divisao do CSS
+ * por rota; extrair so da global daria um corte vazio (o controle abaixo acusa).
+ */
+const FICHA_SHEETS = [
+  path.join(process.cwd(), 'apps', 'web', 'app', 'globals.css'),
+  path.join(process.cwd(), 'apps', 'web', 'app', '_components', 'detail-hero.css'),
+  path.join(process.cwd(), 'apps', 'web', 'app', '_components', 'detail.css'),
+] as const
 
 /**
  * Remove blocos de at-rule (`@media`, `@supports`, ...) INTEIROS, contando chaves.
@@ -71,9 +81,9 @@ function stripAtRuleBlocks(css: string): string {
   return out
 }
 
-/** Toda regra de TOPO de `globals.css` que alcanca a faixa final. Extraida. */
+/** Toda regra de TOPO das folhas da ficha que alcanca a faixa final. Extraida. */
 function fichaRules(): string {
-  const css = stripAtRuleBlocks(readFileSync(GLOBALS_CSS, 'utf8'))
+  const css = stripAtRuleBlocks(FICHA_SHEETS.map((file) => readFileSync(file, 'utf8')).join('\n'))
   const blocks: string[] = []
   const pattern = /([^{}]+)\{([^{}]*)\}/g
   let match: RegExpExecArray | null

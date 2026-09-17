@@ -31,7 +31,8 @@ interface ImageSpec {
 }
 const POSTER_SPEC: ImageSpec = { width: 342, height: 513, tmdbSize: "w500" };
 const BACKDROP_SPEC: ImageSpec = { width: 1280, height: 720, tmdbSize: "w1280" };
-const STILL_SPEC: ImageSpec = { width: 640, height: 360, tmdbSize: "original" };
+// `w500`, nao `original` (2026-09-11) — o mesmo still 16:9 de `series-presenter.ts`.
+const STILL_SPEC: ImageSpec = { width: 640, height: 360, tmdbSize: "w500" };
 
 function trimToNull(value: string | null | undefined): string | null {
   if (value == null) return null;
@@ -147,6 +148,8 @@ export interface SeasonPageView {
   overview: string | null;
   dateLabel: string | null;
   airYear: number | null;
+  /** A estreia em ISO `YYYY-MM-DD`: a data completa do JSON-LD. */
+  airDateIso: string | null;
   episodeCount: number | null;
   episodeCountLabel: string | null;
   poster: SeriesImageAsset | null;
@@ -203,6 +206,7 @@ export function buildSeasonPageView(input: SeasonPresenterInput): SeasonPageView
     overview: trimToNull(input.overview),
     dateLabel: formatAirDate(input.airDateIso),
     airYear: yearFromIso(input.airDateIso),
+    airDateIso: input.airDateIso,
     episodeCount,
     episodeCountLabel:
       episodeCount === null
@@ -256,6 +260,8 @@ export interface EpisodePageView {
   overview: string | null;
   dateLabel: string | null;
   airYear: number | null;
+  /** A exibicao em ISO `YYYY-MM-DD`: a data completa do JSON-LD. */
+  airDateIso: string | null;
   runtimeLabel: string | null;
   still: SeriesImageAsset | null;
   prevEpisode: EpisodeNavLink | null;
@@ -285,6 +291,7 @@ export function buildEpisodePageView(input: EpisodePresenterInput): EpisodePageV
     overview: trimToNull(input.overview),
     dateLabel: formatAirDate(input.airDateIso),
     airYear: yearFromIso(input.airDateIso),
+    airDateIso: input.airDateIso,
     runtimeLabel: formatRuntime(input.runtimeMinutes),
     still: imageAsset(input.stillPath, STILL_SPEC),
     prevEpisode: episodeLink(input.seriesSlug, input.seasonNumber, input.prevEpisodeNumber),

@@ -5,7 +5,10 @@ import { serializeJsonLd } from '@screena/seo'
 import { AnticipatedGrid } from '../../_components/anticipated-grid'
 import { EmptyState } from '../../_components/ds'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
-import { getAnticipatedData } from '../../../src/server/anticipated'
+import { socialMetadata } from '../../../src/lib/social-metadata'
+import { ANTICIPATED_PATH } from '../../../src/lib/routes'
+import { anticipatedIndexable, getAnticipatedData } from '../../../src/server/anticipated'
+import './anticipated.css'
 
 /**
  * Em breve / Mais Aguardados — tela 12 do canônico, estrutura EXATA:
@@ -49,17 +52,26 @@ import { getAnticipatedData } from '../../../src/server/anticipated'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Mais Aguardados'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Mais Aguardados"
+// (ver a nota gemea em /pt/filmes/).
+const META_TITLE = 'Mais aguardados: próximas estreias de filmes e séries'
 const DESCRIPTION =
   'Próximas estreias de filmes, séries, temporadas e episódios já confirmadas no catálogo da Cinerie.'
-const ANTICIPATED_PATH = '/pt/em-breve/'
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { total } = await getAnticipatedData()
+  const data = await getAnticipatedData()
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
-    robots: publicRobots(total > 0),
+    // A MESMA regra decide se o hub entra no sitemap (`anticipatedIndexable`).
+    robots: publicRobots(anticipatedIndexable(data)),
     alternates: { canonical: canonicalPublicUrl(ANTICIPATED_PATH) },
+    ...socialMetadata({
+      type: 'website',
+      title: META_TITLE,
+      description: DESCRIPTION,
+      canonicalUrl: canonicalPublicUrl(ANTICIPATED_PATH),
+    }),
   }
 }
 

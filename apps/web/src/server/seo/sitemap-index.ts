@@ -34,6 +34,12 @@
  * eligibility.test.ts` trava que as duas copias continuam identicas — se elas
  * divergirem, o index anuncia N shards que a pagina nao consegue preencher.
  *
+ * IMAGEM (compensacao da decisao do dono D1): a URL de filme e de serie leva
+ * `<image:image>` com a arte que a FICHA exibe — as mesmas colunas, a mesma
+ * licenca (`getImageDisplayAuthorization`, uma leitura por shard) e a mesma lista
+ * (`entityPageImageUrls`) do JSON-LD da ficha. A imagem nao entra no WHERE nem
+ * nas contagens: index, teto por tipo e numero de shards contam URLs.
+ *
  * Invariantes 3/4: zero API externa, zero Gemini; so PostgreSQL local. FAIL-CLOSED
  * em falha de banco. Serializacao XML pura via `@screena/seo`
  * (`renderUrlset`/`renderSitemapIndex`). `planSitemapShards` NAO e o mecanismo de
@@ -42,13 +48,19 @@
 
 import { getPrismaClient } from "@screena/db/server";
 import {
+  describeSitemapCeilingVerdict,
+  evaluateSitemapCeilings,
+  evaluateSitemapTypeCeiling,
   renderSitemapIndex,
   renderUrlset,
   SITEMAP_CONTENT_TYPE,
   SITEMAP_URL_LIMIT,
+  TMDB_FALLBACK_SLUG_SQL_PATTERN,
+  type SitemapCeilingReport,
   type SitemapIndexXmlEntry,
   type SitemapXmlUrl,
 } from "@screena/seo";
+import type { ImageDisplayAuthorization } from "@screena/public-contracts";
 
 import {
   canonicalPublicUrl,
@@ -74,6 +86,38 @@ import {
   IMAGES_INDEX_FLOOR,
   VIDEOS_INDEX_FLOOR,
 } from "../../lib/gallery-presenter";
+import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
+import { entityPageImageUrls } from "../../lib/entity-page-images";
+import { selectMovieMedia } from "../../lib/movie-presenter";
+import { selectSeriesMedia } from "../../lib/series-presenter";
+import {
+  ABOUT_PATH,
+  ANTICIPATED_PATH,
+  AUTHORS_INDEX_PATH,
+  CONTACT_PATH,
+  EDITORIAL_POLICY_PATH,
+  SCORE_METHODOLOGY_PATH,
+  WATCH_PATH,
+} from "../../lib/routes";
+import { anticipatedIndexable, getAnticipatedData } from "../anticipated";
+import { getPersonIndexData } from "../entity-indexes";
+import { getImageDisplayAuthorization } from "../image-license";
+import { getAuthorDirectoryData } from "../news-pages";
+import { getWatchBrowseData, watchBrowseIndexable } from "../watch-browse";
+import {
+  absentDecisionFor,
+  isDecisionGateArmed,
+  readDecisionCoverage,
+  SITEMAP_DECISION_GATE_MIN_ROWS,
+  unarmedDecisionEntities,
+  type DecisionCoverage,
+  type DecisionEntity,
+} from "./decision-coverage";
+
+// Reexportados daqui de proposito: a suite de governanca e o validador real ja
+// importavam estes nomes deste modulo, e a regra continua sendo uma so.
+export { isDecisionGateArmed, SITEMAP_DECISION_GATE_MIN_ROWS };
+export type { DecisionCoverage, DecisionEntity };
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -156,10 +200,36 @@ export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [
   "episodes",
 ];
 
-/** O que o sitemap PUBLICA hoje: o suportado menos o suspenso. */
+/**
+ * FORA DO SITEMAP POR DECISAO DO DONO — D1, 2026-09-11
+ * (`docs/seo/DECISOES-DO-DONO-2026-09-11.md`).
+ *
+ * Nao e valvula: a valvula acima e temporaria e morre quando a politica por dado
+ * chegar. Esta lista e uma DECISAO — galeria nao indexa como pagina propria.
+ * Medido na auditoria de SEO: 69.016 URLs de galeria, 42,7% do sitemap, com 0
+ * palavras de conteudo principal e sem `<main>`. Elas nao usavam extensao de
+ * sitemap de imagem nem de video: so pediam rastreio, sem alimentar Google
+ * Imagens ou Videos.
+ *
+ * O par, como na valvula: a pagina de galeria passa a emitir `noindex, follow`
+ * pelo portao `evaluateGalleryGate` (`@screena/seo`). As duas coisas, ou
+ * nenhuma. E o shard antigo (`sitemap-pt-BR-imagens-1.xml`) responde 404, pelo
+ * mesmo mecanismo do tipo suspenso.
+ */
+export const OWNER_EXCLUDED_SITEMAP_TYPES: readonly EntitySitemapType[] = ["imagens", "videos"];
+
+/** O que o sitemap PUBLICA hoje: o suportado, menos o suspenso, menos o excluido por decisao. */
 const ENTITY_TYPES: readonly EntitySitemapType[] = SUPPORTED_ENTITY_TYPES.filter(
-  (type) => !SUSPENDED_SITEMAP_TYPES.includes(type),
+  (type) => !SUSPENDED_SITEMAP_TYPES.includes(type) && !OWNER_EXCLUDED_SITEMAP_TYPES.includes(type),
 );
+
+/**
+ * Os locales que a PAGINA considera publicados (`synopsis-language.ts`), como
+ * parametro de SQL. O portao de localizacao do sitemap le exatamente as mesmas
+ * linhas de traducao que a pagina le para titulo e meta — outro conjunto aqui e
+ * sitemap e meta robots discordando de novo.
+ */
+const PUBLISHED_LOCALE_CODES: string[] = [...PUBLISHED_LOCALES];
 
 /**
  * Tipos aceitos por `parseShardId`. Tipo suspenso NAO entra: o shard antigo
@@ -169,7 +239,7 @@ const ENTITY_TYPES: readonly EntitySitemapType[] = SUPPORTED_ENTITY_TYPES.filter
 const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
 
 /**
- * TETO DECLARADO DE URLs DO SITEMAP INTEIRO.
+ * TETO DECLARADO DE URLs DO SITEMAP — HISTORICO DO TETO GLOBAL.
  *
  * POR QUE ISTO EXISTE. Em 2026-08-22 o sitemap tinha 53.054 URLs. Em 2026-08-27
  * tinha 4.069.444 — 77x em cinco dias — e NENHUM alarme disparou. Nao disparou
@@ -180,7 +250,11 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * codigo e nao houve linha de log: o catalogo cresceu e o sitemap cresceu junto,
  * calado. Sem um teto, a proxima vez tambem passaria em silencio.
  *
- * O teto e sobre o TOTAL PUBLICADO (a soma das contagens de `ENTITY_TYPES`),
+ * ESTE BLOCO E HISTORICO: descreve o teto GLOBAL, vigente de 2026-08-27 a
+ * 2026-09-11. Ele fica porque explica por que existe teto — e por que ele deixou
+ * de ser global. A regra VIGENTE e `SITEMAP_TYPE_URL_CEILING`, logo abaixo.
+ *
+ * O teto ERA sobre o TOTAL PUBLICADO (a soma das contagens de `ENTITY_TYPES`),
  * nao sobre o shard. Ele nao substitui a politica por dado da Fase 3 — e o
  * detector de fumaca que avisa quando a politica falhou.
  *
@@ -215,168 +289,66 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * numero maior escrito aqui. Subir este valor sem ligar o gate por dado so
  * troca a data do estouro.
  */
-export const SITEMAP_TOTAL_URL_CEILING = 300_000;
-
-/** Erro do teto — separado para o teste apontar para a causa, nao para a forma. */
-export class SitemapCeilingExceededError extends Error {
-  constructor(
-    readonly total: number,
-    readonly ceiling: number,
-    readonly byType: Readonly<Record<string, number>>,
-  ) {
-    super(
-      `sitemap: ${total} URLs excedem o teto declarado de ${ceiling}. ` +
-        `Por tipo: ${Object.entries(byType)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(" ")}. ` +
-        "Ou a politica de indexabilidade parou de filtrar, ou o catalogo mudou de " +
-        "ordem de grandeza. Ate alguem olhar, o sitemap sai vazio.",
-    );
-    this.name = "SitemapCeilingExceededError";
-  }
-}
-
 /**
- * OS TIPOS DE `page_indexability_decisions` (nomes SINGULARES do enum
- * `EntityType`), que sao os nomes de decisao — nao os nomes de shard.
+ * TETO VIGENTE: POR TIPO (desde 2026-09-11).
+ *
+ * O teto global descrito acima tinha um defeito que a auditoria de SEO mediu com
+ * data: um tipo so empurrava a soma, e o corte apagava junto os tipos que nao
+ * tinham nada com isso. Em 11/09 as galerias eram 42,7% do sitemap, e a projecao
+ * linear punha o estouro entre ~21/10 e ~06/11/2026 — levando filmes, series e
+ * noticias para fora do indice por causa delas.
+ *
+ * Agora cada tipo e avaliado SOZINHO (`evaluateSitemapCeilings`, em
+ * `@screena/seo`): estourar o teto tira do sitemap SO aquele tipo, e o aviso
+ * chega antes do corte, em 80%, 90% e 95%. Continua fail-closed — por tipo. Um
+ * tipo acima do teto NAO e cortado nas primeiras N URLs: publicar um recorte que
+ * ninguem escolheu seria pior do que nao publicar o tipo.
+ *
+ * Filme e serie ficam em ~4x o volume medido em 2026-08-27 (34.799 e 32.392) — a
+ * mesma ordem de folga do teto global, agora sem que o crescimento de um tipo
+ * consuma a folga do outro. Pessoa tem o teto de filme de proposito: o portao de
+ * pessoa (decisao do dono D2) vai abrir, e o 0 medido nao e um volume.
+ *
+ * Tipos suspensos (temporada, episodio) e tipos fora do sitemap por decisao do
+ * dono tambem tem teto declarado: se voltarem a publicar, voltam com o detector
+ * ligado. Contra o evento de 2026-08-27, o teto de episodio reprovaria as
+ * 3.793.672 URLs medidas por 25x.
+ *
+ * Subir um teto continua sendo mudanca de codigo revisada. O que segura o
+ * crescimento e a politica por DADO de cada tipo, nao um numero maior aqui.
  */
-export type DecisionEntity = "movie" | "tv" | "person" | "season" | "episode";
-
-const DECISION_ENTITIES: readonly DecisionEntity[] = [
-  "movie",
-  "tv",
-  "person",
-  "season",
-  "episode",
-];
-
-/** Quantas decisoes VIGENTES existem por tipo de entidade, naquele idioma. */
-export type DecisionCoverage = Readonly<Record<DecisionEntity, number>>;
-
-const EMPTY_COVERAGE: DecisionCoverage = Object.freeze({
-  movie: 0,
-  tv: 0,
-  person: 0,
-  season: 0,
-  episode: 0,
+export const SITEMAP_TYPE_URL_CEILING: Readonly<Record<EntitySitemapType, number>> = Object.freeze({
+  movies: 150_000,
+  series: 150_000,
+  people: 150_000,
+  news: 50_000,
+  seasons: 150_000,
+  episodes: 150_000,
+  imagens: 150_000,
+  videos: 150_000,
 });
 
 /**
- * PISO DE LINHAS QUE ARMA O GATE ESTRITO, POR TIPO DE ENTIDADE.
- *
- * O QUE MUDOU. Ate aqui a regra do sitemap era `NOT EXISTS (... decision <>
- * 'index')`: **linha ausente fazia a URL ENTRAR**. Como
- * `page_indexability_decisions` nunca foi escrita, a clausula nunca excluiu uma
- * linha sequer e o site indexava por OMISSAO. A regra agora e a inversa —
- * entra quem TEM linha vigente dizendo `index`.
- *
- * POR QUE A INVERSAO NAO PODE SER INCONDICIONAL. Inverter a regra e povoar a
- * tabela sao duas coisas, e a segunda mora no banco de PRODUCAO: quem escreve e
- * `catalog index-decisions --apply` (services/ingestion), rodando no ciclo
- * horario. Se o codigo invertido chegar ao ar ANTES de o produtor ter rodado, a
- * tabela esta vazia, todo COALESCE cai no default e o sitemap inteiro vai a
- * zero. Nao e uma desindexacao — sitemap nao desindexa, so a meta tag faz isso
- * —, mas e a descoberta do dominio inteiro parando de um deploy para o outro,
- * sem ninguem pedir.
- *
- * Esta e a licao que o projeto ja pagou duas vezes: uma correcao que so esta
- * certa se um humano lembrar de rodar um comando ANTES, na ordem certa, e uma
- * correcao que vai falhar (ver `docs/operations/legal-supersede-carries-rows.md`
- * e a precondicao de licenca de imagem, que tambem mora no banco e nao viaja no
- * deploy). Entao o codigo detecta a precondicao SOZINHO.
- *
- * COMO FUNCIONA. Uma consulta agrupada conta as decisoes vigentes por tipo. Um
- * tipo com pelo menos este numero de linhas tem o gate ARMADO: decisao ausente
- * vale `noindex`. Abaixo disso o gate fica DESARMADO e a decisao ausente segue
- * valendo `index` — exatamente o comportamento antigo —, e o motivo vai para o
- * log a cada requisicao. Nao ha flag, nao ha env e nao ha segundo deploy: no
- * ciclo seguinte ao primeiro `--apply`, o gate se arma sozinho.
- *
- * POR QUE POR TIPO, E NAO GLOBAL. A CLI aceita `--entity person` (esta no
- * proprio help). Um numero global armaria o gate do catalogo inteiro a partir de
- * uma execucao que so decidiu pessoas, e filme e serie sairiam do sitemap sem
- * nunca terem sido avaliados. Por tipo, cada gate espera a sua propria prova.
- *
- * POR QUE 1.000. E a linha que o dono declarou como limite de sanidade para
- * esta mudanca ("abaixo de 1.000 URLs, pare e relate"). Fica bem acima de
- * qualquer execucao parcial acidental e MUITO abaixo de uma execucao completa
- * (o catalogo publicado em 2026-08-27 tinha 34.799 filmes e 32.392 series).
+ * Loga o relatorio do teto: corte como ERRO, alerta como AVISO. Tipo `ok` nao
+ * gera linha — log que fala a cada requisicao vira ruido e deixa de ser lido.
  */
-export const SITEMAP_DECISION_GATE_MIN_ROWS = 1_000;
-
-/** `true` quando aquele tipo ja tem decisoes suficientes para o gate valer. */
-export function isDecisionGateArmed(
-  coverage: DecisionCoverage,
-  entity: DecisionEntity,
-): boolean {
-  return coverage[entity] >= SITEMAP_DECISION_GATE_MIN_ROWS;
-}
-
-/**
- * O valor que uma decisao AUSENTE assume no SQL.
- *
- * Armado -> `noindex` (a entidade sem linha nao entra). Desarmado -> `index`
- * (comportamento antigo, ate o produtor rodar). E este par de strings que
- * atravessa como PARAMETRO para dentro do `COALESCE` de cada consulta — o SQL
- * tem UMA forma so, e o que muda e o dado.
- */
-function absentDecisionFor(
-  coverage: DecisionCoverage,
-  entity: DecisionEntity,
-): "index" | "noindex" {
-  return isDecisionGateArmed(coverage, entity) ? "noindex" : "index";
-}
-
-/**
- * Conta as decisoes vigentes por tipo — UMA consulta para os cinco.
- *
- * A CONTAGEM E LIMITADA AO PISO, DE PROPOSITO. Um `GROUP BY entity_type` sobre a
- * tabela inteira leria TODAS as linhas vigentes so para descobrir um booleano
- * ("passou de 1.000?"). Isso escala com o catalogo: ha uma decisao por episodio,
- * e episodio ja foi 3,79 milhoes de URLs. Numa rota `force-dynamic`, chamada a
- * cada requisicao de sitemap, isso vira um scan de milhoes de tuplas por
- * requisicao — o tipo de custo que so aparece meses depois, quando ninguem mais
- * associa a causa.
- *
- * O `LIMIT` dentro do subselect corta em `SITEMAP_DECISION_GATE_MIN_ROWS` por
- * tipo: no maximo ~5.000 tuplas lidas, sempre, independentemente do tamanho da
- * tabela. `n` NAO e a contagem real — e a contagem SATURADA no piso, que e a
- * unica coisa que a decisao precisa. O indice usado e o unique parcial
- * `page_indexability_decisions_current_unique` (entity_type, entity_id,
- * language_code) WHERE is_current, que ja e exatamente o conjunto varrido.
- *
- * `entity_type IS NOT NULL` esta implicito: a lista de tipos vem de `VALUES`, e
- * linha de ARTIGO (que divide a tabela via `doc_kind`) tem `entity_type` nulo e
- * nunca casa. Artigo tem o proprio gate em `article_translations.index_status`.
- *
- * Falha de banco NAO e tratada aqui: ela sobe e cai no fail-closed de quem
- * chamou (index vazio / shard 404), do mesmo jeito que qualquer outra consulta
- * do sitemap. Devolver "cobertura zero" em cima de um erro seria o pior dos
- * mundos: publicaria o catalogo inteiro com o gate desarmado por causa de um
- * timeout.
- */
-async function readDecisionCoverage(
-  prisma: PrismaClient,
-  language: string,
-): Promise<DecisionCoverage> {
-  const teto = SITEMAP_DECISION_GATE_MIN_ROWS;
-  const rows = await prisma.$queryRaw<{ entity_type: string; n: number }[]>`
-    SELECT t.entity_type AS entity_type,
-           (SELECT COUNT(*)::int FROM (
-              SELECT 1 FROM page_indexability_decisions d
-               WHERE d.entity_type = t.entity_type::"EntityType"
-                 AND d.language_code = ${language}
-                 AND d.is_current = true
-               LIMIT ${teto}
-            ) AS amostra) AS n
-    FROM (VALUES ('movie'),('tv'),('person'),('season'),('episode')) AS t(entity_type)`;
-  const coverage: Record<DecisionEntity, number> = { ...EMPTY_COVERAGE };
-  for (const row of rows) {
-    const key = row.entity_type as DecisionEntity;
-    if (DECISION_ENTITIES.includes(key)) coverage[key] = Number(row.n) || 0;
+function logCeilingReport(report: SitemapCeilingReport): void {
+  for (const verdict of report.verdicts) {
+    if (verdict.excluded) console.error(`[sitemap] ${describeSitemapCeilingVerdict(verdict)}`);
   }
-  return coverage;
+  for (const verdict of report.alerts) {
+    console.warn(`[sitemap] ${describeSitemapCeilingVerdict(verdict)}`);
+  }
 }
+
+/*
+ * A REGRA DE COBERTURA - quanto do tipo a politica ja decidiu, e o que a
+ * AUSENCIA de decisao vale por causa disso - mora em `decision-coverage.ts` desde
+ * 2026-09-11. Ela passou a servir tambem o `<meta robots>` da pagina, e duas
+ * copias da mesma regra sao exatamente a divergencia (d) que a auditoria de SEO
+ * achou. O porque do piso de 1.000, do armar por tipo e da contagem saturada
+ * esta documentado la, junto do codigo.
+ */
 
 /**
  * Registra, uma vez por requisicao, quais gates ainda estao DESARMADOS.
@@ -386,7 +358,7 @@ async function readDecisionCoverage(
  * exatamente assim que 78 shards nasceram sem uma linha de log.
  */
 function warnUnarmedGates(coverage: DecisionCoverage): void {
-  const unarmed = DECISION_ENTITIES.filter((e) => !isDecisionGateArmed(coverage, e));
+  const unarmed = unarmedDecisionEntities(coverage);
   if (unarmed.length === 0) return;
   console.error(
     "[sitemap] gate de decisao DESARMADO para: " +
@@ -432,6 +404,11 @@ const ENTITY_PRIORITY: Readonly<Record<EntitySitemapType, number>> = {
 export interface SitemapXmlResponse {
   xml: string;
   contentType: string;
+  /**
+   * `true` quando o XML e o FAIL-CLOSED de uma falha, e nao a lista do momento.
+   * A rota responde igual, mas manda a borda nao guardar (`sitemap-cache-control.ts`).
+   */
+  degraded?: boolean;
 }
 
 export interface SitemapPageOptions {
@@ -440,6 +417,12 @@ export interface SitemapPageOptions {
    * (limite reduzido) — nunca muda o limite de producao.
    */
   limit?: number;
+  /**
+   * As decisoes dos hubs que dependem do loader da propria pagina. Default =
+   * `defaultStaticHubDecisions` (os MESMOS loaders das paginas). Existe para teste
+   * com banco falso — nunca muda a regra de producao.
+   */
+  staticHubDecisions?: () => Promise<StaticHubDecisions>;
 }
 
 interface Aggregate {
@@ -450,6 +433,12 @@ interface Aggregate {
 interface PageRow {
   slug: string;
   lastmod: Date | null;
+  /**
+   * So filme e serie: as colunas de arte da FICHA, lidas na MESMA consulta da
+   * pagina do shard — nenhuma consulta por linha. Ausentes nos demais tipos.
+   */
+  poster_path?: string | null;
+  backdrop_path?: string | null;
 }
 
 function resolveLimit(opts?: SitemapPageOptions): number {
@@ -486,6 +475,22 @@ async function aggregateEntity(
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'movie' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -496,6 +501,22 @@ async function aggregateEntity(
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'tv' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -765,10 +786,27 @@ async function pageEntity(
   const absentPerson = absentDecisionFor(coverage, "person");
   if (type === "movies") {
     return prisma.$queryRaw<PageRow[]>`
-      SELECT s.slug AS slug, m.updated_at AS lastmod
+      SELECT s.slug AS slug, m.updated_at AS lastmod,
+        m.poster_path AS poster_path, m.backdrop_path AS backdrop_path
       FROM slugs s JOIN movies m ON m.id = s.entity_id
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'movie' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -777,10 +815,27 @@ async function pageEntity(
   }
   if (type === "series") {
     return prisma.$queryRaw<PageRow[]>`
-      SELECT s.slug AS slug, t.updated_at AS lastmod
+      SELECT s.slug AS slug, t.updated_at AS lastmod,
+        t.poster_path AS poster_path, t.backdrop_path AS backdrop_path
       FROM slugs s JOIN tv_shows t ON t.id = s.entity_id
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
+        -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
+        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
+        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND (BTRIM(COALESCE(et.title, '')) <> ''
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'tv' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -847,7 +902,11 @@ async function pageEntity(
     ORDER BY at.id ASC LIMIT ${limit} OFFSET ${offset}`;
 }
 
-function pageRowsToUrls(type: SimpleSitemapType, rows: PageRow[]): SitemapXmlUrl[] {
+function pageRowsToUrls(
+  type: SimpleSitemapType,
+  rows: PageRow[],
+  imageAuthorization: ImageDisplayAuthorization | null,
+): SitemapXmlUrl[] {
   const urls: SitemapXmlUrl[] = [];
   for (const row of rows) {
     const slug = row.slug.trim();
@@ -859,9 +918,50 @@ function pageRowsToUrls(type: SimpleSitemapType, rows: PageRow[]): SitemapXmlUrl
       lastmod: isoOrNull(row.lastmod),
       changefreq: ENTITY_CHANGEFREQ[type],
       priority: ENTITY_PRIORITY[type],
+      images: pageRowImages(type, row, imageAuthorization),
     });
   }
   return urls;
+}
+
+/**
+ * As `<image:image>` da URL de uma ficha de filme ou de serie: EXATAMENTE a arte
+ * que a ficha exibe e declara no JSON-LD. O caminho e o da propria ficha —
+ * `selectMovieMedia`/`selectSeriesMedia` sob a autorizacao de
+ * `getImageDisplayAuthorization`, e `entityPageImageUrls` para a lista —, e por
+ * isso licenca negada, caminho malformado ou coluna vazia tiram a imagem do
+ * sitemap pelo mesmo motivo que a tiram da tela.
+ *
+ * A imagem nao muda CONTAGEM: a URL entra ou sai pelo WHERE, e o index, o teto
+ * por tipo e o numero de shards continuam contando URLs.
+ */
+function pageRowImages(
+  type: SimpleSitemapType,
+  row: PageRow,
+  imageAuthorization: ImageDisplayAuthorization | null,
+): SitemapXmlUrl["images"] {
+  if (imageAuthorization === null) return null;
+  const art = { posterPath: row.poster_path ?? null, backdropPath: row.backdrop_path ?? null };
+  const media =
+    type === "movies"
+      ? selectMovieMedia(art, imageAuthorization)
+      : type === "series"
+        ? selectSeriesMedia(art, imageAuthorization)
+        : null;
+  if (media === null) return null;
+  return entityPageImageUrls(media, SITE_URL).map((loc) => ({ loc }));
+}
+
+/**
+ * A licenca de imagem, lida UMA vez por shard e so nos tipos cuja ficha exibe
+ * arte (filme e serie). E a mesma leitura da ficha, fail-closed: com o banco
+ * negando, a URL continua no shard, sem imagem.
+ */
+async function imageAuthorizationFor(
+  prisma: PrismaClient,
+  type: SimpleSitemapType,
+): Promise<ImageDisplayAuthorization | null> {
+  return type === "movies" || type === "series" ? getImageDisplayAuthorization(prisma) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -951,20 +1051,95 @@ async function pageSeasonEpisode(
 
 // ---------------------------------------------------------------------------
 // Rotas estaticas: pequena lista fixa (shard proprio, em memoria). O gate usa os
-// MESMOS evaluators das paginas, alimentado pelas CONTAGENS ja calculadas.
+// MESMOS evaluators das paginas, alimentado pelas CONTAGENS ja calculadas — e,
+// para os hubs cuja decisao nao sai dessas contagens, pelo loader da PROPRIA
+// pagina (`StaticHubDecisions`).
 // ---------------------------------------------------------------------------
+
+/** A decisao de `index` dos hubs que NAO sai das contagens do sitemap. */
+export interface StaticHubDecisions {
+  /** `/pt/pessoas/`: a listagem decide pela contagem DELA, nao pela do portao D2. */
+  readonly people: boolean;
+  /** `/pt/onde-assistir/`: indexa quando ha oferta licenciada. */
+  readonly watch: boolean;
+  /** `/pt/em-breve/`: indexa quando ha estreia anunciada. */
+  readonly anticipated: boolean;
+  /** A data da oferta mais recente do hub de streaming, quando existe. */
+  readonly watchUpdatedAtIso: string | null;
+  /**
+   * As paginas de autor com materia no ar, com a data da mais recente de cada uma.
+   * Vazio = nem `/pt/autores/` entra: a listagem sem autor e `noindex`.
+   */
+  readonly authors: readonly { readonly path: string; readonly lastmod: string | null }[];
+}
+
+/**
+ * As MESMAS perguntas que as paginas fazem para decidir o proprio robots.
+ *
+ * AUDITORIA DE SEO (11/09/2026, secao 3.7): `/pt/pessoas/`, `/pt/onde-assistir/` e
+ * `/pt/em-breve/` diziam `index` na pagina e ficavam fora do shard estatico. A de
+ * pessoas porque o shard decidia pela contagem do SITEMAP de pessoas (o portao
+ * D2), e nao pela da listagem; as outras duas porque nem estavam na lista. Chamar
+ * o loader da pagina, e nao reescrever a regra aqui, e o que impede a divergencia
+ * de voltar.
+ */
+export async function defaultStaticHubDecisions(): Promise<StaticHubDecisions> {
+  const [people, watch, anticipated, authorDirectory] = await Promise.all([
+    getPersonIndexData(),
+    getWatchBrowseData(),
+    getAnticipatedData(),
+    getAuthorDirectoryData(),
+  ]);
+  return {
+    people: people.indexability.decision === "index",
+    watch: watchBrowseIndexable(watch),
+    anticipated: anticipatedIndexable(anticipated),
+    watchUpdatedAtIso: watch.updatedAtIso,
+    authors: authorDirectory.authors.map((author) => ({
+      path: author.href,
+      lastmod: author.latestDateIso,
+    })),
+  };
+}
 
 interface StaticSpec {
   path: string;
   changefreq: string;
   priority: number;
   eligible: boolean;
+  /** Data real da ultima mudanca do que o hub lista; `null` quando nao ha uma honesta. */
+  lastmod: string | null;
 }
 
-function eligibleStaticRoutes(counts: Record<EntitySitemapType, number>): SitemapXmlUrl[] {
+/** O ISO mais recente da lista, ou `null`. ISO em UTC compara como texto. */
+function latestIso(values: readonly (string | null)[]): string | null {
+  let latest: string | null = null;
+  for (const value of values) {
+    if (value !== null && (latest === null || value > latest)) latest = value;
+  }
+  return latest;
+}
+
+/**
+ * As rotas estaticas elegiveis, com `lastmod`.
+ *
+ * Sem `hubs`, os hubs que dependem do loader da pagina (pessoas, onde assistir,
+ * em breve, autores) ficam de fora: e o uso do INDEX, que so precisa saber se o
+ * shard existe e nao deve pagar essas leituras a cada visita de crawler. O shard
+ * passa `hubs` e lista tudo.
+ *
+ * `lastmod` so com data real (auditoria de SEO: "static-1 sem lastmod"): o hub de
+ * filmes muda quando um filme listavel muda; a home, quando qualquer lista dela
+ * muda. A listagem de pessoas fica sem data: o maximo que o sitemap conhece e o
+ * das pessoas que passam o portao D2, e a listagem mostra todas.
+ */
+export function eligibleStaticRoutes(
+  counts: Record<EntitySitemapType, number>,
+  maxLastmod: Record<EntitySitemapType, Date | null>,
+  hubs?: StaticHubDecisions,
+): SitemapXmlUrl[] {
   const moviesIdx = evaluateEntityIndexIndexability({ itemCount: counts.movies }).decision === "index";
   const seriesIdx = evaluateEntityIndexIndexability({ itemCount: counts.series }).decision === "index";
-  const peopleIdx = evaluateEntityIndexIndexability({ itemCount: counts.people }).decision === "index";
   const newsIdx = evaluateNewsIndexIndexability({ itemCount: counts.news }).decision === "index";
   const homeIdx =
     evaluatePortalIndexability({
@@ -975,21 +1150,58 @@ function eligibleStaticRoutes(counts: Record<EntitySitemapType, number>): Sitema
       populatedSectionCount: countPopulatedSections([counts.movies, counts.series, counts.people, counts.news]),
     }).decision === "index";
 
+  const movies = isoOrNull(maxLastmod.movies);
+  const series = isoOrNull(maxLastmod.series);
+  const news = isoOrNull(maxLastmod.news);
+
   const specs: StaticSpec[] = [
-    { path: HOME_PATH, changefreq: "weekly", priority: 0.8, eligible: homeIdx },
-    { path: MOVIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: moviesIdx },
-    { path: SERIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: seriesIdx },
-    { path: PEOPLE_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: peopleIdx },
-    { path: NEWS_INDEX_PATH, changefreq: "daily", priority: 0.7, eligible: newsIdx },
-    { path: EXPLORE_PATH, changefreq: "weekly", priority: 0.6, eligible: exploreIdx },
+    { path: HOME_PATH, changefreq: "weekly", priority: 0.8, eligible: homeIdx, lastmod: latestIso([movies, series, news]) },
+    { path: MOVIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: moviesIdx, lastmod: movies },
+    { path: SERIES_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: seriesIdx, lastmod: series },
+    { path: PEOPLE_INDEX_PATH, changefreq: "weekly", priority: 0.7, eligible: hubs?.people === true, lastmod: null },
+    { path: NEWS_INDEX_PATH, changefreq: "daily", priority: 0.7, eligible: newsIdx, lastmod: news },
+    { path: EXPLORE_PATH, changefreq: "weekly", priority: 0.6, eligible: exploreIdx, lastmod: latestIso([movies, series]) },
+    {
+      path: WATCH_PATH,
+      changefreq: "daily",
+      priority: 0.6,
+      eligible: hubs?.watch === true,
+      lastmod: hubs?.watchUpdatedAtIso ?? null,
+    },
+    { path: ANTICIPATED_PATH, changefreq: "daily", priority: 0.6, eligible: hubs?.anticipated === true, lastmod: null },
   ];
+
+  // Autores: a listagem entra quando ha autor com materia no ar (a MESMA regra do
+  // robots dela), e cada pagina de autor entra com a data da materia mais recente.
+  const authors = hubs?.authors ?? [];
+  specs.push({
+    path: AUTHORS_INDEX_PATH,
+    changefreq: "weekly",
+    priority: 0.4,
+    eligible: authors.length > 0,
+    lastmod: latestIso(authors.map((author) => author.lastmod)),
+  });
+  for (const author of authors) {
+    specs.push({ path: author.path, changefreq: "weekly", priority: 0.4, eligible: true, lastmod: author.lastmod });
+  }
+
+  // Paginas institucionais: texto fixo, sem banco, `index` sempre que o ambiente
+  // indexa (o gate de ambiente e o mesmo das demais). Entram so no SHARD, como os
+  // hubs acima — o INDEX decide a existencia do shard pelas contagens, e a prova
+  // de fail-closed (banco fora = index sem entradas) continua valendo. Sem
+  // `lastmod`: um texto sem registro de mudanca nao tem data honesta.
+  if (hubs !== undefined) {
+    for (const path of [ABOUT_PATH, EDITORIAL_POLICY_PATH, SCORE_METHODOLOGY_PATH, CONTACT_PATH]) {
+      specs.push({ path, changefreq: "monthly", priority: 0.3, eligible: true, lastmod: null });
+    }
+  }
 
   const urls: SitemapXmlUrl[] = [];
   for (const spec of specs) {
     if (!spec.eligible) continue;
     const loc = canonicalPublicUrl(spec.path);
     if (loc === null) continue;
-    urls.push({ loc, lastmod: null, changefreq: spec.changefreq, priority: spec.priority });
+    urls.push({ loc, lastmod: spec.lastmod, changefreq: spec.changefreq, priority: spec.priority });
   }
   return urls;
 }
@@ -998,9 +1210,15 @@ async function allEntityCounts(
   prisma: PrismaClient,
   language: string,
   coverage: DecisionCoverage,
-): Promise<{ counts: Record<EntitySitemapType, number>; maxLastmod: Record<EntitySitemapType, Date | null> }> {
+): Promise<{
+  counts: Record<EntitySitemapType, number>;
+  maxLastmod: Record<EntitySitemapType, Date | null>;
+  /** Tipos cuja contagem FALHOU: saem do index, e so eles. */
+  unavailable: EntitySitemapType[];
+}> {
   const counts = {} as Record<EntitySitemapType, number>;
   const maxLastmod = {} as Record<EntitySitemapType, Date | null>;
+  const unavailable: EntitySitemapType[] = [];
   // Tipo suspenso fica em ZERO, e nao `undefined`: `eligibleStaticRoutes` le
   // este mapa por chave, e um `undefined` tipado como `number` atravessaria o
   // typecheck para explodir so no render.
@@ -1010,12 +1228,26 @@ async function allEntityCounts(
   }
   // Uma consulta de CONTAGEM (+max) por tipo PUBLICADO — nunca busca URLs, e
   // nunca conta o que nao vai ao sitemap.
+  //
+  // Cada tipo no SEU try (2026-09-11). Antes, a excecao de uma unica contagem
+  // atravessava ate o catch do index e o sitemap inteiro saia vazio por causa de
+  // um tipo. Agora a consulta que falha tira do index SO o seu tipo — e se o
+  // banco inteiro caiu, todos falham um a um e o resultado converge para vazio
+  // pelo motivo certo.
   for (const type of ENTITY_TYPES) {
-    const agg = await aggregateEntity(prisma, type, language, coverage);
-    counts[type] = agg.count;
-    maxLastmod[type] = agg.maxLastmod;
+    try {
+      const agg = await aggregateEntity(prisma, type, language, coverage);
+      counts[type] = agg.count;
+      maxLastmod[type] = agg.maxLastmod;
+    } catch (error) {
+      console.error(
+        `[sitemap] a contagem do tipo ${type} falhou; SO este tipo sai do index, os demais seguem:`,
+        error,
+      );
+      unavailable.push(type);
+    }
   }
-  return { counts, maxLastmod };
+  return { counts, maxLastmod, unavailable };
 }
 
 function shardId(language: string, type: string, page: number): string {
@@ -1039,19 +1271,28 @@ export async function getSitemapIndexXml(
   try {
     const prisma = client ?? getPrismaClient();
     // A COBERTURA vem ANTES de qualquer contagem: e ela que decide o que uma
-    // decisao ausente significa em todas as consultas seguintes.
+    // decisao ausente significa em todas as consultas seguintes. Se ELA falhar,
+    // nenhum tipo pode ser contado com a regra certa — e o unico caso em que o
+    // index inteiro ainda sai vazio (catch abaixo).
     const coverage = await readDecisionCoverage(prisma, language);
     warnUnarmedGates(coverage);
-    const { counts, maxLastmod } = await allEntityCounts(prisma, language, coverage);
+    const { counts, maxLastmod, unavailable } = await allEntityCounts(prisma, language, coverage);
 
-    // TETO: antes de anunciar um shard sequer. Ver SITEMAP_TOTAL_URL_CEILING.
-    const total = ENTITY_TYPES.reduce((sum, type) => sum + counts[type], 0);
-    if (total > SITEMAP_TOTAL_URL_CEILING) {
-      throw new SitemapCeilingExceededError(total, SITEMAP_TOTAL_URL_CEILING, counts);
+    // TETO POR TIPO: antes de anunciar um shard sequer. Ver SITEMAP_TYPE_URL_CEILING.
+    // So entra na avaliacao quem conseguiu ser contado; tipo `unavailable` ja
+    // ficou fora pelo catch da propria contagem.
+    const publishedCounts: Record<string, number> = {};
+    for (const type of ENTITY_TYPES) {
+      if (!unavailable.includes(type)) publishedCounts[type] = counts[type];
     }
+    const ceilingReport = evaluateSitemapCeilings(publishedCounts, SITEMAP_TYPE_URL_CEILING);
+    logCeilingReport(ceilingReport);
 
     const entries: SitemapIndexXmlEntry[] = [];
     for (const type of ENTITY_TYPES) {
+      // Fora do index: tipo cuja contagem falhou ou que estourou o SEU teto. Os
+      // demais seguem — a correcao de 2026-09-11 inteira mora nesta linha.
+      if (!ceilingReport.published.includes(type)) continue;
       const shards = shardCountFor(counts[type], limit);
       const lastmod = isoOrNull(maxLastmod[type]);
       for (let page = 1; page <= shards; page += 1) {
@@ -1062,18 +1303,23 @@ export async function getSitemapIndexXml(
       }
     }
     // Shard estatico (lista fixa pequena) — um unico shard quando ha rota elegivel.
-    if (eligibleStaticRoutes(counts).length > 0) {
+    // O index decide a EXISTENCIA pelas contagens; os hubs que dependem do loader
+    // da propria pagina so sao consultados ao montar o shard.
+    const staticRoutes = eligibleStaticRoutes(counts, maxLastmod);
+    if (staticRoutes.length > 0) {
       entries.push({
         loc: `${SITE_URL}/sitemaps/${shardId(language, "static", 1)}.xml`,
-        lastmod: null,
+        lastmod: latestIso(staticRoutes.map((route) => route.lastmod ?? null)),
       });
     }
 
     return { xml: renderSitemapIndex(entries), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
-    // FAIL-CLOSED: sem conseguir contar, publica um index vazio (nunca URLs incertas).
+    // FAIL-CLOSED GLOBAL so para o que afeta TODOS os tipos: o cliente do banco e
+    // a cobertura de decisoes. Falha de UM tipo nao chega aqui — ela e isolada em
+    // `allEntityCounts`, e teto estourado e isolado pelo relatorio acima.
     console.error("[sitemap] falha ao montar o sitemap index; fail-closed (index vazio):", error);
-    return { xml: renderSitemapIndex([]), contentType: SITEMAP_CONTENT_TYPE };
+    return { xml: renderSitemapIndex([]), contentType: SITEMAP_CONTENT_TYPE, degraded: true };
   }
 }
 
@@ -1124,8 +1370,11 @@ export async function getSitemapShardXml(
 
     if (type === "static") {
       if (page !== 1) return null; // so existe 1 shard estatico
-      const { counts } = await allEntityCounts(prisma, language, coverage);
-      const routes = eligibleStaticRoutes(counts);
+      const [{ counts, maxLastmod }, hubs] = await Promise.all([
+        allEntityCounts(prisma, language, coverage),
+        (opts?.staticHubDecisions ?? defaultStaticHubDecisions)(),
+      ]);
+      const routes = eligibleStaticRoutes(counts, maxLastmod, hubs);
       if (routes.length === 0) return null;
       return { xml: renderUrlset(routes), contentType: SITEMAP_CONTENT_TYPE };
     }
@@ -1133,6 +1382,18 @@ export async function getSitemapShardXml(
     const entityType = type as EntitySitemapType;
     // Uma contagem (deste tipo) para saber quantos shards existem.
     const { count } = await aggregateEntity(prisma, entityType, language, coverage);
+    // O MESMO teto que o index aplica, pela mesma funcao. Se so o index cortasse,
+    // o shard de um tipo estourado continuaria servindo URLs para quem guardou o
+    // endereco — o index e o shard descreveriam sitemaps diferentes.
+    const ceiling = evaluateSitemapTypeCeiling(
+      entityType,
+      count,
+      SITEMAP_TYPE_URL_CEILING[entityType],
+    );
+    if (ceiling.excluded) {
+      console.error(`[sitemap] ${describeSitemapCeilingVerdict(ceiling)}`);
+      return null;
+    }
     const shards = shardCountFor(count, limit);
     if (page > shards) return null; // pagina acima do total -> 404
 
@@ -1146,6 +1407,7 @@ export async function getSitemapShardXml(
           : pageRowsToUrls(
               entityType,
               await pageEntity(prisma, entityType, language, limit, offset, coverage),
+              await imageAuthorizationFor(prisma, entityType),
             );
     return { xml: renderUrlset(urls), contentType: SITEMAP_CONTENT_TYPE };
   } catch (error) {
