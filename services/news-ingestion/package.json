@@ -19,7 +19,7 @@
     "test:integration": "vitest run --root . --config ./vitest.integration.config.ts",
     "test:media:integration": "vitest run --root . --config ./vitest.integration.config.ts -t \"midia\"",
     "publication-worker:preflight": "tsx bin/worker-preflight.ts",
-    "publication-worker:start": "tsx bin/project-editorial.ts --loop",
+    "publication-worker:start": "exec node --import tsx bin/project-editorial.ts --loop",
     "publication-worker:once": "tsx bin/project-editorial.ts --once"
   },
   "dependencies": {

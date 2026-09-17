@@ -87,6 +87,25 @@ ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
 # tudo em /app ja pertence ao `node` (inclusive .next/cache, que o runtime
 # escreve). Nenhum chown recursivo e necessario aqui.
 
+# O /bin/sh DESTA IMAGEM ENTREGA O SIGTERM AO SERVICO — e este e o ULTIMO RUN.
+#
+# O EasyPanel roda o "Comando" de um servico (o do screen-cron e o agendador)
+# como `/bin/sh -c "<comando>"` NO LUGAR do ENTRYPOINT — medido em 17/09/2026. O
+# dash nao faz exec desse comando e fica como PID 1, e um PID 1 sem handler nao
+# recebe SIGTERM: todo `docker stop` virava SIGKILL depois da carencia, e o
+# desligamento gracioso do agendador nunca rodava. ENTRYPOINT nenhum alcanca
+# esse caso, porque o painel o substitui; o que o alcanca e o proprio /bin/sh.
+# Com um comando simples no PID 1, ele vira um init que repassa o sinal, colhe
+# orfaos e espera a drenagem; em qualquer outro uso, e o dash. Medidas, regra e
+# limites: scripts/container/pid1-shell.sh e docs/operations/sigterm-e-pid1.md.
+#
+# ULTIMO RUN porque todo RUN depois daqui passaria pelo shell novo. Root so para
+# o arquivo ficar fora do alcance de escrita do usuario `node`.
+USER root
+RUN install -D -m 0755 -o root -g root scripts/container/pid1-shell.sh /usr/local/lib/cinerie/pid1-shell.sh \
+  && ln -sf /usr/local/lib/cinerie/pid1-shell.sh /usr/bin/sh
+USER node
+
 EXPOSE 3000
 
 # HEALTHCHECK (baseline R-27): o orquestrador passa a distinguir container no ar
@@ -115,8 +134,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
 # `prisma migrate deploy` (packages/db/package.json), o unico comando que so
 # aplica migrations pendentes e jamais reescreve/derruba schema.
 #
-# `exec` no start: o Next vira PID 1 e recebe SIGTERM direto do orquestrador, em
-# vez de ficar orfao sob o shell (shutdown limpo).
+# `exec` no start: o `pnpm` vira PID 1 e recebe o SIGTERM do orquestrador. O
+# Next, NAO: o pnpm repassa o sinal ao `sh -c` do script `start` de apps/web, e
+# esse shell morre sem repassar — o mesmo encadeamento medido nos workers, ainda
+# aberto aqui (ver docs/operations/sigterm-e-pid1.md).
 #
 # REPLICAS: o Prisma serializa migrate deploy com advisory lock do Postgres
 # (`SELECT pg_advisory_lock(72707369)`), entao N replicas nao corrompem o

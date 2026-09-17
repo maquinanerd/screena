@@ -83,6 +83,12 @@ const SCHEDULER_PID1_FORMS: readonly (readonly string[])[] = [
   ['/bin/sh', '-c', 'corepack pnpm --filter @screena/sync scheduler:start'],
   // o `sh -c` fez exec do ultimo comando: o PID 1 vira o proprio corepack
   ['node', '/usr/local/bin/corepack', 'pnpm', '--filter', '@screena/sync', 'scheduler:start'],
+  // o /bin/sh da imagem e um script (`scripts/container/pid1-shell.sh`) que o dash
+  // interpreta e que fica no PID 1 como init: e ESTE o PID 1 do screen-cron depois
+  // do conserto do SIGTERM
+  ['/bin/dash', '/bin/sh', '-c', 'corepack pnpm --filter @screena/sync scheduler:start'],
+  // "Tini Init" ligado no painel: o init do Docker no PID 1, com o comando embrulhado
+  ['/sbin/docker-init', '--', '/bin/sh', '-c', 'corepack pnpm --filter @screena/sync scheduler:start'],
   // o entrypoint da imagem node, antes do `exec "$@"`
   [
     '/bin/sh',

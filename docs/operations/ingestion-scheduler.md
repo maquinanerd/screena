@@ -350,6 +350,19 @@ SELECT count(DISTINCT instance_id) AS instancias,
    AND started_at > (now() AT TIME ZONE 'UTC') - interval '1 hour';
 ```
 
+### O SIGTERM do redeploy: o dash no PID 1 o descartava
+
+Mesma imagem, segundo defeito, medido no mesmo dia: o PID 1 do `screen-cron` e o
+dash de `/bin/sh -c`, que nao trata SIGTERM — o kernel descarta o sinal, e todo
+`docker stop` virava SIGKILL depois da carencia. Nenhum desligamento gracioso do
+agendador (acordar o laco, abortar CLIs filhas, fechar HTTP e a trava) jamais
+rodou em producao. O painel substitui o ENTRYPOINT da imagem, entao o conserto
+esta no proprio `/bin/sh` (`scripts/container/pid1-shell.sh`, que vira um init
+quando e o PID 1 com um comando simples: repassa o sinal, colhe orfaos e espera a
+drenagem) e no script `scheduler:start` (`exec node --import tsx`). **O comando do servico no painel tem de continuar
+SIMPLES** — sem `&&`, `;`, aspas ou variavel —, senao o dash volta ao PID 1.
+Medidas, laboratorio e limites: [`sigterm-e-pid1.md`](./sigterm-e-pid1.md).
+
 ### A CONSULTA que prova que o ritmo rodou ontem, e o que ele tocou
 
 Agendado nao e rodado. Painel verde mede o RELOGIO. Estas duas consultas medem o

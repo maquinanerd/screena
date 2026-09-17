@@ -75,7 +75,12 @@ EXPOSE 3004
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3004/healthz').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
 
-# `exec` para que o servico seja PID 1 e receba SIGTERM direto: o encerramento
-# gracioso (parar de reivindicar, terminar os jobs em voo, devolver as linhas
-# `running`) depende de o sinal chegar ao processo certo, e nao a um shell pai.
+# O SIGTERM chega ao servico por DOIS exec, e um sozinho nao basta. O deste CMD
+# poe o `pnpm` no PID 1 (nao o servico, como este comentario afirmava ate
+# 17/09/2026 — medido em producao). O pnpm repassa o sinal a um `sh -c` com o
+# script `catalog-worker:start` — e so o `exec node --import tsx` DENTRO do
+# script faz esse shell virar o servico. Sem ele o shell morria sem repassar, o
+# pnpm saia e o servico levava SIGKILL em ~100 ms, sem drenar. E
+# `node --import tsx`, nao a CLI `tsx`: ela repassa o sinal ao filho e o mata com
+# SIGKILL se ele nao confirmar em 30 ms. Medidas: docs/operations/sigterm-e-pid1.md.
 CMD ["sh", "-c", "exec pnpm --filter @screena/ingestion catalog-worker:start"]
