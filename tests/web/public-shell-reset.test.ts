@@ -71,10 +71,12 @@ describe('shell público — design canônico', () => {
     // CTA de série usa o verde escuro (branco sobre verde claro falha AA). A trava
     // mora no CTA que a home renderiza; o `.btn--accent` que ela citava antes não
     // era escrito por nenhum componente e saiu com o CSS sem uso.
-    expect(css).toMatch(/\.fresh-card__cta \{[^}]*color: #fff/s)
-    expect(css).toMatch(/\.fresh-card--series \.fresh-card__cta \{[^}]*--c-accent-series-dark/s)
+    // O CTA e o ticker moram na folha da HomeLike desde a divisao do CSS por rota.
+    const homeCss = read('apps/web/app/_components/home-like.css')
+    expect(homeCss).toMatch(/\.fresh-card__cta \{[^}]*color: #fff/s)
+    expect(homeCss).toMatch(/\.fresh-card--series \.fresh-card__cta \{[^}]*--c-accent-series-dark/s)
     // amarelo editorial carrega texto escuro no ticker
-    expect(css).toMatch(/\.ticker \{[^}]*--c-accent-editorial[^}]*--c-text-primary/s)
+    expect(homeCss).toMatch(/\.ticker \{[^}]*--c-accent-editorial[^}]*--c-text-primary/s)
   })
 
   it('gradientes só em contexto de mídia/hero (DD-20), nunca decorativos soltos', () => {

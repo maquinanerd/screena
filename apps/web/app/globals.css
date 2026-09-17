@@ -1516,20 +1516,6 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   box-shadow: none;
 }
 
-/* --------------------------------------------------------------------------
-   "Popular essa semana" — matriz responsiva.
-
-   A barra de abas era `justify-content:center` com `gap:36px` e SEM regra de
-   viewport estreita. Com tres ou quatro abas ("No ar · Streaming · Novas
-   temporadas"), a 320px ela ultrapassava a largura do container e empurrava a
-   PAGINA para a rolagem horizontal. Abaixo de 768px as abas rolam sozinhas,
-   alinhadas a esquerda e sem quebrar linha — o resto da pagina fica parado.
-
-   Os valores de geometria (152/144/132/116 no poster, 54/46 no disco) sao os do
-   canonico; o disco menor abaixo de 1024px existe porque 54px sobre um poster de
-   116px cobriria um quarto da arte.
-   -------------------------------------------------------------------------- */
-
 @media (max-width: 1023px) {
   /* Abaixo de 1024px o controle e o swipe: a seta some do DOM (o `Rail` a
      renderiza sempre; aqui ela deixa de ocupar espaco e de receber foco). */
