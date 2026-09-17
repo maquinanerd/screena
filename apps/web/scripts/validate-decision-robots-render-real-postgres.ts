@@ -117,7 +117,21 @@ interface MetadataShape {
   robots?: RobotsShape;
   alternates?: { canonical?: string };
 }
-type GenerateMetadata = (args: { params: Promise<Record<string, string>> }) => Promise<MetadataShape>;
+/**
+ * A assinatura que o Next usa: `params` E `searchParams`.
+ *
+ * Ate 2026-09-11 este tipo so tinha `params`, e o validador chamava as rotas sem
+ * `searchParams`. A ficha de serie passou a ler `?temporada=` no
+ * `generateMetadata` (3a41cdb, #276) — e desde entao o validador MORRIA na
+ * primeira serie com `Cannot read properties of undefined (reading
+ * 'temporada')`, antes de medir robots nenhum. Ninguem notou porque este
+ * validador nao roda no CI. O Next sempre entrega `searchParams`; o validador
+ * passa a entregar tambem.
+ */
+type GenerateMetadata = (args: {
+  params: Promise<Record<string, string>>;
+  searchParams: Promise<Record<string, string | string[]>>;
+}) => Promise<MetadataShape>;
 
 /** `noindex,nofollow` / `index,follow` — como o Next serializaria a tag. */
 function formatRobots(robots: RobotsShape | undefined): string {
@@ -212,7 +226,7 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
   // a expectativa e por tipo.
   const robotsBaseMedido = new Map<string, string>();
   for (const alvo of alvos) {
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params) });
+    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
     const robots = formatRobots(meta.robots);
     robotsBaseMedido.set(alvo.rotulo, robots);
     record(
@@ -236,7 +250,7 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
   // O canonical ANTES da decisao, para comparar depois (B.3).
   const canonicalAntes = new Map<string, string | undefined>();
   for (const alvo of alvos) {
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params) });
+    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
     canonicalAntes.set(alvo.rotulo, meta.alternates?.canonical);
   }
 
@@ -247,7 +261,7 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
 
   // (A2) A MEDIDA CENTRAL, por tipo de entidade.
   for (const alvo of alvos) {
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params) });
+    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
     const robots = formatRobots(meta.robots);
     record(
       n++,
@@ -268,7 +282,7 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
   // escolha em silencio — quem decide isso e o dono, nao um efeito colateral.
   for (const alvo of alvos) {
     if (alvo.tipo !== "season" && alvo.tipo !== "episode") continue;
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params) });
+    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
     const robots = formatRobots(meta.robots);
     const base = robotsBaseMedido.get(alvo.rotulo);
     record(
@@ -284,7 +298,7 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
   // `page_indexability_decisions`, e misturar os dois faria a pagina apontar
   // para outro lugar justamente quando sai do indice.
   for (const alvo of alvos) {
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params) });
+    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
     const antes = canonicalAntes.get(alvo.rotulo);
     const depois = meta.alternates?.canonical;
     record(
@@ -301,7 +315,7 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
   // conclusao inteira desabaria.
   desligarIndexacaoGlobal();
   for (const alvo of alvos) {
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params) });
+    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
     const robots = formatRobots(meta.robots);
     record(
       n++,
