@@ -15,6 +15,7 @@ import {
   evaluateGalleryGate,
   evaluateLocalizationGate,
   evaluatePersonQualityGate,
+  isLocalizedTitle,
   type PersonQualityGateInput,
 } from "./entity-quality-gates.js";
 
@@ -36,7 +37,12 @@ describe("D1 — galeria", () => {
 });
 
 describe("D3 — ficha com slug de fallback", () => {
-  const semNada = { hasLocalizedTitle: false, hasLocalizedDescription: false };
+  const ORIGINAL = "Τίποτα";
+  const semNada = {
+    localizedTitle: null,
+    originalTitle: ORIGINAL,
+    hasLocalizedDescription: false,
+  };
 
   it("(3) tmdb-{id} sem titulo e sem descricao => barrada", () => {
     const v = evaluateLocalizationGate({ canonicalSlug: "tmdb-12345", ...semNada });
@@ -44,25 +50,86 @@ describe("D3 — ficha com slug de fallback", () => {
     expect(v.code).toBe("not_localized");
   });
 
+  it("(3b) titulo pt-BR IGUAL ao original => barrada: copia nao e traducao", () => {
+    // O caso REAL de producao (medido em 17/09/2026): a linha pt-BR existe e
+    // carrega o titulo original, e o portao passava a ficha adiante. Eram 11.922
+    // fichas tmdb-N no sitemap, praticamente toda a populacao da D3.
+    const v = evaluateLocalizationGate({
+      canonicalSlug: "tmdb-12345",
+      localizedTitle: ORIGINAL,
+      originalTitle: ORIGINAL,
+      hasLocalizedDescription: false,
+    });
+    expect(v.passed).toBe(false);
+    expect(v.code).toBe("not_localized");
+  });
+
+  it("(3c) a copia com espaco em volta tambem e copia", () => {
+    expect(
+      evaluateLocalizationGate({
+        canonicalSlug: "tmdb-12345",
+        localizedTitle: `  ${ORIGINAL} `,
+        originalTitle: `${ORIGINAL}  `,
+        hasLocalizedDescription: false,
+      }).passed,
+    ).toBe(false);
+  });
+
   it("(4) ganhou titulo em pt-BR => passa, MESMO com o slug ainda tmdb-{id}", () => {
     // Se a condicao fosse so o slug, a ficha enriquecida ficaria fora para sempre.
     const v = evaluateLocalizationGate({
       canonicalSlug: "tmdb-12345",
-      hasLocalizedTitle: true,
+      localizedTitle: "Nada",
+      originalTitle: ORIGINAL,
       hasLocalizedDescription: false,
     });
     expect(v.passed).toBe(true);
     expect(v.code).toBe("localized");
   });
 
+  it("(4b) titulo que difere do original SO pela caixa continua abrindo o portao", () => {
+    // Decisao consciente: `lower()` do PostgreSQL depende do collation do cluster
+    // e o do JavaScript nao, e divergir entre pagina e sitemap e o defeito que a
+    // remediacao fechou. Na duvida, o lado conservador mantem no indice.
+    expect(
+      evaluateLocalizationGate({
+        canonicalSlug: "tmdb-12345",
+        localizedTitle: "nada",
+        originalTitle: "Nada",
+        hasLocalizedDescription: false,
+      }).passed,
+    ).toBe(true);
+  });
+
+  it("(4c) ficha sem titulo original: qualquer titulo na linha publicada localiza", () => {
+    expect(
+      evaluateLocalizationGate({
+        canonicalSlug: "tmdb-12345",
+        localizedTitle: "Nada",
+        originalTitle: null,
+        hasLocalizedDescription: false,
+      }).passed,
+    ).toBe(true);
+  });
+
   it("(5) ganhou so descricao => passa (basta um dos dois)", () => {
     expect(
       evaluateLocalizationGate({
         canonicalSlug: "tmdb-12345",
-        hasLocalizedTitle: false,
+        localizedTitle: ORIGINAL,
+        originalTitle: ORIGINAL,
         hasLocalizedDescription: true,
       }).passed,
     ).toBe(true);
+  });
+
+  it("(5b) isLocalizedTitle: existir nao basta, precisa ser diferente do original", () => {
+    expect(isLocalizedTitle(null, "Nada")).toBe(false);
+    expect(isLocalizedTitle("   ", "Nada")).toBe(false);
+    expect(isLocalizedTitle("Nada", "Nada")).toBe(false);
+    expect(isLocalizedTitle("Nada", " Nada ")).toBe(false);
+    expect(isLocalizedTitle("Nada de Novo", "Nada")).toBe(true);
+    expect(isLocalizedTitle("Nada", null)).toBe(true);
   });
 
   it("(6) slug legivel NAO entra no portao, mesmo sem titulo nem descricao", () => {
