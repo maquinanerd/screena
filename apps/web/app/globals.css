@@ -4360,13 +4360,11 @@ a.media-strip__cell {
   padding: 48px 20px 0;
 }
 
-/* --------------------------------------------------------------------
-   Corpo ESTRUTURADO da matéria (body_blocks do contrato editorial)
-
-   Os blocos vivem dentro de `.art-body`, que já define a coluna de leitura
-   de 720. Só o que muda a "forma" do bloco fica aqui; tipografia de parágrafo
-   continua em `.art-body > p` (paragraph e quote reusam a mesma regra).
-   -------------------------------------------------------------------- */
+/* O corpo ESTRUTURADO da matéria (body_blocks) vive em
+   app/pt/noticias/[slug]/article.css, e os títulos de seção dele em
+   app/_components/art-body.css. Fica aqui a regra abaixo, que cruza as duas
+   folhas: o sujeito é o `blockquote` de `.art-quote` (folha da matéria) dentro
+   de `.art-body` (folha compartilhada), e nenhuma das duas é dona dele. */
 
 /* `.art-body > p` (0,1,1) venceria a classe do bloco em `margin`; o parágrafo
    do corpo e o texto de um bloco não são a mesma coisa. */

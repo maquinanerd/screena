@@ -301,6 +301,17 @@
   border-bottom-color: var(--c-accent-movie);
 }
 
+/* --------------------------------------------------------------------
+   Corpo ESTRUTURADO da matéria (body_blocks do contrato editorial)
+
+   Os blocos vivem dentro de `.art-body`, que já define a coluna de leitura
+   de 720 (app/_components/art-body.css, junto com os títulos de seção
+   `.art-body__heading`). Só o que muda a "forma" do bloco fica aqui;
+   tipografia de parágrafo continua em `.art-body > p` (paragraph e quote
+   reusam a mesma regra). A regra que cruza as duas folhas,
+   `.art-body > .art-quote blockquote`, ficou no globals.css.
+   -------------------------------------------------------------------- */
+
 /* Credito de imagem de CORPO: continua a legenda no mesmo bloco e na mesma
    largura da imagem, como na referencia — nao pula linha. `inline` (nao
    `block`) e o que permite "legenda. Credito: X" fluir como um paragrafo so.

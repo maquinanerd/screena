@@ -86,6 +86,8 @@
   margin-top: 0;
 }
 
+/* Títulos de seção do corpo ESTRUTURADO da matéria (body_blocks do contrato
+   editorial). Os demais blocos vivem em app/pt/noticias/[slug]/article.css. */
 .art-body__heading {
   font-family: var(--font-display, inherit);
   font-weight: 700;
