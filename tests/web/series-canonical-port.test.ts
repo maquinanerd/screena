@@ -7,6 +7,10 @@ const ROOT = process.cwd()
 const PAGE_REL = 'apps/web/app/pt/series/[slug]/page.tsx'
 const CSS_REL = 'apps/web/app/pt/series/[slug]/series-canonical.module.css'
 const page = readFileSync(path.join(ROOT, PAGE_REL), 'utf8')
+// A lista de episodios da temporada selecionada: client component de proposito
+// (o payload RSC leva os dados de cada episodio, e nao a arvore de cada linha).
+const EPISODE_LIST_REL = 'apps/web/app/_components/episode-list.tsx'
+const episodeList = readFileSync(path.join(ROOT, EPISODE_LIST_REL), 'utf8')
 
 function withoutComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -140,9 +144,15 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
     expect(code).toContain('view.media.poster !== null')
-    expect(code).toContain('episode.still !== null')
-    expect(code).toContain('className="episode-row"')
+    // A marcacao de cada episodio e o gate do still moram em `EpisodeList`; a
+    // pagina so entrega a ela os episodios da temporada selecionada.
+    const listCode = withoutComments(episodeList).replaceAll("'", '"')
+    expect(listCode.trimStart().startsWith('"use client"')).toBe(true)
+    expect(code).toContain('<EpisodeList episodes={season.episodes} seasonNumber={season.seasonNumber} />')
+    expect(listCode).toContain('episode.still !== null')
+    expect(listCode).toContain('className="episode-row"')
     expect(code).not.toMatch(/src="https?:/)
+    expect(listCode).not.toMatch(/src="https?:/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
     // Cinerie Score: sem fórmula aprovada, o bloco inteiro não renderiza —
     // nem número inventado, nem placeholder na posição de maior destaque da
