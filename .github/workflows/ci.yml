@@ -356,6 +356,14 @@ jobs:
       - name: Ordem e particao dos candidatos OMDb (PostgreSQL 16 efemero)
         run: pnpm --filter @screena/ratings validate:omdb-order
 
+      # O SIGTERM do desligamento no meio de um lote da OMDb, com processo de
+      # verdade: a CLI spawnada como o agendador a spawna para entre requisicoes e
+      # grava a linha `aborted` com a cota que o servidor falso RECEBEU. Controle
+      # negativo: sem a parada cooperativa o processo morre e a linha nao existe.
+      # So roda inteiro em POSIX (no Windows nao ha SIGTERM) — por isso vive aqui.
+      - name: Parada cooperativa da CLI OMDb no SIGTERM (PostgreSQL 16 efemero)
+        run: pnpm --filter @screena/ratings validate:omdb-shutdown
+
       # Backend D - cadeia editorial: fonte -> item recebido -> proveniencia ->
       # artigo -> publicacao -> projecao publica. Prova, entre outras coisas,
       # que rascunho, materia AGENDADA e materia retratada nunca entram na

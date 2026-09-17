@@ -97,9 +97,19 @@ export class OmdbClient {
   }
 }
 
-/** Cria o client com o transporte `fetch` real (timeout da config). */
-export function createOmdbClient(config: RapidApiClientConfig): OmdbClient {
+/**
+ * Cria o client com o transporte `fetch` real (timeout da config).
+ *
+ * `stopSignal` e o pedido de parada do processo (ver `RapidApiHttpDeps`): o
+ * worker o liga ao SIGTERM para que o lote pare ENTRE requisicoes e ainda grave
+ * a linha de `api_sync_logs` com a cota que gastou.
+ */
+export function createOmdbClient(
+  config: RapidApiClientConfig,
+  options: Pick<RapidApiHttpDeps, 'stopSignal' | 'stopGraceMs'> = {},
+): OmdbClient {
   return new OmdbClient(config, {
     transport: createRapidApiFetchTransport(config.timeoutMs),
+    ...options,
   })
 }

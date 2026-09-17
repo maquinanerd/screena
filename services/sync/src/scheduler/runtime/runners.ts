@@ -42,7 +42,6 @@
  * NUNCA vira "concluido" (ver `../run-outcome.ts`).
  */
 
-import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -84,6 +83,7 @@ import {
   syncDeployReference,
 } from './deploy-reference.js'
 import { readTitleForRequest } from './force-requests.js'
+import { runScript } from './run-script.js'
 import {
   buildForcedRatingsArgs,
   buildForcedScoreArgs,
@@ -133,9 +133,15 @@ export interface RunnerDeps {
    *
    * Sem isto, um SIGTERM chegado no meio de um lote esperaria a CLI filha
    * terminar — e o orquestrador, que da 10 a 30 segundos de carencia, mandaria
-   * SIGKILL. Matar o filho e seguro por construcao: todo trabalho e idempotente e
-   * retomavel (fila duravel, checkpoint pos-commit, candidato que continua
-   * stale), entao interromper nunca perde nem duplica.
+   * SIGKILL. Interromper nunca perde nem duplica TRABALHO: todo trabalho e
+   * idempotente e retomavel (fila duravel, checkpoint pos-commit, candidato que
+   * continua stale).
+   *
+   * O que se perdia era o REGISTRO: `sync-omdb-ratings` grava a cota gasta uma
+   * vez, no fim do lote, e morria antes. Por isso ela trata o SIGTERM e para
+   * entre requisicoes, gravando a linha — e por isso o filho e spawnado com
+   * `node --import`, que entrega o sinal a ela sem a corrida de 30 ms da CLI
+   * `tsx` (ver `./run-script.ts`).
    */
   readonly shutdownSignal?: AbortSignal
   /**
@@ -682,70 +688,8 @@ const runWatchOffers: QueueRunner = async (deps) => {
 // ---------------------------------------------------------------------------
 // (B) Filas de outro servico — spawnam a CLI que o dono ja roda
 // ---------------------------------------------------------------------------
-
-/** Saida de um comando spawnado. */
-interface SpawnResult {
-  readonly code: number | null
-  readonly stdout: string
-  readonly stderr: string
-}
-
-function tsxBin(repoRoot: string): string {
-  return path.join(repoRoot, 'services', 'ingestion', 'node_modules', 'tsx', 'dist', 'cli.mjs')
-}
-
-/**
- * Roda um script do repositorio com o `tsx` ja instalado, sem shell.
- *
- * `shell: false` (o default do `spawn` com array de args) e obrigatorio aqui: um
- * argumento vindo de configuracao nunca pode virar comando. E o `env` e herdado
- * inteiro de proposito — a CLI filha precisa da `DATABASE_URL` e das chaves, que
- * NUNCA transitam por argumento de linha de comando (onde apareceriam em `ps`).
- */
-async function runScript(
-  repoRoot: string,
-  script: string,
-  args: readonly string[],
-  shutdownSignal?: AbortSignal,
-): Promise<SpawnResult> {
-  // Ja desligando: nem spawna. Subir um processo para mata-lo em seguida so
-  // atrasaria a drenagem.
-  if (shutdownSignal?.aborted === true) {
-    return { code: null, stdout: '', stderr: 'desligando: comando nao iniciado' }
-  }
-
-  return await new Promise<SpawnResult>((resolve) => {
-    const child = spawn(process.execPath, [tsxBin(repoRoot), script, ...args], {
-      cwd: repoRoot,
-      env: process.env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let stdout = ''
-    let stderr = ''
-
-    const onAbort = (): void => {
-      stderr += ' | desligando: SIGTERM enviado ao processo filho'
-      child.kill('SIGTERM')
-    }
-    shutdownSignal?.addEventListener('abort', onAbort, { once: true })
-    const cleanup = (): void => shutdownSignal?.removeEventListener('abort', onAbort)
-
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8')
-    })
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf8')
-    })
-    child.on('error', (error) => {
-      cleanup()
-      resolve({ code: null, stdout, stderr: `${stderr}${String(error)}` })
-    })
-    child.on('exit', (code) => {
-      cleanup()
-      resolve({ code, stdout, stderr })
-    })
-  })
-}
+// O spawn mora em `./run-script.ts` (`node --import <loader do tsx>`, nunca a CLI
+// `tsx`: ela matava o filho 30 ms depois de repassar o SIGTERM).
 
 const runRatingsOmdb: QueueRunner = async (deps) => {
   const startedAt = deps.now()

@@ -183,6 +183,18 @@ resposta pelo resto do dia por causa de cota que ninguém gastou.
 Corrigido: `runRatingsOmdb` passa `requests: 0`, como `runAwards` já fazia, com
 a mesma justificativa — **o filho é a única autoridade sobre quanto se gastou**.
 
+### O quinto defeito: a autoridade morria no deploy
+
+O filho grava a linha **uma vez, no fim do lote** — e no desligamento de todo
+redeploy o agendador o aborta com SIGTERM. Sem ouvinte, ele morria antes da
+linha: a cota que o lote já tinha gastado sumia de `readSpentToday`, que passava
+a **subcontar** o dia (o avesso do quarto defeito).
+
+Corrigido em 17/09/2026: no SIGTERM o lote para **entre requisições** e grava a
+linha `aborted` com `error_code = 'shutdown-requested'` e o custo real; a
+requisição que já estava em voo tem 3 s para voltar. Ver
+[`sigterm-e-pid1.md`](./sigterm-e-pid1.md), seção 4, "As CLIs filhas".
+
 ---
 
 ## 6. Consultas de verificação (rodar no painel → `screen-db` → `>_` → **Bash**)
@@ -197,6 +209,7 @@ SELECT
   COALESCE(SUM(quota_cost), 0)                                   AS gasto_hoje,
   COUNT(*) FILTER (WHERE error_code = 'omdb-quota-exhausted')    AS ciclos_cortados_por_cota,
   COUNT(*) FILTER (WHERE error_code = 'omdb-auth-rejected')      AS ciclos_cortados_por_credencial,
+  COUNT(*) FILTER (WHERE error_code = 'shutdown-requested')      AS ciclos_cortados_por_desligamento,
   COUNT(*) FILTER (WHERE status = 'aborted')                     AS ciclos_abortados
 FROM api_sync_logs
 WHERE provider_api = 'omdb'

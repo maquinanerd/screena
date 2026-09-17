@@ -4,7 +4,8 @@
 > dos tres apps sem desligamento gracioso, com o codigo de drenagem escrito e
 > testado, e o que entrega o sinal hoje. Leia antes de mexer no **comando de um
 > servico no painel**, no **`/bin/sh` das imagens**, num script **`*:start`** de
-> `services/*` ou no **`start`** de `apps/*`.
+> `services/*`, no **`start`** de `apps/*` ou no **spawn das CLIs filhas do
+> agendador** (`runScript`).
 
 ---
 
@@ -74,7 +75,8 @@ wrapper. O que o painel nao substitui e o proprio `/bin/sh`.
 3. **A CLI `tsx`.** Ela repassa o sinal ao processo filho e espera a confirmacao
    dele por IPC por **30 ms**; sem confirmacao, manda SIGKILL. Lido no codigo do
    tsx 4.22.4 (`relaySignalToChild`) e medido: com o laco de eventos ocupado, o
-   filho morre antes de ver o sinal.
+   filho morre antes de ver o sinal. O mesmo elo existia DENTRO do agendador:
+   `runScript` subia as CLIs filhas pela CLI `tsx` (secao 4, "As CLIs filhas").
 4. **O `pnpm exec`.** Ele nao usa shell, mas ao receber SIGTERM mata o comando e
    se re-sinaliza para morrer (`signal-exit`). Com um init que sai junto com o
    filho direto — o tini, o "Tini Init" do painel —, o container acaba com o
@@ -177,6 +179,38 @@ O HEALTHCHECK da imagem (PR #291) reconhece o agendador pelo comando do PID 1; o
 marcador `scheduler:start` continua em `/proc/1/cmdline` (travado em
 `tests/operations/container-healthcheck.test.ts`).
 
+### As CLIs filhas do agendador
+
+O agendador roda quatro filas por processo filho (`sync-omdb-ratings`,
+`promote-omdb-awards`, `compute-cinerie-score`, `catalog search-reindex`) e, no
+desligamento, aborta o que estiver em voo com SIGTERM. Ate aqui isso matava o
+lote na hora — e `sync-omdb-ratings` grava `api_sync_logs` UMA vez, no FIM do lote:
+o lote cortado nao deixava linha, e a cota da OMDb que ele gastou sumia de
+`readSpentToday`, que passava a subcontar o dia para o leitor.
+
+- **`runScript` spawna `node --import <loader do tsx>`**
+  ([`run-script.ts`](../../services/sync/src/scheduler/runtime/run-script.ts)), e
+  nao mais a CLI `tsx`: o script e filho direto do agendador e o SIGTERM chega a
+  ele sem a corrida de 30 ms do elo 3. O loader vai por URL absoluta, resolvida a
+  partir de `services/sync` — o `cwd` do filho e a raiz do repositorio, onde o
+  especificador `tsx` nu nao resolve.
+- **`sync-omdb-ratings` para ENTRE requisicoes.** O primeiro SIGTERM (ou SIGINT)
+  aborta um `AbortSignal` ([`process-stop.ts`](../../services/ratings/src/process-stop.ts)).
+  O client HTTP ([`http.ts`](../../api-clients/rapidapi-core/src/http.ts)) nao
+  emite a proxima requisicao — nem retentativa —, corta a espera de throttle e de
+  backoff e da `STOP_IN_FLIGHT_GRACE_MS` (3 s) a requisicao que ja estava em voo:
+  ela foi paga, e se voltar a tempo vira dado. O nucleo
+  ([`run.ts`](../../services/ratings/src/omdb/run.ts)) para entre um id e o
+  proximo, nunca no meio das escritas de um id, e grava a linha `aborted` com
+  `error_code = shutdown-requested` e `quota_cost = client.getRequestCount()`. A CLI
+  sai com 128 + sinal (143): o agendador le "lote nao processado". Um segundo
+  sinal sai na hora.
+- **A conta da carencia** (10 s no Swarm, para o container inteiro): ate 3 s da
+  requisicao em voo, as escritas do id que voltou, a linha de `api_sync_logs`, o
+  fim do processo e o desligamento do agendador que o spawnou. Sem o teto, uma
+  requisicao pendurada esperaria o timeout da OMDb (15 s) e o SIGKILL levaria
+  justamente a linha da cota.
+
 ---
 
 ## 4b. O Next dos tres apps (`screen-app`, `cinerie-admin`, `cinerie-cms`)
@@ -254,11 +288,17 @@ regime.
   terminar em `exec`.
 - **Servico novo com comando no painel**: a imagem dele precisa do mesmo
   `/bin/sh` (e entrar na lista `IMAGENS_COM_COMANDO_NO_PAINEL` do teste).
-- **CLIs filhas do agendador nao tratam SIGTERM.** No desligamento o agendador
-  as aborta (`runScript`), e elas morrem na hora. `sync-omdb-ratings` grava
-  `api_sync_logs` uma vez, no FIM do lote (`services/ratings/src/omdb/run.ts`):
-  um lote abortado fica sem registro, e a cota que ele gastou tambem. Entregar o
-  sinal nao muda isso; muda que agora ha um sinal para a CLI tratar.
+- **As outras tres CLIs filhas continuam sem ouvinte de SIGTERM, de proposito.**
+  `promote-omdb-awards`, `compute-cinerie-score` e `catalog search-reindex` nao
+  tocam rede nem gastam cota, e escrevem linha a linha de forma idempotente:
+  morrer no sinal e a saida mais rapida e nao perde nada que o proximo ciclo nao
+  refaca. O que se perde e a linha `local:api_cache/omdb/awards` (cota 0) do ciclo
+  de premiacao cortado; o agendador grava a dele (`scheduler/awards`). O Score nao
+  grava `api_sync_logs` por construcao.
+- **Uma escrita no banco que TRAVA nao tem teto dentro da CLI da OMDb.** A carencia
+  limita a requisicao em voo; se o proprio `screen-db` estiver caindo no mesmo
+  deploy, a gravacao da linha pode esperar o timeout do Prisma e o SIGKILL chega
+  antes.
 - **Lote longo EM PROCESSO do agendador** so olha o desligamento entre filas.
   Se um lote passa da carencia, o SIGKILL chega no meio — sem perda de estado (o
   progresso vive no banco), mas sem drenagem.
@@ -317,3 +357,16 @@ Esperado: `next <pid> pai 1`. Antes do conserto, o pai era o `sh -c next start`.
   controle negativo por imagem**: a mesma imagem, com o `exec` tirado do `start`
   dentro do container, tem de sair diferente de 0 e derrubar a requisicao.
 - CI, job `build`: `dash -n` no `pid1-shell.sh`.
+- [`services/sync/src/scheduler/__tests__/run-script-signal.test.ts`](../../services/sync/src/scheduler/__tests__/run-script-signal.test.ts)
+  (so POSIX) — `runScript` sobe o script como filho DIRETO, e ele drena com o laco
+  de eventos ocupado no instante do sinal; controle negativo pela CLI `tsx`: o
+  script e neto e morre sem drenar.
+- [`api-clients/rapidapi-core/src/__tests__/http-stop.test.ts`](../../api-clients/rapidapi-core/src/__tests__/http-stop.test.ts)
+  e [`services/ratings/src/omdb/__tests__/shutdown.test.ts`](../../services/ratings/src/omdb/__tests__/shutdown.test.ts)
+  — o client nao emite depois da parada e corta a pendurada; o nucleo para entre
+  ids e grava a linha com a cota que o client EMITIU. Cada um com controle negativo.
+- CI, job `build`: `validate:omdb-shutdown` — a CLI de verdade, spawnada como o
+  agendador a spawna, contra PostgreSQL efemero e uma OMDb falsa local: SIGTERM
+  com requisicao em voo e com requisicao pendurada, e o controle negativo (o
+  ouvinte de SIGTERM neutralizado: processo morto, servidor com as requisicoes,
+  `api_sync_logs` vazio e `readSpentToday` = 0).

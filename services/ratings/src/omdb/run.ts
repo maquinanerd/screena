@@ -24,7 +24,7 @@
  */
 
 import { buildOmdbByImdbIdRequest, OMDB_ENDPOINT } from '@screena/omdb-client'
-import { hashPayload } from '@screena/rapidapi-core'
+import { hashPayload, isStoppedError } from '@screena/rapidapi-core'
 import {
   checkOmdbBudget,
   shouldRequeue,
@@ -54,6 +54,12 @@ import type { ExternalRatingRow, OmdbRejection, RatingsEntityType } from './type
 export const DEFAULT_OMDB_CANDIDATE_LIMIT = 20
 
 /**
+ * O `error_code` da linha de um lote que PAROU porque o processo pediu parada
+ * (SIGTERM do orquestrador). E tambem o motivo da recusa no relatorio.
+ */
+export const OMDB_SHUTDOWN_ERROR_CODE = 'shutdown-requested' as const
+
+/**
  * O codigo de erro do CICLO, para `api_sync_logs.error_code`.
  *
  * ============================================================================
@@ -76,8 +82,10 @@ export const DEFAULT_OMDB_CANDIDATE_LIMIT = 20
  * ============================================================================
  * A PRECEDENCIA
  * ============================================================================
- *   1. Recusa do fornecedor (`quota`/`auth`) — fato sobre o DIA. Domina: se a
- *      cota acabou, o que os itens individuais relataram e consequencia.
+ *   1. O que PAROU o lote: a recusa do fornecedor (`quota`/`auth`) — fato sobre
+ *      o DIA — ou o pedido de parada do processo (`shutdown-requested`). Domina:
+ *      se a cota acabou ou o container esta sendo desligado, o que os itens
+ *      individuais relataram e consequencia ou ficou pela metade.
  *   2. Codigo DOMINANTE entre os itens que falharam — o mais frequente, com
  *      empate resolvido pela PRIMEIRA ocorrencia (ordem estavel: dois ciclos com
  *      as mesmas falhas gravam o mesmo codigo).
@@ -88,10 +96,10 @@ export const DEFAULT_OMDB_CANDIDATE_LIMIT = 20
  * degradacao crescente ate ela virar `failed`.
  */
 export function resolveCycleErrorCode(
-  providerRefusalCode: string | null,
+  batchStopCode: string | null,
   items: readonly { readonly ok: boolean; readonly errorCode: string | null }[],
 ): string | null {
-  if (providerRefusalCode !== null) return providerRefusalCode
+  if (batchStopCode !== null) return batchStopCode
 
   // `Map` preserva a ordem de insercao, e e disso que sai o desempate estavel.
   const tally = new Map<string, number>()
@@ -152,6 +160,19 @@ export interface OmdbRunDeps {
    * processo que reusar o mesmo client.
    */
   readonly tripProviderCircuit?: () => void
+  /**
+   * PEDIDO DE PARADA do processo: a CLI o aborta no SIGTERM do orquestrador.
+   *
+   * O lote para ENTRE ids — nunca no meio das escritas de um id — e ainda grava
+   * a linha de `api_sync_logs`, `aborted` com `shutdown-requested` e a cota REAL
+   * (`requestCount`). Sem isto, o SIGTERM matava o processo antes da linha, que
+   * so sai no fim do lote, e a cota gasta sumia de `readSpentToday`.
+   *
+   * O MESMO sinal vai ao client HTTP, que recusa emitir a proxima requisicao e
+   * corta a que estiver pendurada depois da carencia; o erro dele
+   * (`RapidApiStoppedError`) e lido aqui como parada, nunca como falha de rede.
+   */
+  readonly stopSignal?: AbortSignal
 }
 
 /** De onde sai o saldo de cota do dia. Uma leitura por ciclo, nunca por item. */
@@ -253,6 +274,12 @@ export interface OmdbRunResult {
    * consumo real, porque a OMDb nao publica cabecalho de cota.
    */
   readonly idsAbortedByProviderQuota: number
+  /**
+   * Ids sem consulta concluida porque o PROCESSO pediu parada (SIGTERM). Inclui o
+   * id cuja requisicao foi cortada em voo. Nenhum vira linha: todos voltam como
+   * candidatos no proximo ciclo.
+   */
+  readonly idsInterrupted: number
   /** Entidades puladas por coleta recente (frescor) — nao e falha. */
   readonly idsSkippedFresh: number
   readonly idsWithoutEntity: number
@@ -308,6 +335,7 @@ export async function runOmdbRatingsSync(
       idsSkipped: 0,
       idsDeniedByQuota: 0,
       idsAbortedByProviderQuota: 0,
+      idsInterrupted: 0,
       idsSkippedFresh: 0,
       idsWithoutEntity: 0,
       items: [],
@@ -365,6 +393,7 @@ export async function runOmdbRatingsSync(
   let consecutiveFailures = 0
   let idsDeniedByQuota = 0
   let idsAbortedByProviderQuota = 0
+  let idsInterrupted = 0
   /** Motivo da recusa do fornecedor, quando houve — vai para `api_sync_logs`. */
   let providerRefusalCode: string | null = null
 
@@ -383,6 +412,25 @@ export async function runOmdbRatingsSync(
   let spentToday: number | null = deps.budget === undefined ? null : await deps.budget.spentToday()
 
   for (const [index, entry] of entries.entries()) {
+    // ========================================================================
+    // A PARADA DO PROCESSO E OLHADA AQUI, ENTRE UM ID E O PROXIMO
+    // ========================================================================
+    // O id anterior ja terminou cache e notas; o proximo ainda nao comecou. Parar
+    // aqui (ou na requisicao que o client recusou emitir, no `catch` abaixo) e o
+    // que garante que nenhuma escrita fica pela metade — e o `break` leva a linha
+    // de `api_sync_logs` la embaixo, com a cota que o lote REALMENTE gastou.
+    if (deps.stopSignal?.aborted === true) {
+      const remaining = entries.length - index
+      idsInterrupted += remaining
+      rejections.push({
+        reason: OMDB_SHUTDOWN_ERROR_CODE,
+        detail:
+          `parada do processo pedida; ${remaining} id(s) nao consultado(s). ` +
+          'Nenhum foi marcado como sem nota: todos voltam como candidatos.',
+      })
+      break
+    }
+
     if (spentToday !== null) {
       const verdict = checkOmdbBudget(consumer, { spentToday })
       if (!verdict.granted) {
@@ -413,6 +461,22 @@ export async function runOmdbRatingsSync(
       if (spentToday !== null) spentToday += 1
       payload = await deps.fetchTitle(entry.id)
     } catch (error) {
+      // A PARADA, nao uma falha: o client recusou emitir a requisicao deste id ou
+      // a cortou depois da carencia. O id nao conta como consultado nem como
+      // falho — senao `error_code` diria "rede" num desligamento — e volta como
+      // candidato. Se a requisicao chegou a sair, `requestCount` ja a contou.
+      if (isStoppedError(error)) {
+        const remaining = entries.length - index
+        idsInterrupted += remaining
+        rejections.push({
+          reason: OMDB_SHUTDOWN_ERROR_CODE,
+          detail:
+            `parada do processo pedida durante a consulta de ${entry.id}; ` +
+            `${remaining} id(s) sem consulta concluida. ` +
+            'Nenhum foi marcado como sem nota: todos voltam como candidatos.',
+        })
+        break
+      }
       // Uma falha isolada NAO aborta o lote. O detalhe expoe o STATUS HTTP,
       // sempre sem a chave, a URL ou o host (`describeItemFetchError` e
       // compartilhado com o adapter anterior — a sanitizacao ja e provada la).
@@ -629,6 +693,10 @@ export async function runOmdbRatingsSync(
     // trabalho, ele foi cortado, e `partial` (que e o que `rejections.length > 0`
     // produziria) leria como "quase tudo deu certo".
     status = 'aborted'
+  } else if (idsInterrupted > 0) {
+    // A PARADA do processo cortou o lote. Nem `success` nem `partial`: havia
+    // trabalho e ele nao terminou — o proximo ciclo o retoma.
+    status = 'aborted'
   } else if (idsQueried === 0 && idsDeniedByQuota > 0) {
     // Cota estourada com trabalho pendente NAO e "vazio": e um ciclo abortado.
     // `empty` diria ao operador que nao havia nada a fazer, que e o oposto.
@@ -641,7 +709,10 @@ export async function runOmdbRatingsSync(
   // O codigo que sai na linha do ciclo. NAO e mais so `providerRefusalCode`:
   // ver `resolveCycleErrorCode` para a precedencia e para o defeito que ela
   // fecha (75 de 77 falhas gravadas sem causa).
-  const cycleErrorCode = resolveCycleErrorCode(providerRefusalCode, itemResults)
+  const cycleErrorCode = resolveCycleErrorCode(
+    providerRefusalCode ?? (idsInterrupted > 0 ? OMDB_SHUTDOWN_ERROR_CODE : null),
+    itemResults,
+  )
 
   // Um unico log por ciclo (nunca um por id). `payload_hash` so faz sentido
   // quando exatamente um id foi consultado.
@@ -669,6 +740,7 @@ export async function runOmdbRatingsSync(
     idsSkipped,
     idsDeniedByQuota,
     idsAbortedByProviderQuota,
+    idsInterrupted,
     idsSkippedFresh,
     idsWithoutEntity,
     items: itemResults,
