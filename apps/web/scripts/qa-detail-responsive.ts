@@ -6,12 +6,13 @@
  *
  * O QUE ESTE HARNESS PROVA — E O QUE ELE NAO PROVA
  * ------------------------------------------------
- * PROVA: o comportamento do CSS REAL (`app/globals.css`, lido do disco, sem
- * copia) sobre a marcacao REAL da fileira de notas (o componente
- * `RatingsPanel` renderizado de verdade, a partir do presenter de verdade), nas
- * quatro larguras da auditoria. Mede overflow horizontal, alvo de toque e
- * tamanho de fonte com o motor de layout do Chromium — coisas que nenhum teste
- * de string consegue medir.
+ * PROVA: o comportamento do CSS REAL (as folhas que a ficha carrega, na ordem:
+ * `app/globals.css`, `app/_components/detail-hero.css` e
+ * `app/_components/detail.css`, lidas do disco, sem copia) sobre a marcacao
+ * REAL da fileira de notas (o componente `RatingsPanel` renderizado de verdade,
+ * a partir do presenter de verdade), nas quatro larguras da auditoria. Mede
+ * overflow horizontal, alvo de toque e tamanho de fonte com o motor de layout
+ * do Chromium — coisas que nenhum teste de string consegue medir.
  *
  * NAO PROVA: a cadeia de dados (banco -> loader -> presenter -> pagina). Isso e
  * coberto pelos `validate:*-real-postgres` e pelos testes de wiring. Um harness
@@ -44,7 +45,17 @@ import { buildRatingsView } from '../src/lib/ratings-presenter'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const webDir = path.resolve(scriptDir, '..')
-const CSS = path.join(webDir, 'app', 'globals.css')
+/**
+ * As folhas que uma ficha carrega, na ORDEM de carga: a global (do layout) e as
+ * do detalhe (da pagina). Desde a divisao do CSS por rota o hero e o corpo das
+ * fichas vivem nas folhas do detalhe; auditar so a global mediria a fileira de
+ * notas sem o estilo dela.
+ */
+const CSS = [
+  path.join(webDir, 'app', 'globals.css'),
+  path.join(webDir, 'app', '_components', 'detail-hero.css'),
+  path.join(webDir, 'app', '_components', 'detail.css'),
+] as const
 const OUT = path.join(webDir, '.qa-detail-responsive')
 
 const PAGES = [
@@ -304,7 +315,7 @@ async function main(): Promise<void> {
   assertSkeletonMatchesPages()
 
   // O CSS e lido do disco, nunca copiado: auditar uma copia auditaria a copia.
-  const css = readFileSync(CSS, 'utf8')
+  const css = CSS.map((file) => readFileSync(file, 'utf8')).join('\n')
   rmSync(OUT, { recursive: true, force: true })
   mkdirSync(OUT, { recursive: true })
 

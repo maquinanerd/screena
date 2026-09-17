@@ -32,6 +32,8 @@ import '../../../../../_components/detail.css'
  * O vocabulario visual de temporada/episodio JA EXISTIA em `globals.css`
  * (`.episode-row`, `.episode-list`, `.season-info`, `.season-tabs`,
  * `.detail-hero`) — e o mesmo que a pagina de serie usa no guia de temporadas.
+ * Desde a divisao do CSS por rota ele vive em `app/_components/detail.css` e
+ * `app/_components/detail-hero.css`, que esta pagina importa.
  * Esta pagina passa a usa-lo, entao filme, serie e temporada falam a mesma
  * lingua e nao existe um segundo componente de episodio.
  *
