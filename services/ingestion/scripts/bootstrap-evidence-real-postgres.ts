@@ -14,7 +14,6 @@
  *   5. amostras reais (ids + slugs) de filme/serie/temporada/episodio/pessoa
  */
 
-import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -22,6 +21,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild, spawnChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
@@ -84,26 +84,37 @@ const steps: StepLog[] = []
  * PRECEDENCIA sobre --env-file no Node. E isso que garante que a ingestao caia
  * no Postgres efemero e nunca no banco de producao do .env.
  */
-function runCatalog(step: string, args: string[], databaseUrl: string, timeoutMs = 900_000): StepLog {
+function runCatalog(
+  step: string,
+  args: string[],
+  databaseUrl: string,
+  timeoutMs = 900_000,
+): Promise<StepLog> {
   return runBin(step, 'bin/catalog.ts', args, databaseUrl, timeoutMs)
 }
 
-/** Roda um bin qualquer de `services/ingestion` com o mesmo isolamento de env. */
-function runBin(
+/**
+ * Roda um bin qualquer de `services/ingestion` com o mesmo isolamento de env.
+ *
+ * ASSINCRONO de proposito, e aqui mais do que em qualquer outro script: o worker
+ * roda ate 50 minutos gravando no Postgres embarcado que ESTE processo hospeda —
+ * e le o log pelo laco de eventos. Com `spawnSync` o laco congelava, o pipe do log
+ * enchia e o backend travava no `write()` (ver `@screena/db/async-child-process`).
+ */
+async function runBin(
   step: string,
   bin: string,
   args: string[],
   databaseUrl: string,
   timeoutMs = 900_000,
-): StepLog {
+): Promise<StepLog> {
   const started = Date.now()
-  const res = spawnSync(
+  const res = await spawnChild(
     'node',
     ['--env-file', ENV_FILE, '--import', 'tsx', bin, ...args],
     {
       // `tsx` so resolve a partir do pacote que o declara.
       cwd: path.join(REPO, 'services', 'ingestion'),
-      encoding: 'utf8',
       timeout: timeoutMs,
       env: {
         ...process.env,
@@ -119,8 +130,8 @@ function runBin(
     command: `${bin} ${args.join(' ')}`,
     exitCode: res.status ?? -1,
     durationMs: Date.now() - started,
-    stdoutTail: (res.stdout ?? '').split('\n').slice(-40).join('\n'),
-    stderrTail: (res.stderr ?? '').split('\n').slice(-20).join('\n'),
+    stdoutTail: res.stdout.split('\n').slice(-40).join('\n'),
+    stderrTail: res.stderr.split('\n').slice(-20).join('\n'),
   }
   steps.push(log)
   console.log(`\n=== [${step}] ${bin} ${args.join(' ')} -> exit ${log.exitCode} (${log.durationMs}ms) ===`)
@@ -299,7 +310,7 @@ async function main(): Promise<void> {
     await pg.createDatabase('cinerie_bootstrap')
 
     console.log('--- prisma migrate deploy (do zero) ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', SCHEMA], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', SCHEMA], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'inherit',
       cwd: DB_DIR,
@@ -320,7 +331,7 @@ async function main(): Promise<void> {
     // (`api_sync_logs_provider_api_fkey`) — antes mesmo de tocar o catalogo.
     // -------------------------------------------------------------------
     console.log('--- prisma db seed (tabelas de referencia) ---')
-    execFileSync('node', ['--import', 'tsx', path.join(DB_DIR, 'prisma', 'seed.ts')], {
+    await runChild('node', ['--import', 'tsx', path.join(DB_DIR, 'prisma', 'seed.ts')], {
       env: { ...process.env, DATABASE_URL: url, NODE_ENV: 'development' },
       stdio: 'inherit',
       cwd: DB_DIR,
@@ -344,16 +355,16 @@ async function main(): Promise<void> {
       // e `tv_shows.original_language` tem FK para `languages`, e `slugs`/
       // `entity_translations` tambem. Sem este passo, nenhuma entidade persiste.
       // -------------------------------------------------------------------
-      runBin('taxonomies', 'bin/sync-tmdb.ts', ['taxonomies', '--apply'], url)
-      runBin('tmdb-config', 'bin/sync-tmdb-config.ts', ['--apply'], url)
+      await runBin('taxonomies', 'bin/sync-tmdb.ts', ['taxonomies', '--apply'], url)
+      await runBin('tmdb-config', 'bin/sync-tmdb-config.ts', ['--apply'], url)
 
       const requestId = 'prompt03-bootstrap-1'
-      runCatalog('dry-run', [
+      await runCatalog('dry-run', [
         'bootstrap', '--strategy', 'popular', '--entity', 'movie,tv',
         '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--dry-run', '--json',
       ], url)
 
-      runCatalog('bootstrap-apply', [
+      await runCatalog('bootstrap-apply', [
         'bootstrap', '--strategy', 'popular', '--entity', 'movie,tv',
         '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
       ], url)
@@ -366,7 +377,7 @@ async function main(): Promise<void> {
       // pendente, nada perdido. O segundo worker RETOMA do ponto em que o
       // primeiro parou, sem reprocessar o que ja terminou.
       // -------------------------------------------------------------------
-      runCatalog(
+      await runCatalog(
         'worker-parcial',
         ['worker', '--concurrency', '2', '--max-jobs', '15', '--timeout-ms', '300000'],
         url,
@@ -374,7 +385,7 @@ async function main(): Promise<void> {
       )
       report.censusInterrupted = await census(prisma, 'INTERROMPIDO (fatia parcial da fila)')
 
-      runCatalog(
+      await runCatalog(
         'worker-retomada',
         ['worker', '--concurrency', '4', '--max-jobs', '20000', '--timeout-ms', '300000'],
         url,
@@ -403,12 +414,12 @@ async function main(): Promise<void> {
       // Ids de pessoa que NAO participam de nenhum titulo ingerido.
       const orphanIds = [1, 2, 3, 4, 5].map((n) => 500_000 + n)
       for (const row of withCredits) {
-        runCatalog(`person-credited-${row.tmdb_id}`, [
+        await runCatalog(`person-credited-${row.tmdb_id}`, [
           'sync', '--entity', 'person', '--id', String(row.tmdb_id), '--locale', 'pt-BR', '--apply',
         ], url)
       }
       for (const id of orphanIds) {
-        runCatalog(`person-orphan-${id}`, [
+        await runCatalog(`person-orphan-${id}`, [
           'sync', '--entity', 'person', '--id', String(id), '--locale', 'pt-BR', '--apply',
         ], url)
       }
@@ -419,11 +430,11 @@ async function main(): Promise<void> {
       // -------------------------------------------------------------------
       // IDEMPOTENCIA: MESMO request-id, mesmo escopo. Nao pode duplicar.
       // -------------------------------------------------------------------
-      runCatalog('bootstrap-apply-2', [
+      await runCatalog('bootstrap-apply-2', [
         'bootstrap', '--strategy', 'popular', '--entity', 'movie,tv',
         '--limit', LIMIT, '--locale', 'pt-BR', '--request-id', requestId, '--apply', '--json',
       ], url)
-      runCatalog('worker-2', ['worker', '--concurrency', '4', '--max-jobs', '4000', '--timeout-ms', '300000'], url, 1_800_000)
+      await runCatalog('worker-2', ['worker', '--concurrency', '4', '--max-jobs', '4000', '--timeout-ms', '300000'], url, 1_800_000)
 
       report.censusIdempotency = await census(prisma, 'DEPOIS (2a execucao — idempotencia)')
 

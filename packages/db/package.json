@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./service-heartbeat": "./src/service-heartbeat.ts",
-    "./source-fingerprint": "./src/source-fingerprint.ts"
+    "./source-fingerprint": "./src/source-fingerprint.ts",
+    "./async-child-process": "./src/async-child-process.ts"
   },
   "sideEffects": false,
   "license": "UNLICENSED",

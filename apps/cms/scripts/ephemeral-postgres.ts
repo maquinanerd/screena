@@ -11,7 +11,6 @@
  *   ex.: tsx scripts/ephemeral-postgres.ts migrate:create initial
  */
 
-import { spawnSync } from 'node:child_process'
 import net from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,6 +18,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+
+import { spawnChild } from '../src/__tests__/async-child-process.js'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const cmsDir = path.resolve(scriptDir, '..')
@@ -81,16 +82,15 @@ async function main(): Promise<void> {
 
     // O proprio `bin.js` do Payload cuida da transpilacao do config TypeScript;
     // por isso nao injetamos loader aqui.
-    const result = spawnSync('node', [
-      '--no-warnings',
-      path.join(cmsDir, 'node_modules', 'payload', 'bin.js'),
-      ...args,
-    ], {
-      cwd: cmsDir,
-      env: childEnv,
-      stdio: 'inherit',
-      shell: false,
-    })
+    //
+    // ASSINCRONO de proposito: este processo hospeda o Postgres e le o log dele
+    // pelo laco de eventos. Um `spawnSync` congelaria o laco, o pipe do log
+    // encheria e o backend travaria no `write()` (ver `async-child-process.ts`).
+    const result = await spawnChild(
+      'node',
+      ['--no-warnings', path.join(cmsDir, 'node_modules', 'payload', 'bin.js'), ...args],
+      { cwd: cmsDir, env: childEnv, stdio: 'inherit' },
+    )
 
     if (result.status !== 0) {
       throw new Error(`comando do payload falhou (exit ${String(result.status)})`)

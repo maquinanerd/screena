@@ -35,7 +35,6 @@
  * Uso: pnpm --filter @screena/web validate:synopsis-render
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -43,6 +42,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url };
 
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,

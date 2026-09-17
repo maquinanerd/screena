@@ -21,13 +21,15 @@
  * Uso: pnpm --filter @screena/web canary:manual-editorial
  */
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { spawnChild } from '@screena/db/async-child-process'
 
 /* ------------------------------------------------------------------ */
 /* Relatorio                                                           */
@@ -113,14 +115,16 @@ async function servePublicPage(databaseUrl: string): Promise<void> {
     CINERIE_PUBLIC_INDEXING_ENABLED: 'true',
   }
 
-  const build = spawnSync('node', [nextBin, 'build'], {
+  // ASSINCRONO de proposito: este processo hospeda DOIS Postgres embarcados (os
+  // harnesses do CMS e do screen-db) e le o log deles pelo laco de eventos. Um
+  // `spawnSync` de minutos deixaria o pipe encher e o backend travar no `write()`.
+  const build = await spawnChild('node', [nextBin, 'build'], {
     cwd: webDir,
     env,
     stdio: 'pipe',
-    shell: false,
   })
   if (build.status !== 0) {
-    record('build do site publico', false, (build.stdout?.toString() ?? '').slice(-800))
+    record('build do site publico', false, build.stdout.slice(-800))
     return
   }
   record('build do site publico', true, 'next build concluido')

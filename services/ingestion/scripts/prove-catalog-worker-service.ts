@@ -18,7 +18,7 @@
  * Uso: pnpm --filter @screena/ingestion prove:catalog-worker
  */
 
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -27,6 +27,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 const require = createRequire(import.meta.url)
@@ -165,7 +166,7 @@ async function main(): Promise<number> {
     const url = `postgresql://postgres:postgres@127.0.0.1:${String(pgPort)}/${database}`
 
     log('== aplicando as migrations REAIS do screen-db ==')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'pipe',
       cwd: dbDir,

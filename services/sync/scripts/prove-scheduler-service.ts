@@ -22,7 +22,7 @@
  * Uso: pnpm --filter @screena/sync prove:scheduler-service
  */
 
-import { spawn, execFileSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
@@ -30,6 +30,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 
 import { RHYTHMS } from '../src/scheduler/rhythms.js'
 
@@ -117,7 +118,7 @@ async function main(): Promise<number> {
     const url = `postgresql://postgres:postgres@127.0.0.1:${String(pgPort)}/${database}`
 
     log('== aplicando as migrations REAIS do screen-db ==')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: 'pipe',
       cwd: dbDir,

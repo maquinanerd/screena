@@ -34,7 +34,7 @@
  * Uso: pnpm --filter @screena/web qa:episode-season
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -43,6 +43,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
@@ -395,7 +396,7 @@ async function main(): Promise<number> {
     const url = `postgresql://postgres:postgres@127.0.0.1:${String(pgPort)}/${database}`;
 
     log("== aplicando as migrations REAIS ==");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
       env: { ...process.env, DATABASE_URL: url },
       stdio: "pipe",
       cwd: dbDir,
@@ -404,7 +405,7 @@ async function main(): Promise<number> {
     // `source_licenses.provider_key` tem FK para `api_providers.key`: sem a
     // linha `tmdb` o primeiro INSERT morre em violacao de chave estrangeira.
     log("== semeando os dicionarios (api_providers, countries, ...) ==");
-    execFileSync(
+    await runChild(
       process.execPath,
       [path.join(webDir, "node_modules", "tsx", "dist", "cli.mjs"), path.join(dbDir, "prisma", "seed.ts")],
       { env: { ...process.env, DATABASE_URL: url }, stdio: "pipe", cwd: dbDir },

@@ -34,7 +34,7 @@
  * Pre-requisito: `pnpm build` (o script sobe `next start` sobre o build atual).
  */
 
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -42,6 +42,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(scriptDir, "..");
@@ -489,12 +490,12 @@ async function main(): Promise<void> {
     process.env.DATABASE_URL = url;
     const env = { ...process.env, DATABASE_URL: url };
 
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,
     });
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], {
       env,
       stdio: "inherit",
       cwd: dbDir,

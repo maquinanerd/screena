@@ -11,7 +11,6 @@
  * tambem quando o boot falha no meio, pelo MESMO teardown (ver `startScreenDbHarness`).
  */
 
-import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -20,6 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 const require = createRequire(import.meta.url)
@@ -148,13 +148,13 @@ export async function startScreenDbHarness(): Promise<ScreenDbHarness> {
     // Migration REAL, nao SQL sintetico: o teste tem que falhar se a migration
     // que vai para producao estiver errada.
     const env = { ...process.env, DATABASE_URL: url }
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env,
       stdio: 'pipe',
       cwd: dbDir,
     })
     // O seed traz `languages` (pt-BR/en/es), sem o qual a FK da traducao recusa.
-    execFileSync('node', [prismaBin(), 'db', 'seed', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'db', 'seed', '--schema', schemaPath], {
       env,
       stdio: 'pipe',
       cwd: dbDir,

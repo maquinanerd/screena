@@ -18,7 +18,6 @@
  * Uso: pnpm --filter @screena/web validate:season-episode-routes
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -26,6 +25,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 
 import { SUSPENSION_REASON } from "../src/server/seo/suspended-pages";
 
@@ -380,11 +380,11 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url };
 
     console.log("--- prisma migrate deploy (schema existente; sem migration nova) ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
     record(1, "migrate deploy aplica sem erro", true, "ok");
 
     console.log("--- prisma db seed (idiomas/paises/fontes) ---");
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
     record(2, "db:seed roda sem erro", true, "ok");
 
     console.log("\n--- rotas de temporada/episodio no banco real ---");
