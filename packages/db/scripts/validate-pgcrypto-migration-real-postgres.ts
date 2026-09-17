@@ -35,7 +35,6 @@
  * Uso: pnpm --filter @screena/db db:validate:pgcrypto
  */
 
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -44,6 +43,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "../src/async-child-process.js";
 import { PrismaClient } from "@prisma/client";
 
 const require = createRequire(import.meta.url);
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
 
     const env = { ...process.env, DATABASE_URL: url };
     console.log("--- prisma migrate deploy ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", schemaPath], {
       env,
       stdio: "inherit",
       cwd: dbDir,

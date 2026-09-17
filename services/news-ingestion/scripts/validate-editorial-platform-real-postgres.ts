@@ -14,7 +14,6 @@
  * Uso (a partir da raiz): pnpm validate:editorial-platform
  */
 
-import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import net from 'node:net'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -22,6 +21,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 import {
@@ -685,7 +685,7 @@ async function main(): Promise<void> {
     await pg.createDatabase('cinerie_editorial')
     const env = { ...process.env, DATABASE_URL: url }
     console.log('--- prisma migrate deploy ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env,
       stdio: 'inherit',
       cwd: dbDir,

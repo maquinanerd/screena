@@ -25,10 +25,14 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-const CSS = readFileSync(
-  path.join(process.cwd(), 'apps/web/app/globals.css'),
-  'utf8',
-)
+/**
+ * As folhas que a home carrega, NA ORDEM de carga: a global (layout) e a da
+ * HomeLike (`home-like.css`, importada por `/pt/`, `/pt/filmes/` e `/pt/series/`),
+ * onde a secao "Popular essa semana" mora desde a divisao do CSS por rota.
+ */
+const CSS = ['apps/web/app/globals.css', 'apps/web/app/_components/home-like.css']
+  .map((file) => readFileSync(path.join(process.cwd(), file), 'utf8'))
+  .join('\n')
 
 /** Corpo de uma regra CSS pelo seletor exato (primeira ocorrência). */
 function ruleBody(selector: string, from = 0): string {

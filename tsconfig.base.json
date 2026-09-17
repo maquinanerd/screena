@@ -21,6 +21,9 @@
       // a impressao digital do codigo (painel operacional).
       "@screena/db/service-heartbeat": ["packages/db/src/service-heartbeat.ts"],
       "@screena/db/source-fingerprint": ["packages/db/src/source-fingerprint.ts"],
+      // Processo filho que NAO congela o laco de eventos. Todo script que hospeda
+      // `embedded-postgres` roda migrate/seed/build por aqui (ver o modulo).
+      "@screena/db/async-child-process": ["packages/db/src/async-child-process.ts"],
       "@screena/db": ["packages/db/src/index.ts"],
       "@screena/public-contracts": ["packages/public-contracts/src/index.ts"],
       "@screena/cinerie-score": ["packages/cinerie-score/src/index.ts"],

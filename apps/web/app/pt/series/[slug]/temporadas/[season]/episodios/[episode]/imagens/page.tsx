@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { serializeJsonLd } from '@screena/seo'
+import { QUALITY_GATE_ROBOTS, serializeJsonLd } from '@screena/seo'
 
 import { GalleryImageGrid } from '../../../../../../../../_components/gallery-grids'
 import { GalleryShell } from '../../../../../../../../_components/gallery-shell'
@@ -11,7 +11,10 @@ import {
   SITE_URL,
   gatePublicRobots,
 } from '../../../../../../../../../src/lib/site'
+import { socialMetadata } from '../../../../../../../../../src/lib/social-metadata'
 import { getEpisodePageData } from '../../../../../../../../../src/server/episode-page'
+import '../../../../../../../../_components/gallery.css'
+import '../../../../../../../../_components/detail-hero.css'
 
 /**
  * Galeria de imagens de UM episodio
@@ -96,19 +99,25 @@ export async function generateMetadata({
   const { view, images } = data
   const canonical = episodeImagesGalleryPath(view.seriesSlug, view.seasonNumber, view.episodeNumber)
   const title = `Imagens de ${view.episodeTitle} — ${view.seriesTitle}, T${view.seasonNumber} E${view.episodeNumber}`
+  const description = `${String(images.total)} imagens do episódio "${view.episodeTitle}", fornecidas pelo TMDB.`
+  const canonicalUrl = canonical === null ? null : `${SITE_URL}${canonical}`
   return {
     title,
-    description: `${String(images.total)} imagens do episódio "${view.episodeTitle}", fornecidas pelo TMDB.`,
-    // O MESMO piso de pagina fina das outras galerias: abaixo dele a pagina
-    // RESPONDE (o conteudo existe) mas nao indexa. E o caso tecnico da
-    // invariante 5 — o episodio dono continua indexando normalmente.
-    robots: gatePublicRobots({ index: images.indexable, follow: true }),
-    alternates: canonical === null ? undefined : { canonical: `${SITE_URL}${canonical}` },
-    openGraph: {
-      title,
-      url: canonical === null ? undefined : `${SITE_URL}${canonical}`,
-      type: 'website',
-    },
+    description,
+    // D1 (decisao do dono, 2026-09-11): galeria nunca indexa como pagina
+    // propria.
+    //
+    // Isto tambem fecha o VAZAMENTO que a auditoria achou aqui. A decisao era so
+    // o piso de imagens (`images.indexable`), sem olhar o episodio dono — e o
+    // dono esta suspenso desde 2026-08-27. A galeria de um episodio `noindex`
+    // saia `index, follow`. O comentario que morava aqui ("o episodio dono
+    // continua indexando normalmente") era falso desde a suspensao. Uma galeria
+    // que nunca indexa nao consegue ser mais indexavel que o dono.
+    robots: gatePublicRobots(QUALITY_GATE_ROBOTS),
+    alternates: canonicalUrl === null ? undefined : { canonical: canonicalUrl },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026).
+    ...socialMetadata({ type: 'website', title, description, canonicalUrl }),
   }
 }
 

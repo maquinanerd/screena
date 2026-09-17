@@ -41,6 +41,15 @@ function startOfUtcDay(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
+/**
+ * "Mais aguardados" indexa quando ha ao menos uma estreia anunciada. A PAGINA e o
+ * SITEMAP perguntam por esta funcao, e nao por copias da regra (auditoria de SEO,
+ * 11/09/2026, secao 3.7: o hub era `index` na pagina e ficava fora do sitemap).
+ */
+export function anticipatedIndexable(data: Pick<AnticipatedData, "total">): boolean {
+  return data.total > 0;
+}
+
 export const getAnticipatedData = cache(async (): Promise<AnticipatedData> => {
   const prisma = getPrismaClient();
   const cutoff = startOfUtcDay(new Date());

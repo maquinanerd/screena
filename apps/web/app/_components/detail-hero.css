@@ -1,0 +1,361 @@
+/* ------------------------------------------------------------------ */
+/* Detalhe de titulo — HERO EDITORIAL CLARO do canonico (telas 06/07)  */
+/* container 1360/64; valores exatos do Screen Screens v4              */
+/* ------------------------------------------------------------------ */
+/*
+ * Folha do HERO das telas de detalhe: fichas de filme e serie, temporada,
+ * episodio e as galerias, que repetem o hero da entidade. Importada por cada
+ * uma dessas paginas. COMPARTILHADA (regra R3 do plano). O corpo das fichas
+ * vive em app/_components/detail.css; entre as duas folhas nao ha ordem
+ * garantida, e o `css:move-check` reprova qualquer empate entre elas.
+ *
+ * Saiu do `globals.css` na divisao do CSS por rota
+ * (docs/frontend/CSS-SPLIT-PLAN-2026-09-15.md): so essas rotas escrevem estas
+ * classes (guarda R2 em tests/web/css-route-sheets.test.ts) e as regras seguem
+ * a ordem relativa que tinham la. Esta folha carrega DEPOIS da global;
+ * `pnpm --filter @screena/web css:move-check` prova que nenhuma regra que ficou
+ * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
+ */
+
+.detail-hero {
+  background: #fdfcfa;
+  border-bottom: 1px solid #e9e3d8;
+}
+
+.detail-hero__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding-top: 22px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+}
+
+.detail-hero__crumbs ol {
+  display: contents;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-hero__crumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.detail-hero__crumbs li + li::before {
+  content: '/';
+  opacity: 0.5;
+}
+
+.detail-hero__crumbs [aria-current='page'] {
+  color: #3a362f;
+}
+
+.detail-hero__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 34px 46px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 26px 0 42px;
+}
+
+.detail-hero__main {
+  flex: 1 1 560px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.detail-hero__aside {
+  flex: 1 1 330px;
+  /* `min(300px, 100%)` e nao `300px`: a 320px de viewport sobram 280px depois
+     do padding de 20, e um minimo rigido de 300 empurrava a coluna para fora —
+     overflow horizontal na faixa que o contrato manda auditar primeiro. O
+     `min()` mantem os 300px onde eles cabem e cede onde nao cabem. */
+  min-width: min(300px, 100%);
+  max-width: 410px;
+  padding-top: 2px;
+}
+
+.detail-hero__title {
+  font-size: 38px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 0.9;
+  color: #12100e;
+  margin: 0;
+}
+
+.detail-hero__chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-hero__meta-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6e6a61;
+}
+
+.detail-hero__cert {
+  font-size: 11px;
+  font-weight: 700;
+  color: #3a362f;
+  border: 1px solid var(--c-border-strong);
+  padding: 4px 8px;
+}
+
+.detail-hero__synopsis {
+  max-width: 58ch;
+  font-size: 16px;
+  line-height: 1.65;
+  color: #3a362f;
+  margin: 20px 0 0;
+}
+
+/* Sinopse em idioma de origem (T2): o texto mantem o mesmo peso visual do caso
+   traduzido — nao e conteudo de segunda classe —, e o aviso vem abaixo, menor e
+   em contraste reduzido, sem virar cinza ilegivel. Ver `entity-synopsis.tsx`. */
+.detail-hero__synopsis-group {
+  margin: 20px 0 0;
+}
+
+.detail-hero__synopsis-group .detail-hero__synopsis {
+  margin-top: 0;
+}
+
+.detail-hero__synopsis-notice {
+  max-width: 58ch;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b6459;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tela 08 — estado MOBILE da página de série (e detalhe em geral).    */
+/* O protótipo demonstra o comportamento num frame 390px; aqui ele é   */
+/* o breakpoint real de /pt/series/[slug] (mission §30 — sem rota      */
+/* duplicada). Valores do fragmento canônico 08.                       */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 767px) {
+  /* Título 30px/1.05 com tracking -0.03em (canônico mobile) */
+  .detail-hero__title {
+    font-size: 30px;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+  }
+}
+
+/* A banda de midia sobe para o topo junto: `main[data-vertical] > .media-strip`
+   vive em app/_components/detail.css. */
+@media (max-width: 767px) {
+  /* Tela 08: ordem mobile canônica da página de série — mídia (trailer)
+     primeiro, depois bloco de título, elenco, sinopse, crítica, episódios,
+     notícias e ficha. Reordenação por flex apenas no breakpoint. */
+  main[data-vertical='series']:has(> .detail-hero) {
+    display: flex;
+    flex-direction: column;
+  }
+  main[data-vertical='series']:has(> .detail-hero) > * {
+    min-width: 0;
+    width: 100%;
+  }
+  main[data-vertical='series'] > .detail-hero {
+    order: -1;
+  }
+
+  main[data-vertical='series'] > section[aria-labelledby='series-cast-title'] {
+    order: 1;
+  }
+
+  main[data-vertical='series'] > section[aria-labelledby='series-work-title'] {
+    order: 2;
+  }
+
+  main[data-vertical='series'] > section[aria-label='Crítica da redação'] {
+    order: 3;
+  }
+
+  main[data-vertical='series'] > section[aria-labelledby='series-episodes-title'] {
+    order: 4;
+  }
+
+  main[data-vertical='series'] > section[aria-labelledby='series-news-title'] {
+    order: 5;
+  }
+
+  main[data-vertical='series'] > section[aria-labelledby='series-details-title'] {
+    order: 6;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ficha de FILME: a mesma midia-primeiro que a serie ja tinha          */
+/* ------------------------------------------------------------------ */
+/* O QUE FOI MEDIDO (auditoria de 2026-09-01, /pt/filmes/a-odisseia/):
+   em 375x812 a PRIMEIRA IMAGEM da pagina comeca em y = 840 px. Ou seja,
+   ZERO pixel de imagem na primeira tela de uma pagina de filme — o leitor
+   rola uma tela inteira de texto antes de ver qualquer coisa do filme.
+   Nenhum dos 24 concorrentes analisados faz isso.
+
+   POR QUE A CORRECAO E SO DE MOBILE, E SO DE ORDEM.
+   No desktop a composicao atual E o canonico: heroi de texto e, abaixo,
+   a banda full-bleed com poster sangrando a esquerda e trailer no centro.
+   Isso nao muda. O que quebra e o EMPILHAMENTO: em telas estreitas o heroi
+   ocupa a dobra inteira e empurra a banda para fora dela.
+
+   POR QUE ESTE BLOCO E QUASE UMA COPIA DO DE CIMA.
+   Porque a resposta ja existia no repositorio e so nao tinha sido aplicada
+   aos dois verticais. A serie recebeu `order: -2 / -1` na tela 08; o filme
+   ficou sem. A auditoria mediu uma ficha de FILME e concluiu que o produto
+   inteiro nao mostrava imagem na dobra — a serie ja mostrava.
+
+   O QUE ESTE BLOCO NAO FAZ. Nao reordena as SECOES de conteudo do filme.
+   O bloco da serie enumera `order: 1..6` porque a tela 08 decidiu uma ordem
+   editorial propria (elenco antes de "a obra"); para filme nao existe
+   decisao equivalente, e inventar uma aqui seria reescrever a pagina a
+   pretexto de subir uma imagem. Sem `order` declarada, todo irmao fica em
+   `0` e mantem a ordem do DOM.
+
+   O DOM NAO MUDA — logo titulo, breadcrumb e JSON-LD continuam onde estao
+   para o rastreador; o que muda e so a ordem VISUAL abaixo de 768px. */
+@media (max-width: 767px) {
+  /* `:has(> .detail-hero)` e a mesma guarda da serie: sem heroi nao ha o que
+     reordenar, e ligar `flex` numa arvore diferente mudaria layout de graca. */
+  main[data-vertical='movie']:has(> .detail-hero) {
+    display: flex;
+    flex-direction: column;
+  }
+  main[data-vertical='movie']:has(> .detail-hero) > * {
+    min-width: 0;
+    width: 100%;
+  }
+  main[data-vertical='movie'] > .detail-hero {
+    order: -1;
+  }
+}
+
+/* ==================================================================== *
+ * PISO DE LEGIBILIDADE E ALVO DE TOQUE — o hero das telas de detalhe
+ *
+ * Vem DEPOIS, nesta folha, das regras que corrige: todas tem a mesma
+ * especificidade das originais (uma classe), entao quem vence e a ULTIMA na
+ * ordem do documento. No globals.css este bloco ficava perto do fim do arquivo
+ * pelo mesmo motivo; na divisao do CSS por rota cada parte foi para a folha do
+ * bloco que corrige (o resto esta em app/_components/detail.css). Nao mova para
+ * cima sem subir a especificidade junto.
+ *
+ * ALVO DE TOQUE (44x44, "em qualquer viewport" no contrato). Vale em TODAS
+ * as larguras, nao so no mobile: a expansao e feita por `::after` absoluto,
+ * que aumenta a area clicavel sem alterar uma linha do layout — no desktop
+ * nada se move, e um link de credito com 44px de altura REAL destruiria a
+ * fileira de chips.
+ *
+ * PISO DE 12px. Vale abaixo de 1024. O contrato: "texto nunca abaixo de
+ * 12px; meta/kickers podem manter 11px APENAS >=1024". O canonico e
+ * pixel-fiel em 1280-1440 e usa 10-11px em selo, kicker e meta — divergencia
+ * registrada em docs/frontend/DESIGN-DELTA-detalhe.md, valida so no desktop. Abaixo de 1024 e
+ * leitura em tela pequena, e ali o contrato manda.
+ * ==================================================================== */
+
+.detail-hero__crumbs a {
+  position: relative;
+}
+
+.detail-hero__crumbs a::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 44px;
+}
+
+@media (max-width: 1023px) {
+  .detail-hero__cert {
+    font-size: 12px;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * O que o hero da temporada precisa, e SO isso.
+ *
+ * O commit 934ccfe tinha aqui (entao no globals.css) um conserto da trilha do
+ * hero: `.detail-hero` pinta um fundo claro FIXO, e a trilha usava
+ * `--c-text-muted-aa`, que no
+ * tema escuro subia para #a8a49b e saia 2,42:1 sobre um fundo que continuou
+ * claro. Com o tema escuro FORA (21/08/2026), `--c-text-muted-aa` vale
+ * #6e6a61 sempre e a regra original ja traz #3a362f no item atual — o
+ * conserto virou no-op e foi removido em vez de virar decoracao. Medido:
+ * trilha 5,30:1 e item atual 10,60:1, sem override nenhum.
+ * ------------------------------------------------------------------ */
+
+/* Link de volta para a serie, no topo da tela de temporada. */
+.detail-hero__back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-accent-series-dark);
+  text-decoration: none;
+}
+
+.detail-hero__back:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ *
+ * TOPO CANONICO — reaplicado em 21/08/2026 (chips de genero, Cinerie Score,
+ * dois botoes, marcas de onde assistir em linha, sinopse de tres linhas).
+ *
+ * Este bloco foi ao ar nas PRs #199-#201 e voltou com o revert da #202. O que
+ * o derrubou NAO foi ele: foi o tema escuro, que agora nao existe (ver TEMA
+ * UNICO no topo do globals.css). Aqui ficam os chips de genero e a sinopse de
+ * tres linhas do hero; o cartao do Cinerie Score, os botoes e as marcas de
+ * onde assistir vivem em app/_components/detail.css.
+ * ------------------------------------------------------------------ */
+
+/* Chip de genero do hero. A cor segue a vertical (vermelho filme / verde
+   serie) como APOIO — a diferenciacao continua em label+badge+breadcrumb+
+   schema+URL (invariante 11). */
+.detail-hero__genre-chip {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 11px;
+  border-radius: 6px;
+}
+
+main[data-vertical='movie'] .detail-hero__genre-chip {
+  color: #a32b23;
+  background: #fbe9e7;
+}
+
+main[data-vertical='series'] .detail-hero__genre-chip {
+  color: #395c42;
+  background: #e9f0e3;
+}
+
+/* Sinopse do topo: tres linhas na largura do canonico. O corte DE TEXTO e por
+   palavra inteira (truncateAtWord); o clamp e o cinto de seguranca visual para
+   larguras menores. */
+.detail-hero__synopsis[data-synopsis-truncated],
+.detail-hero__synopsis {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

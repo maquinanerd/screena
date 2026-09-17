@@ -39,8 +39,14 @@ const BLOCK_TYPE_ORDER = [
 const LOCAL_IMAGE_PREFIXES = ["/media/", "/uploads/", "/brand/"] as const;
 const LOCAL_IMAGE_EXTENSION_PATTERN = /\.(?:avif|jpg|jpeg|png|webp)$/i;
 
-/** Perfil e retrato 2:3 (mesma proporcao de poster). */
-const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "original" };
+/**
+ * Perfil e retrato 2:3 (mesma proporcao de poster).
+ *
+ * `w300`, NAO `original` (2026-09-11): o retrato do cabecalho e um circulo de
+ * 200 px (tela 09), e `w300` e 1,5x essa largura. `original` chegava a 2000x3000
+ * px — o mesmo desperdicio medido nas fotos de elenco (ver `cast-presenter.ts`).
+ */
+const PROFILE_IMAGE_SPEC: LocalImageSpec = { width: 300, height: 450, tmdbSize: "w300" };
 
 /** Rotas canonicas dos alvos de credito (pt-BR; barra final como no esquema). */
 const MOVIE_PATH_PREFIX = "/pt/filmes/";

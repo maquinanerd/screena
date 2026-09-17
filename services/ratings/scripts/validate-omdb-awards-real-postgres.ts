@@ -44,7 +44,6 @@
  * Uso: pnpm --filter @screena/ratings validate:awards
  */
 
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -55,6 +54,7 @@ import { fileURLToPath } from 'node:url'
 import { OMDB_PROVIDER_API } from '@screena/omdb-client'
 import { AWARDS_DISPLAY_USE_CASE, CINERIE_TERRITORY, STATIC_AUTHORIZATION } from '@screena/legal'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild } from '@screena/db/async-child-process'
 
 import { runAwardsPromotion } from '../src/awards/run.js'
 
@@ -478,7 +478,7 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url }
 
     console.log('--- prisma migrate deploy (inclui entity_awards + trigger) ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', dbSchema], {
       env,
       stdio: 'inherit',
       cwd: dbDir,
@@ -486,7 +486,7 @@ async function main(): Promise<void> {
     record(1, 'migrate deploy aplica sem erro (a migration nova inclusive)', true, 'ok')
 
     console.log('--- prisma db seed (idiomas/paises/fontes/providers) ---')
-    execFileSync('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
+    await runChild('node', [prismaBin(), 'db', 'seed', '--schema', dbSchema], {
       env,
       stdio: 'inherit',
       cwd: dbDir,

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { serializeJsonLd } from '@screena/seo'
+import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { HomeLike } from '../../_components/home-like'
 import {
@@ -11,6 +11,8 @@ import { restrictEditorialHighlights } from '../../../src/lib/home-editorial-pre
 import { filterNewsCardsByVertical } from '../../../src/lib/news-presenter'
 import { RANKING_TABS } from '../../../src/lib/popular-rankings'
 import { SERIES_INDEX_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
+import { socialMetadata } from '../../../src/lib/social-metadata'
+import { railItemListJsonLd } from '../../../src/lib/rail-item-list'
 import { getHomeCatalogData } from '../../../src/server/home-catalog'
 import { getHomeEditorialHighlights } from '../../../src/server/home-editorial'
 import { getHomeHeroSlides } from '../../../src/server/home-hero'
@@ -19,6 +21,7 @@ import { getHomeUpcomingSeries } from '../../../src/server/home-upcoming'
 import { getPopularRankings } from '../../../src/server/popular-rankings'
 import { getNewsIndexData } from '../../../src/server/news-pages'
 import { getSeriesIndexData } from '../../../src/server/entity-indexes'
+import '../../_components/home-like.css'
 
 /**
  * Categoria Séries — tela 04 do canônico (EX-04-dual): home-like com a banda
@@ -65,16 +68,20 @@ import { getSeriesIndexData } from '../../../src/server/entity-indexes'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Séries'
+// O <title> diz o que a pagina tem; o H1 e a trilha continuam "Séries" (ver a nota
+// gemea em /pt/filmes/).
+const META_TITLE = 'Séries: fichas, temporadas e elenco'
 const DESCRIPTION = 'Explore as séries catalogadas na Cinerie, com páginas editoriais em português.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getSeriesIndexData()
   const shouldIndex = indexability.decision === 'index'
   return {
-    title: TITLE,
+    title: META_TITLE,
     description: DESCRIPTION,
     robots: publicRobots(shouldIndex),
     alternates: { canonical: canonicalUrl },
+    ...socialMetadata({ type: 'website', title: META_TITLE, description: DESCRIPTION, canonicalUrl }),
   }
 }
 
@@ -123,19 +130,14 @@ export default async function SeriesCategoryPage() {
     name: TITLE,
     url: index.canonicalUrl,
     description: DESCRIPTION,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@id': websiteId(SITE_URL) },
   }
-  if (index.view.cards.length > 0) {
-    collectionJsonLd.mainEntity = {
-      '@type': 'ItemList',
-      numberOfItems: index.view.cards.length,
-      itemListElement: index.view.cards.map((card, position) => ({
-        '@type': 'ListItem',
-        position: position + 1,
-        url: `${SITE_URL}${card.href}`,
-        name: card.title,
-      })),
-    }
-  }
+  // O ItemList descreve o trilho que a pagina RENDERIZA — o mesmo
+  // `catalog.series` passado ao HomeLike abaixo —, e nao a listagem por ano
+  // (auditoria de SEO, 3.4). Sem trilho, sem ItemList.
+  const railList = railItemListJsonLd('Séries da semana', catalog.series)
+  if (railList !== null) collectionJsonLd.mainEntity = railList
 
   return (
     <main data-vertical="series">

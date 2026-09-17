@@ -52,7 +52,29 @@ packages/db/
     index.ts           # exports publicos seguros
     server.ts          # PrismaClient server-only
     seed-data.ts       # seeds tipados
+    async-child-process.ts  # processo filho que NAO congela o laco de eventos
 ```
+
+## Validadores com PostgreSQL embarcado: filho sempre assincrono
+
+Todo script ou harness que sobe `embedded-postgres` roda `prisma migrate deploy`,
+`db seed`, `next build` e CLIs por `runChild`/`spawnChild` de
+`@screena/db/async-child-process` — nunca por `execFileSync`, `spawnSync` ou
+`execSync`.
+
+O motivo e um travamento sem erro: o `embedded-postgres` le o log do Postgres
+(stderr do processo filho) pelo laco de eventos. Uma chamada sincrona congela o
+laco, o pipe enche (~64 KB) e o backend que for logar trava dentro do `write()`.
+Em 16/09/2026 um validador ficou 6 h parado numa migration assim.
+
+- `runChild` tem a semantica de erro do `execFileSync`: codigo diferente de 0
+  rejeita com `Command failed: <comando>`.
+- `spawnChild` tem a do `spawnSync`: nunca rejeita e devolve status, sinal e saida.
+- O CMS usa a copia `apps/cms/src/__tests__/async-child-process.ts` (ADR 0015).
+
+Travado por `tests/governance/embedded-postgres-child-process.test.ts`; o
+experimento do pipe cheio, com controle negativo, esta em
+`tests/unit/async-child-process.test.ts`.
 
 ## Uso
 

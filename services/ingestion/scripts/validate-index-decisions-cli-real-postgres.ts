@@ -38,7 +38,6 @@
  * Uso: pnpm --filter @screena/ingestion validate:index-decisions-cli
  */
 
-import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import net from 'node:net'
@@ -46,6 +45,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import EmbeddedPostgres from 'embedded-postgres'
+import { runChild, spawnChild } from '@screena/db/async-child-process'
 import { PrismaClient } from '@prisma/client'
 
 import { SITEMAP_DECISION_GATE_MIN_ROWS } from '../../../apps/web/src/server/seo/sitemap-index.js'
@@ -116,11 +116,16 @@ interface CliRun {
   readonly stderr: string
 }
 
-/** Executa a CLI DE VERDADE contra o banco efemero. */
-function runCatalog(databaseUrl: string, args: readonly string[]): CliRun {
-  const result = spawnSync(process.execPath, [tsxBin(), catalogBin, ...args], {
+/**
+ * Executa a CLI DE VERDADE contra o banco efemero.
+ *
+ * Assincrona: a CLI grava no Postgres embarcado que ESTE processo hospeda, e o
+ * log dele e lido pelo laco de eventos — um `spawnSync` deixaria o pipe encher e
+ * o backend travar no `write()` (ver `@screena/db/async-child-process`).
+ */
+async function runCatalog(databaseUrl: string, args: readonly string[]): Promise<CliRun> {
+  const result = await spawnChild(process.execPath, [tsxBin(), catalogBin, ...args], {
     cwd: ingestionDir,
-    encoding: 'utf8',
     timeout: 300_000,
     env: {
       ...process.env,
@@ -130,7 +135,7 @@ function runCatalog(databaseUrl: string, args: readonly string[]): CliRun {
       NODE_ENV: 'test',
     },
   })
-  return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
 /** A ULTIMA linha de stdout que faz parse como objeto JSON. */
@@ -213,7 +218,7 @@ async function runChecks(prisma: PrismaClient, url: string): Promise<void> {
   // ---- (1) O CENSO DO DRY-RUN --------------------------------------------
   // Tetos frouxos: aqui se mede o CENSO, nao o freio (o freio tem check proprio
   // logo abaixo). Sem afrouxar, `null -> noindex` em 300 filmes bloquearia.
-  const dry = runCatalog(url, [
+  const dry = await runCatalog(url, [
     'index-decisions',
     '--dry-run',
     '--json',
@@ -284,7 +289,7 @@ async function runChecks(prisma: PrismaClient, url: string): Promise<void> {
     `exit=${String(dry.status)}`,
   )
 
-  const freado = runCatalog(url, [
+  const freado = await runCatalog(url, [
     'index-decisions',
     '--dry-run',
     '--json',
@@ -314,7 +319,7 @@ async function runChecks(prisma: PrismaClient, url: string): Promise<void> {
   )
 
   // ---- (4) --entity movie --apply grava SO filme -------------------------
-  const aplicado = runCatalog(url, [
+  const aplicado = await runCatalog(url, [
     'index-decisions',
     '--entity',
     'movie',
@@ -352,7 +357,7 @@ async function runChecks(prisma: PrismaClient, url: string): Promise<void> {
   )
 
   // ---- (6) SEM CHURN: reexecutar nao grava de novo -----------------------
-  const reexecucao = runCatalog(url, [
+  const reexecucao = await runCatalog(url, [
     'index-decisions',
     '--entity',
     'movie',
@@ -397,7 +402,7 @@ async function main(): Promise<void> {
 
     const env = { ...process.env, DATABASE_URL: url }
     console.log('--- prisma migrate deploy ---')
-    execFileSync('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
+    await runChild('node', [prismaBin(), 'migrate', 'deploy', '--schema', schemaPath], {
       env,
       stdio: 'inherit',
       cwd: dbDir,

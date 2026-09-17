@@ -12,7 +12,10 @@ import { TrailerModal } from '../../../../../_components/trailer-modal'
 import { decideSection } from '../../../../../../src/lib/section-absence'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
+import { socialArt, socialMetadata } from '../../../../../../src/lib/social-metadata'
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
+import '../../../../../_components/detail-hero.css'
+import '../../../../../_components/detail.css'
 
 /**
  * Pagina publica de temporada (/pt/series/[slug]/temporadas/[season]/).
@@ -29,6 +32,8 @@ import { getSeasonPageData } from '../../../../../../src/server/season-page'
  * O vocabulario visual de temporada/episodio JA EXISTIA em `globals.css`
  * (`.episode-row`, `.episode-list`, `.season-info`, `.season-tabs`,
  * `.detail-hero`) — e o mesmo que a pagina de serie usa no guia de temporadas.
+ * Desde a divisao do CSS por rota ele vive em `app/_components/detail.css` e
+ * `app/_components/detail-hero.css`, que esta pagina importa.
  * Esta pagina passa a usa-lo, entao filme, serie e temporada falam a mesma
  * lingua e nao existe um segundo componente de episodio.
  *
@@ -91,16 +96,26 @@ export async function generateMetadata({
 
   const { view, seo, canonicalUrl } = data
   const title = `${view.seriesTitle} — ${view.seasonTitle}`
+  const description = buildMetaDescription(view.overview)
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
     alternates: { canonical: canonicalUrl },
-    openGraph: { title, url: canonicalUrl, type: 'website' },
+    // Cartao completo pela ponte: o `openGraph` montado a mao apagava `og:locale`
+    // e `siteName` do layout (auditoria de SEO, 11/09/2026). A arte e a da
+    // propria temporada primeiro; o backdrop e da serie.
+    ...socialMetadata({
+      type: 'website',
+      title,
+      description,
+      canonicalUrl,
+      images: [
+        socialArt(view.poster, title, 'portrait'),
+        socialArt(view.backdrop, view.seriesTitle, 'landscape'),
+      ],
+    }),
   }
-  if (view.overview !== null) {
-    metadata.description = buildMetaDescription(view.overview) ?? view.overview
-    metadata.openGraph = { ...metadata.openGraph, description: view.overview }
-  }
+  if (description !== null) metadata.description = description
   return metadata
 }
 
@@ -145,11 +160,13 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
+    // A trilha VISIVEL do topo, degrau por degrau: `Séries / série / temporada`.
+    // O "Início" que so existia aqui fazia o schema contar uma trilha que a
+    // pagina nao mostra (auditoria de SEO, 11/09/2026).
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Início', item: `${SITE_URL}/pt/` },
-      { '@type': 'ListItem', position: 2, name: 'Séries', item: `${SITE_URL}${SERIES_INDEX_PATH}` },
-      { '@type': 'ListItem', position: 3, name: view.seriesTitle, item: seriesUrl },
-      { '@type': 'ListItem', position: 4, name: view.seasonTitle, item: canonicalUrl },
+      { '@type': 'ListItem', position: 1, name: 'Séries', item: `${SITE_URL}${SERIES_INDEX_PATH}` },
+      { '@type': 'ListItem', position: 2, name: view.seriesTitle, item: seriesUrl },
+      { '@type': 'ListItem', position: 3, name: view.seasonTitle, item: canonicalUrl },
     ],
   }
 
@@ -165,7 +182,9 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
   }
   if (view.overview !== null) seasonJsonLd.description = view.overview
   if (view.episodeCount !== null) seasonJsonLd.numberOfEpisodes = view.episodeCount
-  if (view.airYear !== null) seasonJsonLd.datePublished = String(view.airYear)
+  // Data completa quando existe; o ano so na falta dela.
+  const seasonDate = view.airDateIso ?? (view.airYear !== null ? String(view.airYear) : null)
+  if (seasonDate !== null) seasonJsonLd.datePublished = seasonDate
 
   return (
     <main data-vertical="series">

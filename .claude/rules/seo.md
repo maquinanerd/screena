@@ -37,6 +37,14 @@ tecnicos** (404, erro, entidade sem slug/traducao/dados estruturados
 confiaveis). A licenca (invariante 6) continua bloqueando dado sem permissao, e
 o idioma segue o gate da secao 4 (PUBLISHED_LOCALES).
 
+**Excecoes autorizadas e registradas:** alem da suspensao temporaria de
+temporadas/episodios descrita no `CLAUDE.md`, as decisoes D1-D3 de 11/09/2026
+governam galerias de midia, elegibilidade de pessoas e fichas sem localizacao.
+A integracao dessas decisoes foi autorizada pelo dono em 17/09/2026. Consulte
+[`DECISOES-DO-DONO-2026-09-11.md`](../../docs/seo/DECISOES-DO-DONO-2026-09-11.md)
+para os criterios, a volta automatica ao indice e os limites. Esses casos
+devem concordar entre pagina e sitemap e nao exigem blocos editoriais de IA.
+
 Os **blocos de valor proprios** deixaram de ser pre-requisito de `index` e
 passaram a ser **alavanca de qualidade e ranqueamento** (E-E-A-T, profundidade,
 citacao em AI Overview) e sinal de "riqueza" da pagina (`hasUniqueValue`). Dado

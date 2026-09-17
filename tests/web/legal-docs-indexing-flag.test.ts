@@ -56,7 +56,7 @@ describe("legalDocRobots — o caso que motivou a chave", () => {
   });
 
   it("so a chave legal ligada JA indexa os documentos legais", () => {
-    expect(legalDocRobots(LEGAL_ONLY)).toEqual({ index: true, follow: true });
+    expect(legalDocRobots(LEGAL_ONLY)).toEqual({ index: true, follow: true, "max-image-preview": "large" });
   });
 
   it("e o resto do site continua fechado nesse mesmo ambiente", () => {
@@ -69,7 +69,7 @@ describe("legalDocRobots — o caso que motivou a chave", () => {
     // OR, nao AND: a chave legal ADICIONA permissao, nunca remove uma que ja
     // existe. Esquecer de liga-la nao pode desindexar a Politica de Privacidade
     // quando o site abrir.
-    expect(legalDocRobots(SITE_OPEN)).toEqual({ index: true, follow: true });
+    expect(legalDocRobots(SITE_OPEN)).toEqual({ index: true, follow: true, "max-image-preview": "large" });
   });
 });
 

@@ -43,7 +43,7 @@ interface NewsRow {
  */
 export async function getNewsSitemapXml(
   nowIso: string = new Date().toISOString(),
-): Promise<{ xml: string; contentType: string }> {
+): Promise<{ xml: string; contentType: string; degraded?: boolean }> {
   // Ambiente nao indexavel (preview, staging) NAO publica sitemap de noticias.
   // Um arquivo vazio e a resposta honesta: existe, e valido, e nao anuncia nada.
   if (!isOfficialIndexableEnvironment(process.env)) {
@@ -74,11 +74,20 @@ export async function getNewsSitemapXml(
         AND (a.requires_linkback = false OR BTRIM(COALESCE(a.source_url, '')) <> '')
       ORDER BY COALESCE(at.published_at, a.published_at) DESC
       LIMIT 1000`;
-  } catch {
+  } catch (error) {
     // FAIL-CLOSED. Banco indisponivel devolve sitemap VAZIO, nunca erro 500 nem
     // lista parcial: anunciar meia lista ao Google News e pior que nao anunciar
     // nada, porque as ausencias parecem despublicacao.
-    return { xml: renderNewsSitemap([], PUBLICATION_NAME), contentType: SITEMAP_CONTENT_TYPE };
+    //
+    // COM LOG (auditoria de SEO, 11/09/2026, M6). Sem ele, "nenhuma materia nas
+    // ultimas 48 h" e "o banco caiu" produziam o mesmo XML vazio e nenhum rastro.
+    // E `degraded` impede a borda de guardar a falha como se fosse a lista.
+    console.error("[news-sitemap] falha ao ler as materias; fail-closed (sitemap vazio):", error);
+    return {
+      xml: renderNewsSitemap([], PUBLICATION_NAME),
+      contentType: SITEMAP_CONTENT_TYPE,
+      degraded: true,
+    };
   }
 
   const candidates: NewsSitemapCandidate[] = rows

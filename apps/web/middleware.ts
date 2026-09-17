@@ -85,7 +85,17 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "frame-src https://www.youtube-nocookie.com",
-  "upgrade-insecure-requests",
+  // `upgrade-insecure-requests` ESTAVA aqui e foi removida em 2026-09-11.
+  //
+  // Ela nao fazia nada: o navegador IGNORA essa diretiva em politica
+  // `Report-Only` (ela muda requisicao, e report-only nao muda nada por
+  // definicao), e ainda emitia um aviso de console em TODA pagina — medido na
+  // auditoria de SEO. Ou seja: custo visivel, efeito zero.
+  //
+  // Quem forca HTTPS aqui e o HSTS de 2 anos com `preload`
+  // (`next.config.ts`), que age antes da requisicao sair do navegador. Se um
+  // dia esta politica virar bloqueante, a diretiva volta JUNTO com a promocao
+  // do cabecalho — nao antes, porque antes ela continua inerte.
 ].join("; ");
 
 /**
@@ -174,7 +184,18 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (request.nextUrl.pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = rootRedirectPath(request.headers.get("accept-language"));
-    return withSecurityHeaders(NextResponse.redirect(url, 307));
+    // 308, nao 307 (mudado em 2026-09-11, decisao do dono).
+    //
+    // O 307 dizia ao buscador "este destino e temporario, continue pedindo a
+    // raiz" — e a raiz NAO e temporaria: `PUBLISHED_URL_LOCALES` tem um idioma
+    // so, e `rootRedirectPath` devolve `/pt/` para QUALQUER `Accept-Language`,
+    // inclusive `en`. Um destino que nao varia e permanente por definicao.
+    //
+    // Os dois preservam metodo e corpo (e essa a diferenca deles para 302/301);
+    // o que muda e o sinal de cache e de consolidacao de sinal para o indice.
+    // Quando um segundo idioma publicar, isto volta a 307 no mesmo movimento em
+    // que a negociacao passar a ter mais de uma saida possivel.
+    return withSecurityHeaders(NextResponse.redirect(url, 308));
   }
 
   const persisted = await resolvePersistedRedirect(request);

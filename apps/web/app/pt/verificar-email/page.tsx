@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AuthShell } from '../entrar/auth-shell'
 import { EmailVerificationTokenForm } from './token-form'
+import '../entrar/auth.css'
 
 /**
  * Pagina que recebe o link de VERIFICACAO DE E-MAIL (C7C).
@@ -23,7 +24,7 @@ import { EmailVerificationTokenForm } from './token-form'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Confirmacao de e-mail',
+  title: 'Confirmação de e-mail',
   robots: { index: false, follow: false },
   referrer: 'no-referrer',
 }
@@ -31,7 +32,7 @@ export const metadata: Metadata = {
 export default function VerificarEmailPage() {
   return (
     <main data-vertical="account">
-      <h1 className="visually-hidden">Confirmacao de e-mail</h1>
+      <h1 className="visually-hidden">Confirmação de e-mail</h1>
       <AuthShell active="entrar" lede="Confirmando seu endereço de e-mail" showTabs={false}>
         <EmailVerificationTokenForm />
       </AuthShell>

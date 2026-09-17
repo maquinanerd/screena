@@ -46,10 +46,15 @@ import {
 } from "@screena/legal/public-credits";
 
 import {
+  ABOUT_PATH,
+  AUTHORS_INDEX_PATH,
+  CONTACT_PATH,
+  EDITORIAL_POLICY_PATH,
   EXPLORE_PATH,
   MOVIES_INDEX_PATH,
   NEWS_INDEX_PATH,
   PEOPLE_INDEX_PATH,
+  SCORE_METHODOLOGY_PATH,
   SERIES_INDEX_PATH,
   WATCH_PATH,
 } from "../lib/routes";
@@ -126,7 +131,10 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     id: "noticias",
     title: "Notícias",
     accent: "neutral",
-    links: [{ label: "Últimas notícias", href: NEWS_INDEX_PATH }],
+    links: [
+      { label: "Últimas notícias", href: NEWS_INDEX_PATH },
+      { label: "Autores", href: AUTHORS_INDEX_PATH },
+    ],
   },
   {
     id: "cinerie",
@@ -135,6 +143,13 @@ export const FOOTER_COLUMNS: readonly FooterColumn[] = [
     links: [
       { label: "Explorar", href: EXPLORE_PATH },
       { label: "Onde assistir", href: WATCH_PATH },
+      // As paginas institucionais (auditoria de SEO de 11/09/2026, secao 3.6).
+      { label: "Sobre", href: ABOUT_PATH },
+      { label: "Política editorial", href: EDITORIAL_POLICY_PATH },
+      // "Cinerie Score" repetiria o titulo da coluna ("Cinerie") dentro dela —
+      // o defeito que `group-label-redundancy.test.tsx` trava.
+      { label: "Como funciona o Score", href: SCORE_METHODOLOGY_PATH },
+      { label: "Contato", href: CONTACT_PATH },
       // "Busca" SAIU daqui, e nao por corte editorial: `/pt/busca/` deixou de
       // ser rota (responde 301 para Explorar, porque busca sem termo E
       // navegacao). Apontar o rotulo "Busca" para `EXPLORE_PATH` tambem nao

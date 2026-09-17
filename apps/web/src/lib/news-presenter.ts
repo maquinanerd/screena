@@ -136,6 +136,10 @@ export interface ArticleTranslationInput {
   indexStatus: string;
   translationPublishedAtIso: string | null;
   translationUpdatedAtIso: string | null;
+  /** "Corrigida em" do CMS (`article_translations.corrected_at`). */
+  translationCorrectedAtIso: string | null;
+  /** "Nota de correcao" do CMS (`article_translations.correction_note`). */
+  correctionNote: string | null;
 }
 
 /** Item cru da listagem (facts + subset da traducao) para montar um card. */
@@ -266,6 +270,13 @@ export interface NewsArticleView {
   articleSection: string | null;
   schemaTypeRecommendation: string | null;
   updatedAtIso: string | null;
+  /**
+   * "Atualizada em", visivel — so quando a ultima gravacao da materia cai num dia
+   * POSTERIOR ao da publicacao. Ver `formatNewsUpdatedLabel`.
+   */
+  updatedDateLabel: string | null;
+  /** A nota de correcao registrada pela redacao, ou `null`. Ver `buildNewsCorrection`. */
+  correction: NewsArticleCorrection | null;
   related: NewsRelatedEntity[];
   entityCard: NewsEntityCard | null;
 }
@@ -381,6 +392,67 @@ export function resolvePublishedIso(
   articleIso: string | null,
 ): string | null {
   return trimToNull(translationIso) ?? trimToNull(articleIso);
+}
+
+/**
+ * O rotulo "Atualizada em" da materia, ou `null`.
+ *
+ * O JSON-LD ja declarava `dateModified` e a pagina nao mostrava data de
+ * atualizacao nenhuma: a data estruturada nao tinha contraparte visivel
+ * (auditoria de SEO de 11/09/2026).
+ *
+ * So aparece quando a gravacao cai num DIA posterior ao da publicacao. No mesmo
+ * dia a gravacao e, quase sempre, a propria publicacao — e "Atualizada em" com a
+ * data de cima so repetiria a data de cima.
+ *
+ * O QUE ESTA DATA E, SEM EXAGERO: a ultima gravacao da materia no banco publico
+ * (`article_translations.updated_at`), que a projecao do CMS regrava a cada
+ * evento que aplica a ela. Nao e nota de correcao, e a pagina nao a chama assim.
+ */
+export function formatNewsUpdatedLabel(
+  publishedIso: string | null,
+  updatedIso: string | null,
+): string | null {
+  const published = /^(\d{4}-\d{2}-\d{2})/.exec(trimToNull(publishedIso) ?? "");
+  const updated = /^(\d{4}-\d{2}-\d{2})/.exec(trimToNull(updatedIso) ?? "");
+  if (published === null || updated === null) return null;
+  if ((updated[1] ?? "") <= (published[1] ?? "")) return null;
+  return formatNewsDate(updatedIso);
+}
+
+/** A correcao registrada pela redacao numa materia publicada. */
+export interface NewsArticleCorrection {
+  /** Instante da correcao (ISO), para o `<time dateTime>`. */
+  dateIso: string;
+  /** "2 de julho de 2026". */
+  dateLabel: string;
+  /** O texto da nota, como a redacao o escreveu no CMS. */
+  note: string;
+}
+
+/**
+ * A nota de correcao da materia, ou `null`.
+ *
+ * VEM DO CMS, INTEIRA: "Corrigida em" e "Nota de correcao" sao preenchidos pela
+ * redacao e projetados sem transformacao (`corrected_at`/`correction_note` em
+ * `article_translations`). Nada aqui escreve, resume ou infere correcao — so
+ * apara as bordas do texto. Sem os DOIS campos nao ha nota: o banco ja exige o
+ * par (CHECK `article_translations_correction_pair`), e a funcao repete a regra
+ * para nao depender de quem gravou.
+ *
+ * Materia RETRATADA tambem grava esses campos (a data e o motivo da retratacao),
+ * mas nunca chega aqui: o gate de publicacao a devolve como 404 antes.
+ */
+export function buildNewsCorrection(
+  correctedAtIso: string | null,
+  correctionNote: string | null,
+): NewsArticleCorrection | null {
+  const note = trimToNull(correctionNote);
+  const dateIso = trimToNull(correctedAtIso);
+  if (note === null || dateIso === null) return null;
+  const dateLabel = formatNewsDate(dateIso);
+  if (dateLabel === null) return null;
+  return { dateIso, dateLabel, note };
 }
 
 /** Formata "YYYY-MM-DD..." em pt-BR: "30 de junho de 2026". `null` se invalido. */
@@ -510,11 +582,17 @@ export function buildNewsCard(
   };
 }
 
-/** Listagem: publicaveis, ordenados por data desc (depois titulo), com featured. */
-export function buildNewsIndexView(
-  items: NewsListItemInput[],
+/**
+ * TODAS as materias publicaveis, ordenadas por data desc (depois titulo).
+ *
+ * A listagem mostra as primeiras `NEWS_INDEX_LIMIT`; as paginas de autor precisam
+ * de todas. Uma funcao so para as duas, para que "publicavel" e "ordem" nunca
+ * signifiquem coisas diferentes numa e noutra.
+ */
+export function buildPublishableNewsCards(
+  items: readonly NewsListItemInput[],
   nowIso: string,
-): NewsIndexView {
+): NewsCardView[] {
   const cards = items
     .map((item) => buildNewsCard(item, nowIso))
     .filter((card): card is NewsCardView => card !== null);
@@ -524,6 +602,15 @@ export function buildNewsIndexView(
     if (ad !== bd) return bd.localeCompare(ad);
     return a.title.localeCompare(b.title);
   });
+  return cards;
+}
+
+/** Listagem: publicaveis, ordenados por data desc (depois titulo), com featured. */
+export function buildNewsIndexView(
+  items: NewsListItemInput[],
+  nowIso: string,
+): NewsIndexView {
+  const cards = buildPublishableNewsCards(items, nowIso);
   const totalCount = cards.length;
   const capped = cards.slice(0, NEWS_INDEX_LIMIT);
   return {
@@ -693,6 +780,8 @@ export function buildNewsArticleView(input: BuildNewsArticleViewInput): NewsArti
     articleSection: trimToNull(translation.articleSection) ?? trimToNull(facts.category),
     schemaTypeRecommendation: trimToNull(translation.schemaTypeRecommendation),
     updatedAtIso: translation.translationUpdatedAtIso,
+    updatedDateLabel: formatNewsUpdatedLabel(publishedIso, translation.translationUpdatedAtIso),
+    correction: buildNewsCorrection(translation.translationCorrectedAtIso, translation.correctionNote),
     related: buildNewsRelated(input.related),
     entityCard: buildNewsEntityCard(input.entityCard ?? null),
   };

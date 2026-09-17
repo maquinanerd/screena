@@ -56,7 +56,11 @@ import type { TrailerView } from "../lib/trailer-presenter";
 import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
-import type { IndexabilityResult, PageSeoResolution } from "@screena/seo";
+import {
+  evaluateLocalizationGate,
+  type IndexabilityResult,
+  type PageSeoResolution,
+} from "@screena/seo";
 import { getImageDisplayAuthorization } from "./image-license";
 
 const LANGUAGE_CODE = "pt-BR";
@@ -138,6 +142,14 @@ export interface SeriesPageData {
   score: CinerieScoreInputView;
   /** A FICHA (Detalhes) do canônico, já composta — fatos apenas. */
   fichaFacts: FichaFact[];
+  /** Estreia e ultima exibicao em ISO `YYYY-MM-DD`: as datas completas do JSON-LD. */
+  firstAirDateIso: string | null;
+  lastAirDateIso: string | null;
+  /**
+   * A serie ACABOU (`Ended`/`Canceled` no TMDB)? So entao o schema declara
+   * `endDate`: a ultima exibicao de uma serie no ar nao e o fim dela.
+   */
+  ended: boolean;
 }
 
 function seriesCanonicalUrl(slug: string): string {
@@ -147,6 +159,13 @@ function seriesCanonicalUrl(slug: string): string {
 function yearFromDate(date: Date | null): number | null {
   return date === null ? null : date.getUTCFullYear();
 }
+
+function isoDateOf(date: Date | null): string | null {
+  return date === null ? null : date.toISOString().slice(0, 10);
+}
+
+/** Situacoes do TMDB em que a serie ACABOU. */
+const ENDED_STATUSES: ReadonlySet<string> = new Set(["Ended", "Canceled"]);
 
 export const getSeriesPageData = cache(
   async (
@@ -386,12 +405,25 @@ export const getSeriesPageData = cache(
     });
     const ratings = buildRatingsView(ratingsPayload);
 
-    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida (fail-closed).
+    // PORTAO DE LOCALIZACAO (decisao do dono D3) — o gemeo do de movie-page.ts,
+    // pela mesma funcao: serie com slug de fallback tmdb-{id}, sem titulo e sem
+    // descricao no locale publicado, fica fora do indice ate ser enriquecida.
+    const qualityGate = evaluateLocalizationGate({
+      canonicalSlug,
+      hasLocalizedTitle: (translation?.title ?? "").trim() !== "",
+      hasLocalizedDescription:
+        (translation?.summary ?? "").trim() !== "" ||
+        (translation?.metaDescription ?? "").trim() !== "",
+    });
+
+    // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida. Falha de
+    // banco LANCA (5xx), nunca vira noindex.
     const seo = await resolveEntityPageSeo(
       { entityType: ENTITY_TYPE, entityId, languageCode: LANGUAGE_CODE },
       {
         language: LANGUAGE_CODE,
         hasReliableStructuredData: true,
+        qualityGate,
         // Exatamente as notas RENDERIZADAS (ver movie-page.ts).
         displayedRatings: (ratings?.items ?? []).map(() => ({
           licenseDisplayAllowed: true,
@@ -404,7 +436,8 @@ export const getSeriesPageData = cache(
 
     // O motivo da AUSENCIA do painel de streaming e derivado do estado, nunca
     // fixo. So consulta quando nao ha painel — quem tem oferta nao paga a sonda.
-    const watchAbsence = watch === null ? await watchAbsenceReason(prisma) : null;
+    const watchAbsence =
+      watch === null ? await watchAbsenceReason(prisma, ENTITY_TYPE, entityId) : null;
 
     // Premiacao: o FATO ("Venceu 4 Oscars"), nunca uma nota. Mesma disciplina
     // do painel de streaming — o motivo da ausencia e derivado do estado do
@@ -493,6 +526,9 @@ export const getSeriesPageData = cache(
       awardsAbsence,
       ratings,
       externalIds,
+      firstAirDateIso: isoDateOf(series.firstAirDate),
+      lastAirDateIso: isoDateOf(series.lastAirDate),
+      ended: series.status !== null && ENDED_STATUSES.has(series.status),
     };
   },
 );

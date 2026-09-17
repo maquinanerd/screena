@@ -15,7 +15,6 @@
  * Uso: pnpm --filter @screena/web validate:news-pages
  */
 
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
@@ -23,6 +22,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
+import { runChild } from "@screena/db/async-child-process";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -102,6 +102,9 @@ async function seedArticle(
     requiresLinkback?: boolean;
     publishedAt?: Date | null;
     links?: ReadonlyArray<SeedLink>;
+    /** "Corrigida em" + "Nota de correcao": o banco exige os DOIS ou nenhum. */
+    correctedAt?: Date | null;
+    correctionNote?: string | null;
   },
 ): Promise<bigint> {
   const article = await prisma.article.create({
@@ -135,6 +138,8 @@ async function seedArticle(
       reviewStatus: opts.reviewStatus,
       indexStatus: opts.indexStatus ?? "noindex",
       publishedAt: opts.publishedAt ?? new Date("2026-06-30T12:00:00.000Z"),
+      correctedAt: opts.correctedAt ?? null,
+      correctionNote: opts.correctionNote ?? null,
     },
   });
 
@@ -190,6 +195,7 @@ interface ArticleData {
     source: { name: string } | null;
     related: ReadonlyArray<{ entityType: string; title: string; href: string }>;
     entityCard: { posterUrl: string | null } | null;
+    correction: { dateIso: string; dateLabel: string; note: string } | null;
   };
   indexability: { decision: string };
   canonicalUrl: string;
@@ -250,6 +256,7 @@ async function runChecks(prisma: PrismaLike, g: Getters): Promise<void> {
 
   const movieId = await seedMovieTarget(prisma, { tmdbId: 55100001, titleOriginal: "Rel Movie", translationTitle: "Filme Rel", canonicalSlug: "filme-rel" });
   const personNoSlugId = await seedPersonTarget(prisma, { tmdbId: 55200001, name: "Pessoa Sem Slug" });
+  const RICH_CORRECTION_NOTE = "Corrigido o nome do estudio citado no terceiro paragrafo.";
   await seedArticle(prisma, {
    
     slug: "noticia-rica",
@@ -265,6 +272,8 @@ async function runChecks(prisma: PrismaLike, g: Getters): Promise<void> {
     aiAssisted: true,
     sourceName: "Collider",
     publishedAt: new Date("2026-06-30T12:00:00.000Z"),
+    correctedAt: new Date("2026-07-02T08:00:00.000Z"),
+    correctionNote: RICH_CORRECTION_NOTE,
     links: [
       { targetType: "movie", targetId: movieId },
       { targetType: "person", targetId: personNoSlugId },
@@ -309,6 +318,56 @@ async function runChecks(prisma: PrismaLike, g: Getters): Promise<void> {
     `ai=${String(rich?.view.aiAssisted)} hero=${rich?.view.heroImage?.src ?? "null"}`,
   );
 
+  // Nota de correcao: a data e o texto que a redacao registrou no CMS chegam a
+  // view SEM reescrita; materia sem correcao nao ganha nota; e materia RETRATADA
+  // — a projecao grava data e motivo nesses mesmos campos — continua 404.
+  record(
+    22,
+    "G. materia corrigida: a view traz a nota com a data e o texto do CMS",
+    rich?.view.correction?.note === RICH_CORRECTION_NOTE &&
+      rich?.view.correction?.dateIso === "2026-07-02T08:00:00.000Z" &&
+      rich?.view.correction?.dateLabel === "2 de julho de 2026",
+    `correction=${JSON.stringify(rich?.view.correction ?? null)}`,
+  );
+  record(
+    23,
+    "G. materia sem correcao registrada: nenhuma nota",
+    thin !== null && thin.view.correction === null,
+    `correction=${thin === null ? "sem-materia" : JSON.stringify(thin.view.correction)}`,
+  );
+  await seedArticle(prisma, {
+    slug: "noticia-retratada",
+    title: "Retratada",
+    reviewStatus: "blocked",
+    indexStatus: "noindex",
+    body: LONG_BODY,
+    correctedAt: new Date("2026-07-03T10:00:00.000Z"),
+    correctionNote: "Materia retratada: a informacao principal nao se confirmou.",
+  });
+  record(
+    24,
+    "G. materia RETRATADA com data e motivo nos campos de correcao continua 404",
+    (await g.getNewsArticleData("noticia-retratada")) === null,
+    "retorno=null",
+  );
+  // Despublicacao de emergencia (`archived`) mantem os campos de correcao que
+  // ja existiam: a nota nao reabre a materia.
+  await seedArticle(prisma, {
+    slug: "noticia-despublicada-corrigida",
+    title: "Despublicada corrigida",
+    reviewStatus: "archived",
+    indexStatus: "noindex",
+    body: LONG_BODY,
+    correctedAt: new Date("2026-07-04T10:00:00.000Z"),
+    correctionNote: "Corrigida a data de estreia.",
+  });
+  record(
+    25,
+    "G. materia DESPUBLICADA com correcao registrada continua 404",
+    (await g.getNewsArticleData("noticia-despublicada-corrigida")) === null,
+    "retorno=null",
+  );
+
   // Mais dois publicaveis para a listagem indexar (>= 3 publicaveis).
   await seedArticle(prisma, { slug: "noticia-rica-2", title: "Rica 2", reviewStatus: "published", indexStatus: "index", body: LONG_BODY, publishedAt: new Date("2026-06-20T00:00:00.000Z") });
   await seedArticle(prisma, { slug: "noticia-rica-3", title: "Rica 3", reviewStatus: "human_reviewed", indexStatus: "index", body: LONG_BODY, publishedAt: new Date("2026-06-10T00:00:00.000Z") });
@@ -341,11 +400,11 @@ async function main(): Promise<void> {
     const env = { ...process.env, DATABASE_URL: url };
 
     console.log("--- prisma migrate deploy (schema existente; sem migration nova) ---");
-    execFileSync("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "migrate", "deploy", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
     record(1, "migrate deploy aplica sem erro", true, "ok");
 
     console.log("--- prisma db seed (idiomas/paises/fontes existentes) ---");
-    execFileSync("node", [prismaBin(), "db", "seed", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
+    await runChild("node", [prismaBin(), "db", "seed", "--schema", dbSchema], { env, stdio: "inherit", cwd: dbDir });
     record(2, "db:seed roda sem erro", true, "ok");
 
     console.log("\n--- fluxo das paginas de noticias no banco real ---");

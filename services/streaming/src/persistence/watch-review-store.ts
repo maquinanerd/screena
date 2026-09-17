@@ -243,6 +243,20 @@ export function createPrismaReviewStore(prisma: PrismaClient): ReviewStorePort {
       }
       if (query.entityType !== null) where.entityType = query.entityType
       if (query.entityId !== null) where.entityId = BigInt(query.entityId)
+      // O LOTE AVANCA SOBRE O PENDENTE (corrigido em 2026-09-11).
+      //
+      // Ate aqui o modo em lote pegava `orderBy id asc` + `take limit` SEM excluir
+      // o que ja estava exibivel. Rodar de novo selecionava sempre as MESMAS linhas
+      // de id mais baixo, que o guardrail recusava como `already-display-allowed`
+      // — e a promocao nunca chegava ao resto. Toda oferta nasce invisivel
+      // (invariante 6), entao a oferta escrita DEPOIS da primeira promocao nunca
+      // acendia: e a causa medida do "Onde assistir" vazio em 6 de 6 titulos
+      // correntes da auditoria de SEO, com o hub cheio de titulos antigos.
+      //
+      // So no LOTE. A revisao dirigida a um titulo (`--entity-id`) continua
+      // trazendo as linhas ja promovidas, para o guardrail explicar o estado de
+      // cada uma a quem esta olhando aquele titulo.
+      if (query.entityId === null) where.displayAllowed = false
 
       const rows = (await prisma.watchAvailability.findMany({
         where,

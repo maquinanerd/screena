@@ -1,0 +1,113 @@
+/* ------------------------------------------------------------------ */
+/* Corpo de leitura 720 — matéria e biografia de pessoa               */
+/* ------------------------------------------------------------------ */
+/*
+ * Folha de /pt/noticias/[slug]/ e /pt/pessoas/[slug]/, importada por cada uma dessas paginas.
+ *
+ * Saiu do `globals.css` na divisao do CSS por rota
+ * (docs/frontend/CSS-SPLIT-PLAN-2026-09-15.md): so essas rotas escrevem estas
+ * classes (guarda R2 em tests/web/css-route-sheets.test.ts) e as regras seguem
+ * a ordem relativa que tinham la. Esta folha carrega DEPOIS da global;
+ * `pnpm --filter @screena/web css:move-check` prova que nenhuma regra que ficou
+ * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
+ *
+ * Folha COMPARTILHADA (regra R3 do plano): `.art-body` estiliza o corpo da materia
+ * e a biografia da pessoa, e nao pode morar na folha de uma rota so.
+ */
+
+/* Corpo de leitura 720.
+   O respiro de 64px no topo e o que separa a capa do texto: com os 40px de
+   antes, o primeiro paragrafo encostava na borda inferior do hero e a passagem
+   de uma secao para a outra lia como corte de template, nao como virada de
+   bloco editorial.
+   `text-align: justify` VOLTOU, por decisao editorial, e desta vez acompanhado.
+   Ele saiu em 11/08 com um motivo correto: em coluna de 720px com palavra longa
+   de pt-BR, justificar sozinho abre rios de espaco e cada linha ganha um
+   espacamento diferente. O que resolve isso e hifenizar — e foi justamente o
+   `hyphens: auto` que saiu no mesmo commit, por tabela.
+   Os dois so funcionam JUNTOS: justificado sem hifenizacao tem rios;
+   hifenizacao sem justificado corta palavra sem ter o que resolver. Voltam em
+   par, escopados na materia (`[data-vertical='news']`) e desligados abaixo de
+   640px, onde a coluna e estreita demais para qualquer um dos dois ajudar.
+   O preco conhecido continua de pe e nao e defeito: o navegador desenha
+   "confli-" no fim da linha e alguem pode ler como texto truncado. O dado
+   permanece inteiro no DOM, na busca e no copiar — ja houve um alarme falso
+   assim em 11/08, e ele foi investigado ate o fim. */
+.art-body {
+  max-width: var(--container-reading);
+  margin: 0 auto;
+  padding: 64px 20px 20px;
+}
+
+/* ATENCAO: `.art-body` NAO e exclusivo da materia. A biografia da pagina de
+   pessoa (`/pt/pessoas/{slug}`) reusa a mesma classe. Por isso a tipografia
+   BASE fica como estava, e a escala de leitura nova entra escopada logo abaixo
+   — o corpo da pessoa nao pertence a esta tarefa. */
+.art-body > p {
+  font-size: 17px;
+  line-height: 1.8;
+  color: #3a3a3a;
+  margin: 26px 0 0;
+  max-width: none;
+}
+
+/* Escala de leitura da MATERIA (18px/1.75). Escopada em `[data-vertical='news']`
+   — que a materia emite em `<main>` e a pagina de pessoa nao — porque a mesma
+   classe serve os dois. Sem o escopo, a biografia da pessoa herdava a fonte
+   maior, o entrelinhas menor e a cor nova de carona numa tarefa que e so da
+   tela de materia. */
+[data-vertical='news'] .art-body > p {
+  font-size: 18px;
+  line-height: 1.75;
+  color: var(--c-text-body);
+  /* JUSTIFICADO — e hifenizacao junto, que nao e enfeite: sem hifenizar, o
+     justificado abre "rios" de espaco branco entre as palavras numa coluna
+     estreita, e fica pior de ler do que alinhado a esquerda. Os dois andam
+     juntos ou nenhum dos dois vale.
+
+     `hyphens: auto` depende do idioma declarado para saber onde cortar, e o
+     `lang` da pagina ja o fornece. O corte e VISUAL: "confli-" na tela continua
+     "conflito" no DOM, na busca do navegador e no texto copiado. */
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+/* No celular a coluna e estreita demais para justificar: mesmo com hifenizacao
+   sobra espaco irregular em quase toda linha. Abaixo de 640px volta ao alinhado
+   a esquerda — o mesmo que jornal impresso faz em coluna curta. */
+@media (max-width: 640px) {
+  [data-vertical='news'] .art-body > p {
+    text-align: left;
+  }
+}
+
+.art-body > p:first-child {
+  margin-top: 0;
+}
+
+/* Títulos de seção do corpo ESTRUTURADO da matéria (body_blocks do contrato
+   editorial). Os demais blocos vivem em app/pt/noticias/[slug]/article.css. */
+.art-body__heading {
+  font-family: var(--font-display, inherit);
+  font-weight: 700;
+  color: var(--c-text-primary);
+  text-align: left;
+  hyphens: none;
+  margin: 40px 0 0;
+}
+
+h2.art-body__heading {
+  font-size: 26px;
+  line-height: 1.3;
+}
+
+h3.art-body__heading {
+  font-size: 21px;
+  line-height: 1.35;
+}
+
+h4.art-body__heading {
+  font-size: 18px;
+  line-height: 1.4;
+}

@@ -43,8 +43,19 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const CSS_PATH = fileURLToPath(new URL("../../apps/web/app/globals.css", import.meta.url));
-const CSS_BRUTO = readFileSync(CSS_PATH, "utf8");
+import { discoverAppStylesheets, GLOBAL_STYLESHEET } from "../support/app-css";
+import { readSourceRaw } from "../support/source-text";
+
+/**
+ * TODAS as folhas do app, cruas e concatenadas. A divisao do CSS por rota
+ * (`docs/frontend/CSS-SPLIT-PLAN-2026-09-15.md`) cria folhas fora do
+ * `globals.css`; a descoberta e por varredura, entao folha nova entra na trava
+ * sem ninguem precisar lembrar.
+ */
+const FOLHAS = discoverAppStylesheets();
+const CSS_BRUTO = FOLHAS.map((folha) =>
+  readSourceRaw(folha, "a trava compara o tamanho antes e depois de tirar o comentario"),
+).join("\n");
 
 /** Remove comentarios `/* ... *\/`. Ver o cabecalho: guarda mede regra. */
 export function semComentarios(css: string): string {
@@ -53,10 +64,11 @@ export function semComentarios(css: string): string {
 
 const CSS = semComentarios(CSS_BRUTO);
 
-describe("o globals.css nao tem tema escuro", () => {
-  it("CONTROLE POSITIVO: o arquivo foi lido e tem tamanho de folha real", () => {
+describe("nenhuma folha de estilo do app tem tema escuro", () => {
+  it("CONTROLE POSITIVO: as folhas foram lidas, a global primeiro, com tamanho de folha real", () => {
     // Sem esta ancora, um caminho errado devolveria string vazia e TODOS os
     // testes de ausencia abaixo passariam por vacuidade — verdes medindo nada.
+    expect(FOLHAS[0]).toBe(GLOBAL_STYLESHEET);
     expect(CSS_BRUTO.length).toBeGreaterThan(100_000);
     expect(CSS).toContain(":root {");
     expect(CSS).toContain("--c-bg-page:");
