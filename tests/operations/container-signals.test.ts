@@ -29,6 +29,13 @@
  *      processo so. (O comando do painel do worker de projecao ainda usa a CLI:
  *      esse elo so sai de la trocando o comando — ver docs/operations/sigterm-e-pid1.md.)
  *
+ * O elo 2 tambem estava no Next dos tres apps (`screen-app`, `cinerie-admin`,
+ * `cinerie-cms`): o CMD de cada imagem termina em `exec pnpm --filter <app> start`,
+ * e o `start` era `next start`. Medido com as imagens reais e uma requisicao em
+ * curso: saida 1 em 175-240 ms e a requisicao derrubada; com `exec next start`,
+ * saida 0 em ~3 s e a requisicao entregue. O Next trata o SIGTERM sozinho — faltava
+ * o sinal chegar ate ele.
+ *
  * A prova com a IMAGEM REAL (`docker stop` no formato do EasyPanel, com codigo
  * de saida e linha de drenagem) mora no job `docker-image` da CI: este arquivo
  * prova as regras, aquele prova a montagem.
@@ -62,6 +69,32 @@ export function binarioDoScriptDeServico(script: string): string | null {
   return match === null ? null : (match[1] as string)
 }
 
+interface Manifesto {
+  readonly pacote: string
+  readonly diretorio: string
+  readonly scripts: Readonly<Record<string, string>>
+}
+
+/** O `package.json` de cada pacote de uma raiz do workspace (`services`, `apps`). */
+function manifestosDe(raiz: string): readonly Manifesto[] {
+  const encontrados: Manifesto[] = []
+  for (const entrada of readdirSync(path.join(REPO_ROOT, raiz), { withFileTypes: true })) {
+    if (!entrada.isDirectory()) continue
+    const arquivo = path.join(raiz, entrada.name, 'package.json')
+    if (!existsSync(path.join(REPO_ROOT, arquivo))) continue
+    const pkg = JSON.parse(readSourceWithoutComments(arquivo)) as {
+      name: string
+      scripts?: Record<string, string>
+    }
+    encontrados.push({
+      pacote: pkg.name,
+      diretorio: path.join(raiz, entrada.name),
+      scripts: pkg.scripts ?? {},
+    })
+  }
+  return encontrados
+}
+
 interface ScriptStart {
   readonly pacote: string
   readonly diretorio: string
@@ -71,21 +104,16 @@ interface ScriptStart {
 
 /** Todo script `*:start` de `services/*`. */
 function scriptsStartDosServicos(): readonly ScriptStart[] {
-  const encontrados: ScriptStart[] = []
-  for (const entrada of readdirSync(path.join(REPO_ROOT, 'services'), { withFileTypes: true })) {
-    if (!entrada.isDirectory()) continue
-    const manifesto = path.join('services', entrada.name, 'package.json')
-    if (!existsSync(path.join(REPO_ROOT, manifesto))) continue
-    const pkg = JSON.parse(readSourceWithoutComments(manifesto)) as {
-      name: string
-      scripts?: Record<string, string>
-    }
-    for (const [nome, comando] of Object.entries(pkg.scripts ?? {})) {
-      if (!nome.endsWith(':start')) continue
-      encontrados.push({ pacote: pkg.name, diretorio: path.join('services', entrada.name), nome, comando })
-    }
-  }
-  return encontrados
+  return manifestosDe('services').flatMap((manifesto) =>
+    Object.entries(manifesto.scripts)
+      .filter(([nome]) => nome.endsWith(':start'))
+      .map(([nome, comando]) => ({
+        pacote: manifesto.pacote,
+        diretorio: manifesto.diretorio,
+        nome,
+        comando,
+      })),
+  )
 }
 
 describe('o script de servico entrega o SIGTERM ao processo que drena', () => {
@@ -131,6 +159,83 @@ describe('o script de servico entrega o SIGTERM ao processo que drena', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 1b. O `start` dos apps Next
+// ---------------------------------------------------------------------------
+
+/**
+ * O `start` de um app Next, na UNICA forma que entrega o SIGTERM ao Next: o shell
+ * do `pnpm run` vira o `next` (exec). Depois de `start` so vem opcao e valor
+ * simples — e a porta por `${PORT:-<padrao>}`, a unica expansao aceita (o CMS a
+ * usa; qualquer outra variavel crua vira sintaxe de shell).
+ *
+ * O Next trata o SIGTERM sozinho (`server/lib/start-server.js`, 15.4 e 15.5: fecha
+ * o servidor, espera as requisicoes em curso e sai 0). O que faltava era o sinal
+ * CHEGAR ate ele.
+ */
+const START_DE_APP_NEXT =
+  /^exec next start(?: (?:--?[a-zA-Z][a-zA-Z-]*|[A-Za-z0-9._:/]+|\$\{PORT:-[0-9]+\}))*$/
+
+/** PURA: o `start` de um app Next faz o pnpm entregar o SIGTERM ao proprio Next? */
+export function startDeAppNextEntregaSinal(script: string): boolean {
+  return START_DE_APP_NEXT.test(script)
+}
+
+interface StartDeApp {
+  readonly pacote: string
+  readonly comando: string | undefined
+}
+
+/** O `start` de cada app de `apps/*`. */
+function startsDosApps(): readonly StartDeApp[] {
+  return manifestosDe('apps').map((manifesto) => ({
+    pacote: manifesto.pacote,
+    comando: manifesto.scripts.start,
+  }))
+}
+
+describe('o start dos apps Next entrega o SIGTERM ao Next', () => {
+  it('os tres apps existem e nenhum some da varredura', () => {
+    expect(startsDosApps().map((app) => app.pacote)).toEqual(
+      expect.arrayContaining(['@screena/web', '@screena/admin', '@screena/cms']),
+    )
+  })
+
+  it('todo `start` de apps/* faz exec do `next start`', () => {
+    const reprovados = startsDosApps()
+      .filter((app) => !startDeAppNextEntregaSinal(app.comando ?? ''))
+      .map((app) => `${app.pacote} start: "${app.comando}"`)
+    expect(reprovados).toEqual([])
+  })
+
+  it('CONTROLE NEGATIVO: a regra reprova cada forma que deixa o Next sem o sinal', () => {
+    const cortam = [
+      // a forma de antes: o `sh -c` do pnpm fica entre o pnpm e o Next e morre sem repassar
+      'next start',
+      'next start --port ${PORT:-3002} --hostname 0.0.0.0',
+      // composto: o que vem antes do exec e shell, e o de depois nunca roda
+      'cd . && exec next start',
+      'exec next start; echo fim',
+      // variavel crua ou entre aspas: o valor passa a ser sintaxe de shell
+      'exec next start --port $PORT',
+      'exec next start --port "${PORT:-3002}"',
+      // outro processo no meio: o `pnpm exec` morre ao repassar o sinal
+      'exec pnpm exec next start',
+      'exec npx next start',
+      // exec do comando errado
+      'exec next dev',
+    ]
+    for (const comando of cortam) expect(startDeAppNextEntregaSinal(comando), comando).toBe(false)
+    for (const comando of [
+      'exec next start',
+      'exec next start --port ${PORT:-3002} --hostname 0.0.0.0',
+      'exec next start -p 3006 -H 0.0.0.0',
+    ]) {
+      expect(startDeAppNextEntregaSinal(comando), comando).toBe(true)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 2. Os comandos de container apontam para esses scripts
 // ---------------------------------------------------------------------------
 
@@ -154,22 +259,82 @@ function cmdDoDockerfile(arquivo: string): readonly string[] {
  */
 const COMANDO_DO_PAINEL_SCREEN_CRON = 'corepack pnpm --filter @screena/sync scheduler:start'
 
+/**
+ * PURA: o `exec pnpm --filter <pacote> <script>` que TERMINA o comando de um CMD
+ * `sh -c`, ou `null`. Sem o `exec` no fim, o dash fica entre o orquestrador e o
+ * pnpm — e, no PID 1, descarta o SIGTERM.
+ */
+export function execPnpmFinal(comando: string): { pacote: string; script: string } | null {
+  const match = /(?:^|; )exec pnpm --filter (@[a-z0-9-]+\/[a-z0-9-]+) ([a-z0-9:-]+)$/.exec(comando)
+  return match === null ? null : { pacote: match[1] as string, script: match[2] as string }
+}
+
+/** Os Dockerfiles da raiz: um por imagem. */
+function dockerfilesDaRaiz(): readonly string[] {
+  return readdirSync(REPO_ROOT)
+    .filter((nome) => /^Dockerfile(?:\.[a-z-]+)?$/.test(nome))
+    .sort()
+}
+
+/** Um script de um pacote de `apps/*` ou `services/*`, pelo nome do pacote. */
+function scriptDoPacote(pacote: string, script: string): string | undefined {
+  const manifestos = [...manifestosDe('apps'), ...manifestosDe('services')]
+  return manifestos.find((manifesto) => manifesto.pacote === pacote)?.scripts[script]
+}
+
 describe('os comandos de container chamam scripts que cumprem a regra', () => {
-  it('o CMD das imagens dos workers e o comando do painel do screen-cron', () => {
-    const scripts = scriptsStartDosServicos()
-    const comandos = [
-      ...['Dockerfile.catalog-worker', 'Dockerfile.publication-worker'].map((arquivo) =>
-        cmdDoDockerfile(arquivo).join(' '),
-      ),
-      COMANDO_DO_PAINEL_SCREEN_CRON,
-    ]
-    for (const comando of comandos) {
-      const filtro = filtroPnpm(comando)
-      expect(filtro, comando).not.toBeNull()
-      const script = scripts.find((s) => s.pacote === filtro?.pacote && s.nome === filtro?.script)
-      expect(script, comando).toBeDefined()
-      expect(binarioDoScriptDeServico(script?.comando ?? ''), comando).not.toBeNull()
+  it('as cinco imagens da raiz existem e nenhuma some da varredura', () => {
+    expect(dockerfilesDaRaiz()).toEqual(
+      expect.arrayContaining([
+        'Dockerfile',
+        'Dockerfile.admin',
+        'Dockerfile.catalog-worker',
+        'Dockerfile.cms',
+        'Dockerfile.publication-worker',
+      ]),
+    )
+  })
+
+  it('o CMD de toda imagem termina no `exec pnpm` de um script que entrega o sinal', () => {
+    const reprovados: string[] = []
+    for (const arquivo of dockerfilesDaRaiz()) {
+      const cmd = cmdDoDockerfile(arquivo)
+      const final = cmd[0] === 'sh' && cmd[1] === '-c' ? execPnpmFinal(cmd[2] ?? '') : null
+      if (final === null) {
+        reprovados.push(
+          `${arquivo}: o CMD nao e sh -c terminando em exec pnpm --filter <pacote> <script>`,
+        )
+        continue
+      }
+      const script = scriptDoPacote(final.pacote, final.script) ?? ''
+      if (binarioDoScriptDeServico(script) === null && !startDeAppNextEntregaSinal(script)) {
+        reprovados.push(`${arquivo} -> ${final.pacote} ${final.script}: "${script}"`)
+      }
     }
+    expect(reprovados).toEqual([])
+  })
+
+  it('o comando do painel do screen-cron chama um script de servico que entrega o sinal', () => {
+    const filtro = filtroPnpm(COMANDO_DO_PAINEL_SCREEN_CRON)
+    expect(filtro).not.toBeNull()
+    const script = scriptDoPacote(filtro?.pacote ?? '', filtro?.script ?? '') ?? ''
+    expect(binarioDoScriptDeServico(script), script).not.toBeNull()
+  })
+
+  it('CONTROLE NEGATIVO: o CMD reprova quando o dash continua entre o orquestrador e o pnpm', () => {
+    const naoTerminamNoPnpm = [
+      'pnpm --filter @screena/web start',
+      'pnpm --filter @screena/db db:migrate:deploy; pnpm --filter @screena/web start',
+      'pnpm --filter @screena/web start || exit 1',
+      // exec num subshell: quem fica no PID 1 e o dash de fora
+      '(exec pnpm --filter @screena/web start)',
+    ]
+    for (const comando of naoTerminamNoPnpm) expect(execPnpmFinal(comando), comando).toBeNull()
+    expect(
+      execPnpmFinal(
+        "pnpm --filter @screena/db db:migrate:deploy || { echo 'FATAL'; exit 1; }; exec pnpm --filter @screena/web start",
+      ),
+    ).toEqual({ pacote: '@screena/web', script: 'start' })
   })
 })
 

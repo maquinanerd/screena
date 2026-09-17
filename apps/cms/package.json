@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev --port 3002",
     "build": "next build",
-    "start": "next start --port ${PORT:-3002} --hostname 0.0.0.0",
+    "start": "exec next start --port ${PORT:-3002} --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "test": "vitest run --root . --config ./vitest.config.ts",
