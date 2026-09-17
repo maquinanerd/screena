@@ -131,6 +131,8 @@
   font-weight: 700;
 }
 
+/* --- lista de vídeos --- */
+
 .gallery-videos {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
