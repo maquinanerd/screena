@@ -19,6 +19,7 @@ import { getDiscoverData } from '../../../src/server/discover'
 import { getHomeUpcomingMixed } from '../../../src/server/home-upcoming'
 import { getAnticipatedData } from '../../../src/server/anticipated'
 import { foldSearchTerm, getSearchPageData } from '../../../src/server/search-page'
+import './explore.css'
 
 /**
  * Explorar — a superfície ÚNICA de navegação e busca.

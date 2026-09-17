@@ -11,6 +11,7 @@ import { groupBrowseProvidersByBrand } from '../../../src/lib/watch-browse-brand
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getWatchBrowseData, watchBrowseIndexable } from '../../../src/server/watch-browse'
+import './watch.css'
 
 /**
  * Onde assistir — tela 10 do canônico, estrutura EXATA: HERO escuro centrado

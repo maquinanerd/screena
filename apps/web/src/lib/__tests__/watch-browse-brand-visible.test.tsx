@@ -31,7 +31,15 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { WatchPopular } from '../../../app/_components/watch-popular'
 import { groupBrowseProvidersByBrand } from '../watch-browse-brands'
 
-const GLOBALS_CSS = path.join(process.cwd(), 'apps', 'web', 'app', 'globals.css')
+/**
+ * As folhas que `/pt/onde-assistir/` carrega, NA ORDEM de carga: a global (layout)
+ * e a da rota (`watch.css`, importada pela pagina) — desde a divisao do CSS por
+ * rota, as regras do hub moram na segunda.
+ */
+const ROUTE_SHEETS = [
+  path.join(process.cwd(), 'apps', 'web', 'app', 'globals.css'),
+  path.join(process.cwd(), 'apps', 'web', 'app', 'pt', 'onde-assistir', 'watch.css'),
+]
 
 /**
  * Remove blocos de at-rule INTEIROS, contando chaves.
@@ -69,7 +77,7 @@ function stripAtRuleBlocks(css: string): string {
 }
 
 function watchRules(): string {
-  const css = stripAtRuleBlocks(readFileSync(GLOBALS_CSS, 'utf8'))
+  const css = stripAtRuleBlocks(ROUTE_SHEETS.map((file) => readFileSync(file, 'utf8')).join('\n'))
   const blocks: string[] = []
   const pattern = /([^{}]+)\{([^{}]*)\}/g
   let match: RegExpExecArray | null

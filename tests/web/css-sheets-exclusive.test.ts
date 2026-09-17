@@ -35,7 +35,9 @@ describe('cada bloco de classe e estilizado numa folha so', () => {
   it('CONTROLE: a folha global foi achada primeiro, lida, e tem regra de verdade', () => {
     expect(sheets[0]?.[0]).toBe(GLOBAL_STYLESHEET)
     const rules = parseCssRules(sheets[0]?.[1] ?? '')
-    expect(rules.length).toBeGreaterThan(1_000)
+    // O global ENCOLHE de proposito a cada PR da divisao; o controle e "leu a folha
+    // certa e ela tem regra de verdade", nao um tamanho. O header nunca sai dele.
+    expect(rules.length).toBeGreaterThan(300)
     expect(rules.some((rule) => subjectBlocks(rule).includes('site-header'))).toBe(true)
   })
 
