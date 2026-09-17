@@ -29,11 +29,15 @@
  * ============================================================================
  * POR QUE ISTO TESTA `trending-jobs.ts` E NÃO `runners.ts`
  * ============================================================================
- * Porque `runners.ts` não é importável por teste nenhum: ele puxa
- * `@screena/ingestion/runtime`, que não tem alias no `vitest.config.ts`. Foi
- * exatamente por isso que o campo faltando sobreviveu — não havia arquivo de
- * teste capaz de olhar para ele. O payload mudou de casa para um módulo puro
- * justamente para deixar de ser invisível.
+ * Porque o job montado é uma função pura, e função pura é a unidade certa para
+ * afirmar um campo. O campo faltando sobreviveu porque nenhum teste olhava para
+ * o job — não porque nenhum PUDESSE.
+ *
+ * (Até 17/09/2026 este parágrafo dizia que `runners.ts` não era importável por
+ * teste, por falta de alias de `@screena/ingestion/runtime` no
+ * `vitest.config.ts`. Era falso já quando foi escrito: o Vite resolve o
+ * subcaminho pelo `exports` do pacote, e `trending.test.ts` importava esse
+ * módulo desde 21/08. `dry-run-no-side-effects.test.ts` importa `runners.ts`.)
  */
 
 import { describe, expect, it } from 'vitest'
