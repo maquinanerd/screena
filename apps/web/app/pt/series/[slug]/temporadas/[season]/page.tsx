@@ -14,6 +14,8 @@ import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
 import { socialArt, socialMetadata } from '../../../../../../src/lib/social-metadata'
 import { getSeasonPageData } from '../../../../../../src/server/season-page'
+import '../../../../../_components/detail-hero.css'
+import '../../../../../_components/detail.css'
 
 /**
  * Pagina publica de temporada (/pt/series/[slug]/temporadas/[season]/).
