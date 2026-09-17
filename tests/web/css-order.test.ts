@@ -12,11 +12,19 @@ import { describe, expect, it } from 'vitest'
 import {
   compareSpecificity,
   contextsMayOverlap,
+  type OrderConflict,
   orderConflicts,
   propertiesOverlap,
   specificityOf,
+  subjectTypeOf,
 } from '../../apps/web/scripts/lab/css-order'
-import { type CssRule, parseCssRules } from '../../apps/web/scripts/lab/css-rules'
+import {
+  REVIEWED_ORDER_PAIRS,
+  type ReviewedOrderPair,
+  reviewedPairFor,
+} from '../../apps/web/scripts/lab/css-order-reviewed'
+import { classTokens, type CssRule, parseCssRules } from '../../apps/web/scripts/lab/css-rules'
+import { readSourceWithoutComments } from '../support/source-text'
 
 const regra = (css: string): CssRule => parseCssRules(css)[0] as CssRule
 
@@ -91,5 +99,79 @@ describe('orderConflicts', () => {
 
   it('LIMITE DECLARADO: seletores sem classe em comum nao sao comparados (a paridade cobre)', () => {
     expect(orderConflicts(regra('.card__title { color: red }'), regra('.hero h4 { color: blue }'))).toEqual([])
+  })
+
+  it('sujeitos com tipos de elemento diferentes nao empatam — o caso real do corpo da materia', () => {
+    expect(
+      orderConflicts(
+        regra("[data-vertical='news'] .art-body > p { text-align: justify }"),
+        regra('.art-body > .art-quote blockquote { text-align: left }'),
+      ),
+    ).toEqual([])
+  })
+
+  it('CONTROLE NEGATIVO: mesmo tipo, ou tipo so de um lado, continua empate', () => {
+    expect(
+      orderConflicts(regra('.art-body > p { text-align: justify }'), regra('.art-body p { text-align: left }')),
+    ).toEqual(['.art-body > p × .art-body p: text-align/text-align'])
+    // o tipo escondido em `:is()` nao conta como explicito: `p` e `:is(p)` alcancam o mesmo elemento
+    expect(
+      orderConflicts(regra('.art-body p { color: red }'), regra('.art-body :is(p) { color: blue }')),
+    ).toEqual(['.art-body p × .art-body :is(p): color/color'])
+    expect(
+      orderConflicts(regra('.art-body .art-quote { color: red }'), regra('.art-body > .art-quote { color: blue }')),
+    ).toEqual(['.art-body .art-quote × .art-body > .art-quote: color/color'])
+  })
+})
+
+describe('subjectTypeOf', () => {
+  it.each([
+    ["[data-vertical='news'] .art-body > p", 'p'],
+    ['.art-body > .art-quote blockquote', 'blockquote'],
+    ['h2.art-body__heading', 'h2'],
+    [':is(.a, .b) span', 'span'],
+    ['.a .b', null],
+    ["[data-nav='prev-next'] ul", 'ul'],
+    ['.a > *', null],
+  ])('%s -> %s', (selector, type) => {
+    expect(subjectTypeOf(selector)).toBe(type)
+  })
+})
+
+describe('pares revisados', () => {
+  const empate = (movedSelector: string, laterSelector: string, property = 'max-width'): OrderConflict => ({
+    movedSelector,
+    laterSelector,
+    movedProperty: property,
+    laterProperty: property,
+  })
+  const par: ReviewedOrderPair = {
+    selectors: ['.a .b', '.a:not([x]) .c'],
+    property: 'max-width',
+    sources: [],
+    evidence: 'teste',
+  }
+
+  it('cobre o par registrado, nos dois sentidos', () => {
+    expect(reviewedPairFor(empate('.a .b', '.a:not([x]) .c'), [par])).toBe(par)
+    expect(reviewedPairFor(empate('.a:not([x]) .c', '.a .b'), [par])).toBe(par)
+  })
+
+  it('CONTROLE NEGATIVO: outra propriedade, propriedades diferentes ou outro seletor nao sao cobertos', () => {
+    expect(reviewedPairFor(empate('.a .b', '.a:not([x]) .c', 'width'), [par])).toBeUndefined()
+    expect(reviewedPairFor({ ...empate('.a .b', '.a:not([x]) .c'), laterProperty: 'max' }, [par])).toBeUndefined()
+    expect(reviewedPairFor(empate('.a .b', '.a .c'), [par])).toBeUndefined()
+  })
+
+  it('toda revisao registrada tem motivo e aponta para markup que usa as classes do par', () => {
+    expect(REVIEWED_ORDER_PAIRS.length).toBeGreaterThan(0)
+    for (const review of REVIEWED_ORDER_PAIRS) {
+      expect(review.evidence.length).toBeGreaterThan(80)
+      expect(review.sources.length).toBeGreaterThan(0)
+      const markup = review.sources.map((source) => readSourceWithoutComments(source)).join('\n')
+      for (const token of new Set(review.selectors.flatMap(classTokens))) {
+        expect(markup, `.${token} em ${review.sources.join(', ')}`).toMatch(new RegExp(`["' ]${token}["' ]`))
+      }
+    }
   })
 })
