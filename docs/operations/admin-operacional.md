@@ -158,9 +158,22 @@ isso em vez de escolher um.
 `cinerie-cms` fica **não determinado**: usa banco próprio e a ADR 0015 proíbe a
 ponte.
 
-**Hipótese a conferir (inferência, não medida):** o `screen-cron` usa a imagem do
-`Dockerfile`, cujo `HEALTHCHECK` consulta a porta 3000; o agendador escuta na
-3005. Isso explicaria o serviço "amarelo desde sempre".
+**O `screen-cron` "amarelo desde sempre" (medido em 16/09/2026):** o serviço usa
+a imagem do `Dockerfile`, cujo `HEALTHCHECK` sondava fixo a porta 3000; o agendador
+escuta na 3005. O container nunca ficava saudável e era substituído em loop — os
+sinais de vida mostraram **129 containers do agendador numa hora**, ~121 s cada,
+e as filas longas pararam de registrar execução. Foram os sinais de vida desta
+leva que tornaram o defeito mensurável: um serviço de longa duração tem ~1
+instância por hora, e "tem sinal" sozinho não distingue um processo estável de
+um que renasce a cada dois minutos.
+
+Consertado pelo código, sem configuração no painel: o `HEALTHCHECK` reconhece o
+serviço pelo comando do container (`scripts/healthcheck/`). Ver
+[`ingestion-scheduler.md`](./ingestion-scheduler.md) → "O HEALTHCHECK do
+container". A nota do `screen-cron` em `apps/admin/src/server/ops/services.ts`
+ainda fala em hipótese: mudar fonte do admin altera a impressão digital de TODOS
+os serviços (a tela os pintaria "atrás do main" até cada um ser reimplantado), então
+ela sai junto com a próxima mudança de código do painel.
 
 ---
 

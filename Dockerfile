@@ -90,14 +90,24 @@ ENV CINERIE_BUILD_SHA=${CINERIE_BUILD_SHA} \
 EXPOSE 3000
 
 # HEALTHCHECK (baseline R-27): o orquestrador passa a distinguir container no ar
-# de container degradado. Usa `node` (a imagem slim nao tem curl/wget) e o fetch
-# global do Node 22 contra GET /api/health, que so responde 200 quando o
-# PostgreSQL responde. start-period cobre o `migrate deploy` do boot.
-# URL CANONICA com barra final: `trailingSlash: true` faz /api/health responder
-# 308 -> /api/health/. O fetch seguiria o redirect, mas usar a canonica evita um
-# salto extra a cada 30s.
+# de container degradado. Usa `node` (a imagem slim nao tem curl/wget).
+#
+# ESTA IMAGEM RODA DOIS SERVICOS, e cada um serve saude numa porta:
+#   - screen-app  (o CMD abaixo)          -> GET :3000/api/health/ (200 so com o PostgreSQL)
+#   - screen-cron (comando do agendador)  -> GET :3005/healthz (liveness, nao toca banco)
+#
+# Ate 16/09/2026 a sondagem era um fetch FIXO na 3000. No screen-cron ninguem
+# escuta ali: o container nunca ficava saudavel e o orquestrador o substituia em
+# loop (129 containers numa hora), matando no meio todo lote longo do agendador.
+#
+# O script reconhece o servico pelo COMANDO do container (o PID 1), sem nenhuma
+# configuracao no painel, e cai no alvo do site quando nao reconhece — o site
+# nunca responde saudavel com o Next fora do ar. Decisao e motivos:
+# scripts/healthcheck/lib/health-target.mjs.
+#
+# start-period cobre o `migrate deploy` do boot do site.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:3000/api/health/').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+  CMD node /app/scripts/healthcheck/container-health.mjs
 
 # Release: `prisma migrate deploy` roda ANTES do Next e, se falhar, o app NAO
 # sobe (exit != 0 => o orquestrador nao promove o container). Nunca `migrate dev`,

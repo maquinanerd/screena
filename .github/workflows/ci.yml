@@ -553,6 +553,77 @@ jobs:
           docker exec web sh -c 'mkdir -p /app/apps/web/.next/cache && touch /app/apps/web/.next/cache/__probe && rm /app/apps/web/.next/cache/__probe'
           echo "OK: imagem real validada (nao-root, healthcheck, HTTP, migrations, gravabilidade)."
 
+      # A MESMA IMAGEM RODA O AGENDADOR (`screen-cron` = esta imagem + outro
+      # comando). Ate 16/09/2026 o HEALTHCHECK sondava fixo a porta 3000, que so o
+      # site serve: o container do agendador nunca ficava saudavel e o
+      # orquestrador o substituia em loop (129 containers numa hora), matando no
+      # meio todo lote longo. Este passo e a prova com o DOCKER avaliando o
+      # HEALTHCHECK: antes do conserto ele terminaria em `unhealthy`.
+      #
+      # DRY-RUN (sem CINERIE_SCHEDULER_APPLY, NODE_ENV=test) e token FALSO, como
+      # `services/sync/scripts/prove-scheduler-service.ts`: o agendador usa so o
+      # PostgreSQL descartavel deste job e nao chama fornecedor nenhum.
+      - name: Agendador na mesma imagem — o HEALTHCHECK segue o comando do container
+        run: |
+          set -euo pipefail
+          probe='node /app/scripts/healthcheck/container-health.mjs; echo "exit=$?"'
+
+          # Controle negativo 1: sem o comando do agendador e sem nada ouvindo, o
+          # alvo e o do SITE, e ele REPROVA.
+          out="$(docker run --rm cinerie-web:ci sh -c "${probe}")"; echo "${out}"
+          echo "${out}" | grep -q 'unhealthy screen-app (padrao) http://127.0.0.1:3000/api/health/'
+          echo "${out}" | grep -q '^exit=1$'
+
+          # Controle negativo 2: com o comando do agendador no PID 1 e nada ouvindo,
+          # o alvo e o /healthz do agendador, e ele REPROVA.
+          out="$(docker run --rm cinerie-web:ci sh -c ": scheduler:start; ${probe}")"; echo "${out}"
+          echo "${out}" | grep -q 'unhealthy screen-cron (pid1) http://127.0.0.1:3005/healthz'
+          echo "${out}" | grep -q '^exit=1$'
+
+          # O agendador de verdade, com o comando do servico embrulhado como o
+          # EasyPanel embrulha: o PID 1 medido no screen-cron em 17/09/2026 e
+          # `/bin/sh -c corepack pnpm --filter @screena/sync scheduler:start`.
+          docker run -d --name sched --network cinerie-ci \
+            -e DATABASE_URL=postgresql://screen:screen@pg:5432/screen \
+            -e TMDB_READ_ACCESS_TOKEN=token-de-prova-nao-e-credencial \
+            -e NODE_ENV=test \
+            -e CINERIE_SCHEDULER_WORKER_ID=ci-healthcheck \
+            cinerie-web:ci /bin/sh -c 'corepack pnpm --filter @screena/sync scheduler:start'
+          status=starting
+          for i in $(seq 1 80); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' sched 2>/dev/null || echo starting)"
+            running="$(docker inspect --format '{{.State.Running}}' sched 2>/dev/null || echo false)"
+            echo "agendador: healthcheck=${status} running=${running}"
+            if [ "${status}" = "healthy" ]; then break; fi
+            if [ "${status}" = "unhealthy" ] || [ "${running}" != "true" ]; then
+              echo '== agendador unhealthy ou parado =='
+              docker inspect --format '{{json .State.Health}}' sched || true
+              docker logs sched || true
+              exit 1
+            fi
+            sleep 3
+          done
+          if [ "${status}" != "healthy" ]; then
+            echo '== o HEALTHCHECK do agendador nao ficou healthy =='
+            docker inspect --format '{{json .State.Health}}' sched || true
+            docker logs sched || true
+            exit 1
+          fi
+
+          # Quem o Docker sondou: a linha do log de saude nomeia servico e URL.
+          docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' sched \
+            | grep -q 'healthy screen-cron (pid1) http://127.0.0.1:3005/healthz -> HTTP 200'
+          # O site, na mesma imagem, continua sondando o proprio /api/health/.
+          docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' web \
+            | grep -q 'healthy screen-app (padrao) http://127.0.0.1:3000/api/health/ -> HTTP 200'
+          # Um processo, um sinal de vida: a medida que em producao mostrou 129.
+          n="$(docker exec pg psql -U screen -d screen -tAc "SELECT count(DISTINCT instance_id) FROM service_heartbeats WHERE service_key = 'screen-cron'")"
+          echo "instancias do agendador: ${n}"; test "${n}" = "1"
+          echo "OK: o agendador fica saudavel na mesma imagem do site, e o site continua sondando o /api/health/."
+
       - name: Logs do container (sempre)
         if: always()
-        run: docker logs web 2>&1 || true
+        run: |
+          docker logs web 2>&1 || true
+          echo '== agendador =='
+          docker logs sched 2>&1 || true
