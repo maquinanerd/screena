@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "exec next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "validate:ops-panel": "tsx scripts/validate-ops-panel-real-postgres.ts"

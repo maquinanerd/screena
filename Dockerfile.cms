@@ -85,6 +85,17 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
 # Variaveis de runtime continuam aceitas para outros orquestradores. Os arquivos
 # so sao lidos quando a variavel correspondente estiver ausente.
 #
-# MIGRATION ANTES DO START, e o app NAO sobe se ela falhar. `exec` mantem o Next
-# como PID 1 para receber SIGTERM diretamente.
+# MIGRATION ANTES DO START, e o app NAO sobe se ela falhar.
+#
+# O PID 1 e o PNPM, nao o Next. O `exec` do fim tira o dash do caminho, e o pnpm
+# repassa o SIGTERM so ao processo que roda o script `start`; e o `exec next start`
+# DO SCRIPT que faz desse processo o proprio Next — que fecha o servidor, espera o
+# que esta em curso e sai 0. Ate 17/09/2026 o script nao fazia `exec`: um `sh -c`
+# morria sem repassar, o pnpm saia 1 em 235 ms e o Next morria com o container,
+# derrubando a requisicao em curso.
+#
+# Esta imagem NAO tem o /bin/sh que vira init (scripts/container/pid1-shell.sh). Um
+# "Comando" no painel do EasyPanel passa por cima deste CMD e poe o dash no PID 1,
+# que descarta o SIGTERM: medido, 137 depois da carencia inteira. Medidas e regra:
+# docs/operations/sigterm-e-pid1.md.
 CMD ["sh", "-c", "if [ -z \"${PAYLOAD_DATABASE_URL:-}\" ] && [ -f /run/secrets/payload_database_url ]; then export PAYLOAD_DATABASE_URL=\"$(cat /run/secrets/payload_database_url)\"; fi; if [ -z \"${PAYLOAD_SECRET:-}\" ] && [ -f /run/secrets/payload_secret ]; then export PAYLOAD_SECRET=\"$(cat /run/secrets/payload_secret)\"; fi; pnpm --filter @screena/cms cms:migrations:deploy || { echo '=== FATAL: migration do Payload falhou. O CMS NAO vai subir. ==='; echo '=== Runbook: docs/runbooks/EASYPANEL_EDITORIAL.md'; exit 1; }; exec pnpm --filter @screena/cms start"]

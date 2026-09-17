@@ -59,7 +59,8 @@ Quando implementado, a partir da raiz do monorepo:
 pnpm install
 pnpm --filter @screena/web dev        # desenvolvimento
 pnpm --filter @screena/web build      # build de producao
-pnpm --filter @screena/web start      # servir build
+pnpm --filter @screena/web start      # servir build (entrypoint do container: o script faz exec, POSIX)
+pnpm --filter @screena/web exec next start  # servir build no Windows (o cmd.exe nao tem exec)
 pnpm --filter @screena/web typecheck  # checagem de tipos
 ```
 
