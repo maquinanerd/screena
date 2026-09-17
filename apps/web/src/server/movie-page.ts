@@ -309,9 +309,12 @@ export const getMoviePageData = cache(
     // fora do indice ate ser enriquecida — e indexa sozinha quando ganhar um dos
     // dois. Le a MESMA linha de traducao que a pagina usa para titulo e meta; o
     // SQL do sitemap aplica o mesmo predicado.
+    // O titulo vai junto com o ORIGINAL porque a linha pt-BR costuma carregar o
+    // original copiado, e copia nao e traducao (ver `isLocalizedTitle`).
     const qualityGate = evaluateLocalizationGate({
       canonicalSlug,
-      hasLocalizedTitle: (translation?.title ?? "").trim() !== "",
+      localizedTitle: translation?.title ?? null,
+      originalTitle: movie.titleOriginal,
       hasLocalizedDescription:
         (translation?.summary ?? "").trim() !== "" ||
         (translation?.metaDescription ?? "").trim() !== "",

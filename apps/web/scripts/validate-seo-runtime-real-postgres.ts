@@ -600,8 +600,9 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   // armado, sem ela a AUSENCIA explicaria a exclusao — e o caso passaria pelo
   // motivo errado. A unica variavel sob teste e o portao.
   // Titulo original em ASCII DE PROPOSITO: o cluster efemero no Windows sobe em
-  // WIN1252 e recusa kana (22P05). O portao nao le `title_original` — le so a
-  // traducao nos idiomas publicados —, entao a grafia nao muda o que se prova.
+  // WIN1252 e recusa kana (22P05). O portao COMPARA a traducao com
+  // `title_original` (desde 17/09/2026), e a comparacao e por igualdade exata de
+  // texto — entao o alfabeto da amostra nao muda o que se prova aqui.
   const idFallback = await seedMovie(prisma, {
     tmdbId: 96_200_001,
     slug: "tmdb-96200001",
@@ -648,6 +649,31 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
     fallbackDepois?.seo.decision === "index", `decision=${fallbackDepois?.seo.decision}`);
   record(47, "D3: e volta ao SITEMAP pelo mesmo motivo — pagina e sitemap concordam nos dois sentidos",
     noSitemap(locsDepois, "tmdb-96200001"), `presente=${noSitemap(locsDepois, "tmdb-96200001")}`);
+
+  // O CASO QUE PRODUCAO MOSTROU (17/09/2026). A linha do locale publicado existe
+  // e carrega o titulo ORIGINAL copiado — e o portao a deixava passar, porque a
+  // condicao antiga era so "titulo nao vazio". Eram 11.922 fichas tmdb-N no
+  // sitemap, praticamente a populacao inteira da D3. Copia nao e traducao.
+  // Numeros 55 e 56 para nao renumerar as checagens que ja existiam abaixo.
+  const idCopia = await seedMovie(prisma, {
+    tmdbId: 96_200_003,
+    slug: "tmdb-96200003",
+    title: "Nichts",
+    withTranslation: false,
+  });
+  await seedDecision(prisma, { entityId: idCopia, slug: "tmdb-96200003", decision: "index", isCurrent: true, origin: "catalog_policy_engine" });
+  await prisma.entityTranslation.create({
+    data: { entityType: "movie", entityId: idCopia, languageCode: LANGUAGE, title: "Nichts" },
+  });
+  const copia = await seams.getMoviePageData("tmdb-96200003");
+  const locsCopia = await locsDeFilme();
+  record(55, "D3: titulo pt-BR IGUAL ao original NAO abre o portao — a PAGINA sai noindex",
+    copia?.seo.decision === "noindex" && copia?.seo.decisionSource === "quality-gate",
+    `decision=${copia?.seo.decision} source=${copia?.seo.decisionSource}`);
+  record(56, "D3: a ficha de titulo copiado fica fora do SITEMAP — o predicado do PostgreSQL julga igual a pagina",
+    !noSitemap(locsCopia, "tmdb-96200003"), `presente=${noSitemap(locsCopia, "tmdb-96200003")}`);
+  record(57, "D3: CONTROLE do instrumento — a ficha JA enriquecida continua no sitemap na MESMA leitura",
+    noSitemap(locsCopia, "tmdb-96200001"), `presente=${noSitemap(locsCopia, "tmdb-96200001")}`);
 
   // D1: galeria fora do sitemap. O shard antigo responde 404, e o index nao a anuncia.
   const galeriaImagens = await seams.getSitemapShardXml("sitemap-pt-BR-imagens-1.xml", { limit: BIG });

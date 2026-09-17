@@ -99,10 +99,47 @@ export const TMDB_FALLBACK_SLUG_SQL_PATTERN = "^tmdb-[0-9]+$";
 export interface LocalizationGateInput {
   /** Slug canonico da ficha no locale publicado. */
   readonly canonicalSlug: string;
-  /** Ha titulo nao vazio no locale publicado? */
-  readonly hasLocalizedTitle: boolean;
+  /** `entity_translations.title` da linha do locale publicado, como esta no banco. */
+  readonly localizedTitle: string | null;
+  /** `movies.title_original` / `tv_shows.name_original` — o titulo que veio do TMDB. */
+  readonly originalTitle: string | null;
   /** Ha descricao nao vazia (`summary` ou `meta_description`) no locale publicado? */
   readonly hasLocalizedDescription: boolean;
+}
+
+/**
+ * Um titulo conta como LOCALIZADO quando existe e e DIFERENTE do original.
+ *
+ * POR QUE A COMPARACAO EXISTE. Ate 17/09/2026 o portao aceitava qualquer titulo
+ * nao vazio na linha do locale publicado — e, com o conserto no ar, MEDIU-SE em
+ * producao que ele nao barrava ninguem: 11.922 fichas de slug `tmdb-N` (6.682
+ * filmes e 5.240 series) continuavam no sitemap e com `index`, contra as ~11.666
+ * que a D3 media. A amostra explicou: a linha pt-BR existe e carrega o titulo
+ * ORIGINAL copiado (`Tipota`, em grego; `Tsuki no Tami`, em japones), e a pagina
+ * so tem a description gerada a partir de fatos. Titulo copiado nao e traducao,
+ * e a D3 fala de "titulo no alfabeto original e sem description".
+ *
+ * COMPARACAO EXATA, SO COM `trim`. Sem `lower`, sem normalizacao Unicode: o SQL
+ * do sitemap tem de julgar IGUAL a pagina, e `lower()` do PostgreSQL depende do
+ * collation do cluster enquanto o do JavaScript nao. Divergir aqui traria de
+ * volta exatamente o defeito que a remediacao fechou (meta tag dizendo uma coisa,
+ * sitemap outra). Um titulo que difere do original so por caixa ou por forma
+ * Unicode segue contando como localizado: e o lado conservador — mantem no indice
+ * em vez de tirar.
+ *
+ * DENTRO DO ESCOPO, IGUAL AO ORIGINAL SIGNIFICA ALFABETO ORIGINAL. O portao so
+ * olha ficha com slug `tmdb-N`, e esse slug nasce justamente quando o titulo NAO
+ * produz slug (alfabeto nao latino). Entao, aqui, "titulo igual ao original" e
+ * sempre o caso que o dono decidiu tirar — e um titulo em pt-BR de verdade
+ * continua abrindo o portao, mesmo com o slug antigo.
+ */
+export function isLocalizedTitle(
+  localizedTitle: string | null,
+  originalTitle: string | null,
+): boolean {
+  const localizado = (localizedTitle ?? "").trim();
+  if (localizado === "") return false;
+  return localizado !== (originalTitle ?? "").trim();
 }
 
 /**
@@ -117,6 +154,8 @@ export interface LocalizationGateInput {
  *
  * Basta UM dos dois — titulo OU descricao — para abrir: e a leitura menos
  * agressiva de "titulo nao localizado + sem description", que e uma conjuncao.
+ * Titulo, porem, e o que `isLocalizedTitle` define: existir nao basta, precisa
+ * ser diferente do original.
  */
 export function evaluateLocalizationGate(input: LocalizationGateInput): QualityGateVerdict {
   if (!TMDB_FALLBACK_SLUG_PATTERN.test(input.canonicalSlug.trim())) {
@@ -126,17 +165,17 @@ export function evaluateLocalizationGate(input: LocalizationGateInput): QualityG
       "Slug derivado do titulo: o portao de localizacao nao se aplica.",
     );
   }
-  if (input.hasLocalizedTitle || input.hasLocalizedDescription) {
+  if (isLocalizedTitle(input.localizedTitle, input.originalTitle) || input.hasLocalizedDescription) {
     return passed(
       "localization",
       "localized",
-      "Ficha com slug de fallback, mas ja enriquecida no locale publicado (titulo ou descricao).",
+      "Ficha com slug de fallback, mas ja enriquecida no locale publicado (titulo diferente do original ou descricao).",
     );
   }
   return failed(
     "localization",
     "not_localized",
-    "Ficha com slug de fallback tmdb-{id}, sem titulo localizado e sem descricao em pt-BR: nao indexa ate ser enriquecida (decisao do dono D3, 2026-09-11). Indexa sozinha quando ganhar titulo ou descricao.",
+    "Ficha com slug de fallback tmdb-{id}, sem titulo localizado (ausente ou igual ao original) e sem descricao em pt-BR: nao indexa ate ser enriquecida (decisao do dono D3, 2026-09-11). Indexa sozinha quando ganhar titulo proprio ou descricao.",
   );
 }
 

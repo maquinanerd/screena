@@ -408,9 +408,11 @@ export const getSeriesPageData = cache(
     // PORTAO DE LOCALIZACAO (decisao do dono D3) — o gemeo do de movie-page.ts,
     // pela mesma funcao: serie com slug de fallback tmdb-{id}, sem titulo e sem
     // descricao no locale publicado, fica fora do indice ate ser enriquecida.
+    // Titulo igual ao original nao conta como traducao (ver `isLocalizedTitle`).
     const qualityGate = evaluateLocalizationGate({
       canonicalSlug,
-      hasLocalizedTitle: (translation?.title ?? "").trim() !== "",
+      localizedTitle: translation?.title ?? null,
+      originalTitle: series.nameOriginal,
       hasLocalizedDescription:
         (translation?.summary ?? "").trim() !== "" ||
         (translation?.metaDescription ?? "").trim() !== "",

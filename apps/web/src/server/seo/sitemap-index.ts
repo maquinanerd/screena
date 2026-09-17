@@ -476,9 +476,12 @@ async function aggregateEntity(
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
         -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
-        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
-        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
-        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo PROPRIO nem descricao
+        -- no locale publicado. Titulo igual ao original nao abre o portao: a linha
+        -- pt-BR costuma trazer o original copiado, e foi por isso que o portao nao
+        -- barrou ninguem em producao (medido em 17/09/2026: 11.922 fichas tmdb-N
+        -- ainda no sitemap). Mesmo predicado de isLocalizedTitle, que a pagina usa;
+        -- contagem e pagina repetem o texto IGUAL.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
         AND NOT (
           s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
@@ -486,7 +489,8 @@ async function aggregateEntity(
             SELECT 1 FROM entity_translations et
             WHERE et.entity_type = 'movie' AND et.entity_id = s.entity_id
               AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
-              AND (BTRIM(COALESCE(et.title, '')) <> ''
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(m.title_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
           )
@@ -502,9 +506,12 @@ async function aggregateEntity(
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
         -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
-        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
-        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
-        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo PROPRIO nem descricao
+        -- no locale publicado. Titulo igual ao original nao abre o portao: a linha
+        -- pt-BR costuma trazer o original copiado, e foi por isso que o portao nao
+        -- barrou ninguem em producao (medido em 17/09/2026: 11.922 fichas tmdb-N
+        -- ainda no sitemap). Mesmo predicado de isLocalizedTitle, que a pagina usa;
+        -- contagem e pagina repetem o texto IGUAL.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
         AND NOT (
           s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
@@ -512,7 +519,8 @@ async function aggregateEntity(
             SELECT 1 FROM entity_translations et
             WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
               AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
-              AND (BTRIM(COALESCE(et.title, '')) <> ''
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
           )
@@ -792,9 +800,12 @@ async function pageEntity(
       WHERE s.entity_type = 'movie' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(m.title_original) <> ''
         -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
-        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
-        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
-        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo PROPRIO nem descricao
+        -- no locale publicado. Titulo igual ao original nao abre o portao: a linha
+        -- pt-BR costuma trazer o original copiado, e foi por isso que o portao nao
+        -- barrou ninguem em producao (medido em 17/09/2026: 11.922 fichas tmdb-N
+        -- ainda no sitemap). Mesmo predicado de isLocalizedTitle, que a pagina usa;
+        -- contagem e pagina repetem o texto IGUAL.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
         AND NOT (
           s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
@@ -802,7 +813,8 @@ async function pageEntity(
             SELECT 1 FROM entity_translations et
             WHERE et.entity_type = 'movie' AND et.entity_id = s.entity_id
               AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
-              AND (BTRIM(COALESCE(et.title, '')) <> ''
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(m.title_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
           )
@@ -821,9 +833,12 @@ async function pageEntity(
       WHERE s.entity_type = 'tv' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(t.name_original) <> ''
         -- PORTAO DE LOCALIZACAO (decisao do dono D3, 2026-09-11): ficha com slug de
-        -- fallback tmdb-N fica fora enquanto nao tiver titulo NEM descricao no
-        -- locale publicado. Mesmo predicado de evaluateLocalizationGate, que a
-        -- pagina usa; contagem e pagina repetem o texto IGUAL.
+        -- fallback tmdb-N fica fora enquanto nao tiver titulo PROPRIO nem descricao
+        -- no locale publicado. Titulo igual ao original nao abre o portao: a linha
+        -- pt-BR costuma trazer o original copiado, e foi por isso que o portao nao
+        -- barrou ninguem em producao (medido em 17/09/2026: 11.922 fichas tmdb-N
+        -- ainda no sitemap). Mesmo predicado de isLocalizedTitle, que a pagina usa;
+        -- contagem e pagina repetem o texto IGUAL.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
         AND NOT (
           s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
@@ -831,7 +846,8 @@ async function pageEntity(
             SELECT 1 FROM entity_translations et
             WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
               AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
-              AND (BTRIM(COALESCE(et.title, '')) <> ''
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
           )
