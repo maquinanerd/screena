@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AuthShell } from '../entrar/auth-shell'
 import { EmailVerificationTokenForm } from './token-form'
+import '../entrar/auth.css'
 
 /**
  * Pagina que recebe o link de VERIFICACAO DE E-MAIL (C7C).

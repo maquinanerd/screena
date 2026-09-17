@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 
 import { SettingsPanel } from './settings-panel'
+import './settings-shell.css'
+import './settings.css'
 
 /**
  * Configurações — tela 13 do canônico. Shell server-only; toda a interação

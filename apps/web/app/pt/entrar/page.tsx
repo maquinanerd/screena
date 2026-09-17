@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AuthShell } from './auth-shell'
 import { LoginForm } from './login-form'
+import './auth.css'
 
 /**
  * Entrar — tela 16 do canônico: card central com tabs Entrar/Criar conta,

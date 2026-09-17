@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import { AuthShell } from '../entrar/auth-shell'
 import { RecoverRequestForm } from './recover-form'
+import '../entrar/auth.css'
 
 /**
  * PEDIDO de recuperação de senha (C7C/C7D) no card da tela 16 (sem tabs).
