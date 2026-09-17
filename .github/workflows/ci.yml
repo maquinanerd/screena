@@ -662,9 +662,15 @@ jobs:
             echo "$1: saida=$(docker inspect -f '{{.State.ExitCode}}' "$1") stop_ms=$(( (fim - inicio) / 1000000 ))"
           }
 
+          # `grep -q` sai no primeiro acerto; com pipefail, o `docker logs` leva SIGPIPE e
+          # o pipeline devolve 141 — um acerto viraria falha. `grep -c` le tudo.
+          tem_log() {
+            docker logs "$1" 2>&1 | grep -c -- "$2" >/dev/null
+          }
+
           esperar_log() {
             for _ in $(seq 1 60); do
-              if docker logs "$1" 2>&1 | grep -q "$2"; then return 0; fi
+              if tem_log "$1" "$2"; then return 0; fi
               if [ "$(docker inspect -f '{{.State.Running}}' "$1")" != "true" ]; then break; fi
               sleep 2
             done
@@ -708,8 +714,8 @@ jobs:
           echo "${cadeia}" | grep -Eq '^[0-9]+:node [0-9]+:node 1:[^ ]+ $' \
             || falha "a cadeia do agendador nao e node <- pnpm <- PID 1: ${cadeia}"
           parar sched
-          docker logs sched 2>&1 | grep -q '"event":"scheduler_draining"' || falha "o agendador nao registrou scheduler_draining"
-          docker logs sched 2>&1 | grep -q '"event":"scheduler_stopped"' || falha "o agendador nao registrou scheduler_stopped"
+          tem_log sched '"event":"scheduler_draining"' || falha "o agendador nao registrou scheduler_draining"
+          tem_log sched '"event":"scheduler_stopped"' || falha "o agendador nao registrou scheduler_stopped"
           [ "$(docker inspect -f '{{.State.ExitCode}}' sched)" = "0" ] || falha "o agendador nao saiu 0 no docker stop"
 
           # 2) CONTROLE NEGATIVO: o MESMO comando com o dash direto no PID 1 — a imagem
@@ -727,7 +733,7 @@ jobs:
             c="$(docker inspect -f '{{.State.ExitCode}}' sched-dash)"
             echo "controle negativo (dash no PID 1): saida=${c}"
             [ "${c}" = "137" ] || falha "o controle negativo deveria sair 137 (SIGKILL), saiu ${c}"
-            if docker logs sched-dash 2>&1 | grep -q '"event":"scheduler_draining"'; then
+            if tem_log sched-dash '"event":"scheduler_draining"'; then
               falha "o controle negativo drenou: este passo nao distingue o conserto"
             fi
           else
@@ -749,8 +755,8 @@ jobs:
             cinerie-web:ci sh -c 'exec pnpm --filter @screena/ingestion catalog-worker:start' >/dev/null
           if esperar_log catalogo '"event":"catalog_service_started"'; then
             parar catalogo
-            docker logs catalogo 2>&1 | grep -q '"event":"catalog_service_draining"' || falha "o catalog-worker nao registrou catalog_service_draining"
-            docker logs catalogo 2>&1 | grep -q '"event":"catalog_service_stopped"' || falha "o catalog-worker nao registrou catalog_service_stopped"
+            tem_log catalogo '"event":"catalog_service_draining"' || falha "o catalog-worker nao registrou catalog_service_draining"
+            tem_log catalogo '"event":"catalog_service_stopped"' || falha "o catalog-worker nao registrou catalog_service_stopped"
             [ "$(docker inspect -f '{{.State.ExitCode}}' catalogo)" = "0" ] || falha "o catalog-worker nao saiu 0 no docker stop"
           else
             falha "o catalog-worker nao subiu"
@@ -779,8 +785,8 @@ jobs:
             # O primeiro ciclo falha (CMS fora) e o worker entra na espera de 60 s.
             esperar_log projecao 'ciclo FALHOU' || true
             parar projecao
-            docker logs projecao 2>&1 | grep -q 'sinal recebido' || falha "o worker de projecao nao registrou o sinal"
-            docker logs projecao 2>&1 | grep -q '\[projecao\] parado' || falha "o worker de projecao nao terminou a drenagem (sem a linha parado)"
+            tem_log projecao 'sinal recebido' || falha "o worker de projecao nao registrou o sinal"
+            tem_log projecao '\[projecao\] parado' || falha "o worker de projecao nao terminou a drenagem (sem a linha parado)"
             c="$(docker inspect -f '{{.State.ExitCode}}' projecao)"
             case "${c}" in
               0 | 143) ;;
@@ -800,7 +806,7 @@ jobs:
             c="$(docker inspect -f '{{.State.ExitCode}}' projecao-dash)"
             echo "controle negativo do worker de projecao (dash no PID 1): saida=${c}"
             [ "${c}" = "137" ] || falha "o controle negativo do worker de projecao deveria sair 137, saiu ${c}"
-            if docker logs projecao-dash 2>&1 | grep -q '\[projecao\] parado'; then
+            if tem_log projecao-dash '\[projecao\] parado'; then
               falha "o controle negativo do worker de projecao drenou: este passo nao distingue o conserto"
             fi
           else
