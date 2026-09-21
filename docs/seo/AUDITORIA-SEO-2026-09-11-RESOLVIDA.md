@@ -29,15 +29,17 @@
 | RESOLVIDO | **44** |
 | VALIDADO | 1 |
 | NÃO APLICÁVEL | 3 |
-| DEPENDÊNCIA EXTERNA DOCUMENTADA | 9 |
-| PENDENTE | 1 |
+| DEPENDÊNCIA EXTERNA DOCUMENTADA | 10 |
+| PENDENTE | 0 |
 | **Total** | **58** |
 
-O único PENDENTE é de desempenho e é refatoração, não ajuste: os chunks de JS com
-62–67% sem executar (§7.7, linha P10). A folha de CSS única de 143 KB (§7.6, linha
-P6 — a própria auditoria a pôs "fora da caixa de PR pequeno") saiu dos pendentes:
-foi dividida por rota e está no ar desde 17/09/2026. Os 149 KB de HTML da ficha de
-série (P9) também saíram: ver a linha P9.
+Não sobrou PENDENTE. O último era o P10 (§7.7: dois chunks de JS com 62–67% sem
+executar). Medido em produção em 21/09/2026, os dois chunks são o **React DOM** e o
+**runtime do Next.js**, e 94% do JS que não roda na abertura da página é deles: o
+item virou dependência de framework, com a medição na linha P10 e na §10.4. A
+folha de CSS única de 143 KB (P6 — a própria auditoria a pôs "fora da caixa de PR
+pequeno") foi dividida por rota e está no ar desde 17/09/2026, e os 149 KB de HTML
+da ficha de série (P9) também saíram: ver as linhas P6 e P9.
 
 ---
 
@@ -114,7 +116,7 @@ série (P9) também saíram: ver a linha P9.
 | P7 | `upgrade-insecure-requests` em CSP report-only | Diretiva inerte removida | `apps/web/middleware.ts` | `security-headers.test.ts` | RESOLVIDO (`3d870f7`) |
 | P8 | Hero da home em `w1280` sem `srcset` | `srcset` com as larguras que a tela usa | `home-hero-carousel.tsx`, `home-hero-presenter.ts` | `home-hero-srcset.test.ts` | RESOLVIDO (`b76b887`) |
 | P9 | Ficha de série com 149 KB de HTML | A lista de episódios virou client component (`EpisodeList`): o HTML é o mesmo e o payload RSC leva os DADOS de cada episódio, não a árvore de elementos de cada linha. Medido no laboratório, 40 episódios com still: HTML 126.541 → 86.791 B (−31%), payload 78.169 → 39.379 B (−50%), gzip 11.545 → 10.616 B (−8%) | `app/_components/episode-list.tsx`, `app/pt/series/[slug]/page.tsx` | `episode-list.test.tsx`, `series-canonical-port.test.ts`, `validate:route-cache` (guia inteiro no HTML; payload sem árvore — reprova no build anterior) | RESOLVIDO (`fcf7198`) |
-| P10 | Chunks de JS com 62–67% sem executar | Exige análise de bundle por rota | — | — | PENDENTE |
+| P10 | Chunks de JS com 62–67% sem executar | **MEDIDO em produção (21/09/2026):** os dois chunks são o **React DOM** (`839bbb11…`, 173.020 B, 64–66% sem rodar) e o **runtime do Next.js** (`608…`, 173.703 B, 62%). Na home, respondem por ~219 KB dos ~233 KB crus que não rodam na abertura (94%). O código do próprio Cinerie no navegador tem 33 KB crus na home, com ~12 KB sem rodar (~4 KB comprimidos, INFERIDO pela proporção): o diálogo do trailer, o menu móvel e a newsletter do rodapé, e os blocos da home. Nenhuma biblioteca de terceiros entrou no pacote compartilhado. Detalhe e método na §10.4 | — | sonda de cobertura de bloco por CDP (§10.4) | DEPENDÊNCIA EXTERNA DOCUMENTADA (framework) |
 
 ## 6. Encontrados durante a remediação
 
@@ -132,7 +134,7 @@ série (P9) também saíram: ver a linha P9.
 |---|---|---|
 | G0 | Baseline | [baseline](SEO-REMEDIATION-BASELINE-2026-09-11.md) (`2790505`) |
 | G1 | Sitemap, mobile, galeria, banco → 5xx | 3.1, 3.2a, 3.2b, P1, M5 |
-| G2 | Desempenho | P1, P2, P4, P5, P6, P8, P9 · pendente: P10 |
+| G2 | Desempenho | P1, P2, P4, P5, P6, P8, P9 · P10: framework (dependência documentada, §10.4) |
 | G3 | OG, Twitter, `max-image-preview`, `og:type`, descrições | 3.3a, 3.3b, M4, B6, B7 |
 | G4 | JSON-LD | 3.4, 3.5, M7, B12, B14, B15 |
 | G5 | Política de indexabilidade e decisões do dono | 3.7a–d, M3, R1 |
@@ -333,3 +335,48 @@ refeita em 21/09/2026, com as mesmas sondas.
 | I5 · e-mail | `cinerie.com` segue sem registro MX |
 | D7 · `robots.txt` | 161 B: um grupo `User-agent: *`, sem `Content-Signal` e sem `Disallow` para crawler de treino |
 | I7 · HSTS nos redirects | não conferido: o navegador não expõe cabeçalho de redirect, e o `curl` é bloqueado nesta máquina. Nas respostas 200 o HSTS sai (`max-age=63072000; includeSubDomains; preload`) |
+
+### 10.4 P10 — o JS que não roda na abertura (medido em 21/09/2026)
+
+**Método.** Chrome headless por CDP (o helper do laboratório,
+`apps/web/scripts/lab/cdp-chrome.ts`), celular de 412 px, primeira visita sem
+cache, cobertura em nível de bloco (`Profiler.startPreciseCoverage` com
+`detailed`) lida 4 s depois do `load`. Os bytes usados são contados como o
+Puppeteer conta: em cada ponto vale o intervalo mais interno. Só entram os
+arquivos de `/_next/static/`.
+
+| Página | JS cru | Não roda na abertura | Dele, React DOM + runtime do Next |
+|---|---|---|---|
+| `/pt/` | 383.621 B | 232.820 B (60,7%) | ~219 KB (94%) |
+| `/pt/filmes/a-origem/` | 368.514 B | 229.459 B (62,3%) | ~220 KB (96%) |
+| `/pt/series/ukryta-prawda/` | 369.936 B | 230.080 B (62,2%) | ~218 KB (95%) |
+| uma matéria (`/pt/noticias/…/`) | 364.311 B | 224.916 B (61,7%) | ~218 KB (97%) |
+
+**Quais são os dois chunks da auditoria.** `839bbb11…` (173.020 B crus, 54.360 B
+transferidos) traz as marcas do **React DOM** (`hydrateRoot`,
+`__REACT_DEVTOOLS_GLOBAL_HOOK__`); `608…` (173.703 B, 46.320 B) traz as do
+**runtime do Next.js** (`NEXT_REDIRECT`, `__next_f`, `next-router-state-tree`).
+Eles carregam em toda página do App Router, e boa parte deles só roda ao navegar,
+ao clicar ou em erro. Não saem sem trocar de framework.
+
+**O que é do Cinerie.** Três arquivos, pequenos:
+
+- `1522…` (18.162 B, só na home): hero, ticker de novidades, faixa de números —
+  28% não roda;
+- `app/layout…` (8.371 B, toda página): cabeçalho, menu móvel, newsletter do
+  rodapé — 30–37%;
+- `8900…` (6.121 B, home e fichas): diálogo do trailer e fachada do YouTube —
+  66–94%, porque só é usado no clique.
+
+Somados, ~12 KB crus não rodam na home (~4 KB comprimidos, INFERIDO pela
+proporção). O maior candidato isolado, o diálogo do trailer carregado só no
+clique, renderia ~2 KB comprimidos, ao custo de uma requisição no primeiro clique.
+Fica como opção, não como pendência.
+
+**Observação medida, fora do P10.** Os arquivos estáticos (`/_next/static/`) saem
+da Cloudflare em **gzip** (`cf-cache-status: HIT`, o que a origem mandou), enquanto
+o HTML dinâmico sai em **zstd**: a borda recomprime o que não guarda. Se a origem
+deixasse de comprimir, a borda poderia servir os estáticos em zstd ou brotli, e o
+tamanho transferido provavelmente cairia — INFERIDO. Isso precisa ser medido antes
+de mudar o `compress` do Next, porque, sem compressão na borda, os arquivos
+passariam a ir crus.
