@@ -26,17 +26,18 @@
 
 | Estado | Itens |
 |---|---|
-| RESOLVIDO | **43** |
+| RESOLVIDO | **44** |
 | VALIDADO | 1 |
 | NÃO APLICÁVEL | 3 |
 | DEPENDÊNCIA EXTERNA DOCUMENTADA | 9 |
-| PENDENTE | 2 |
+| PENDENTE | 1 |
 | **Total** | **58** |
 
-Os dois PENDENTES são de desempenho e são refatoração, não ajuste: a folha de CSS
-única de 143 KB (§7.6 — a própria auditoria a pôs "fora da caixa de PR pequeno"),
-e os chunks de JS com 62–67% sem executar (§7.7). Os 149 KB de HTML da ficha de
-série (P9) saíram dos pendentes: ver a linha P9.
+O único PENDENTE é de desempenho e é refatoração, não ajuste: os chunks de JS com
+62–67% sem executar (§7.7, linha P10). A folha de CSS única de 143 KB (§7.6, linha
+P6 — a própria auditoria a pôs "fora da caixa de PR pequeno") saiu dos pendentes:
+foi dividida por rota e está no ar desde 17/09/2026. Os 149 KB de HTML da ficha de
+série (P9) também saíram: ver a linha P9.
 
 ---
 
@@ -65,7 +66,7 @@ série (P9) saíram dos pendentes: ver a linha P9.
 |---|---|---|---|---|---|
 | M1 | `www.cinerie.com` responde 200 sem redirect | Redirect 301 na borda, com a regra escrita | — | conferência pós-deploy (I1) | DEPENDÊNCIA EXTERNA DOCUMENTADA (I1) |
 | M2 | Sitemaps lentos e sem cache | A origem manda `Cache-Control` (`s-maxage` 900/300, `no-store` em falha); falta a Cache Rule na borda | `src/lib/sitemap-cache-control.ts`, rotas de sitemap | `sitemap-cache-control.test.ts` | DEPENDÊNCIA EXTERNA DOCUMENTADA (I2) — origem pronta |
-| M3 | 11.666 fichas `tmdb-{id}` sem tradução indexadas | D3: `noindex, follow` e fora do sitemap até enriquecer; voltam sozinhas. **A primeira versão não barrava ninguém em produção** — ver §10 | `entity-quality-gates.ts`, `resolver.ts`, `sitemap-index.ts` | `entity-quality-gates.test.ts`, `resolver-quality-gate.test.ts`, `sitemap-localizacao-titulo-proprio.test.ts`, `validate:seo-runtime` (43–47, 55–57) | RESOLVIDO no código (`3cf1d0e`, `429a194`); **corrigido depois de medir produção** (§10) |
+| M3 | 11.666 fichas `tmdb-{id}` sem tradução indexadas | D3: `noindex, follow` e fora do sitemap até enriquecer; voltam sozinhas. **A primeira versão não barrava ninguém em produção** — ver §10 | `entity-quality-gates.ts`, `resolver.ts`, `sitemap-index.ts` | `entity-quality-gates.test.ts`, `resolver-quality-gate.test.ts`, `sitemap-localizacao-titulo-proprio.test.ts`, `validate:seo-runtime` (43–47, 55–57) | RESOLVIDO (`3cf1d0e`, `429a194`; título copiado barrado no #305, `623ad96`). No ar e medido em 21/09/2026: 169 fichas `tmdb-N` no sitemap, contra 11.922 antes do #305 (§10.3) |
 | M4 | Meta description ausente sem sinopse | Descrição factual com o que a ficha mostra (ano, direção, gêneros, elenco, duração) | `packages/seo/src/factual-description.ts`, fichas | `factual-description.test.ts`, `meta-description-length.test.ts` | RESOLVIDO (`14a6ed0`) |
 | M5 | Falha de banco virava `noindex` guardado pelo ISR | Falha LANÇA `IndexabilityDecisionUnavailableError` → 5xx, com log; nunca `noindex` | `src/server/seo/indexability-decision.ts` | `validate:seo-runtime` | RESOLVIDO (`dbe5dd7`) |
 | M6 | Sitemap de notícias engolia falha de banco sem log | `console.error` com a causa e resposta degradada `no-store` | `src/server/seo/news-sitemap.ts` | `sitemap-cache-control.test.ts` | RESOLVIDO (`47a3b23`) |
@@ -109,7 +110,7 @@ série (P9) saíram dos pendentes: ver a linha P9.
 | P3 | HTML sem cache de borda (home, série) | Motivos escritos no código e no runbook; decisão de deploy | — | — | DEPENDÊNCIA EXTERNA DOCUMENTADA (I4) |
 | P4 | Backdrop da ficha (LCP) com `loading="lazy"` | `eager` + `fetchpriority="high"`, e o `preload` para ele | `app/pt/filmes/[slug]/page.tsx`, `app/pt/series/[slug]/page.tsx` | `lcp-priority.test.ts`; `perf:lab` (nenhum LCP `lazy`) | RESOLVIDO (`a0447be`) |
 | P5 | Fonte sem `preload` (causa do CLS 0,088) | `preload` da Montserrat variável | `apps/web/app/layout.tsx` | `font-preload.test.ts`; `perf:lab` (preload presente, CLS 0,000) | RESOLVIDO (`9685c98`) |
-| P6 | CSS único de 143 KB, bloqueante, 82–90% sem casar | Plano escrito, nenhuma regra movida ainda: [CSS-SPLIT-PLAN-2026-09-15](../frontend/CSS-SPLIT-PLAN-2026-09-15.md). Medido: um chunk de 145.097 B referenciado só pelo layout raiz; 187.925 B de regra em 307 blocos, agrupados por segmento de rota. O plano fixa as regras de ordem (bloco inteiro, só bloco exclusivo, compartilhado em folha própria), a prova por paridade de estilo computado (carga direta e navegação entre rotas) e oito PRs | `docs/frontend/CSS-SPLIT-PLAN-2026-09-15.md` | — | PENDENTE (plano escrito) |
+| P6 | CSS único de 143 KB, bloqueante, 82–90% sem casar | Dividido por rota seguindo o [plano](../frontend/CSS-SPLIT-PLAN-2026-09-15.md): oito PRs (#286, #289, #290, #296–#299, #301) e a nota de correção (#304). Só saiu da folha global bloco exclusivo de rota, e nenhum estilo computado mudou: paridade em 38 rotas × 4 larguras, com o acúmulo de folhas da navegação, 0 diferenças em cada passo. **MEDIDO em produção (21/09/2026):** a home carrega 2 folhas, 51.295 B; as fichas de filme e de série, 3 folhas, 61.971 B. Antes, toda rota carregava uma folha só, de 144.735 B | `apps/web/app/globals.css` e as folhas de rota em `apps/web/app/**` | `css:parity`, `css:move-check`, `css-order.test.ts`, `css-sheets-exclusive.test.ts`, `test:styles` | RESOLVIDO (#286–#301, #304; no ar desde 17/09/2026) |
 | P7 | `upgrade-insecure-requests` em CSP report-only | Diretiva inerte removida | `apps/web/middleware.ts` | `security-headers.test.ts` | RESOLVIDO (`3d870f7`) |
 | P8 | Hero da home em `w1280` sem `srcset` | `srcset` com as larguras que a tela usa | `home-hero-carousel.tsx`, `home-hero-presenter.ts` | `home-hero-srcset.test.ts` | RESOLVIDO (`b76b887`) |
 | P9 | Ficha de série com 149 KB de HTML | A lista de episódios virou client component (`EpisodeList`): o HTML é o mesmo e o payload RSC leva os DADOS de cada episódio, não a árvore de elementos de cada linha. Medido no laboratório, 40 episódios com still: HTML 126.541 → 86.791 B (−31%), payload 78.169 → 39.379 B (−50%), gzip 11.545 → 10.616 B (−8%) | `app/_components/episode-list.tsx`, `app/pt/series/[slug]/page.tsx` | `episode-list.test.tsx`, `series-canonical-port.test.ts`, `validate:route-cache` (guia inteiro no HTML; payload sem árvore — reprova no build anterior) | RESOLVIDO (`fcf7198`) |
@@ -131,7 +132,7 @@ série (P9) saíram dos pendentes: ver a linha P9.
 |---|---|---|
 | G0 | Baseline | [baseline](SEO-REMEDIATION-BASELINE-2026-09-11.md) (`2790505`) |
 | G1 | Sitemap, mobile, galeria, banco → 5xx | 3.1, 3.2a, 3.2b, P1, M5 |
-| G2 | Desempenho | P1, P2, P4, P5, P8 · pendentes: P6, P9, P10 |
+| G2 | Desempenho | P1, P2, P4, P5, P6, P8, P9 · pendente: P10 |
 | G3 | OG, Twitter, `max-image-preview`, `og:type`, descrições | 3.3a, 3.3b, M4, B6, B7 |
 | G4 | JSON-LD | 3.4, 3.5, M7, B12, B14, B15 |
 | G5 | Política de indexabilidade e decisões do dono | 3.7a–d, M3, R1 |
@@ -297,3 +298,38 @@ com controle) e `validate:seo-runtime` 55–57 contra PostgreSQL real.
 **Efeito esperado:** as ~11,9 mil fichas saem da página e do sitemap, e voltam
 sozinhas quando ganharem título em pt-BR ou descrição. É **indexação em massa**:
 vale a D3, que o dono decidiu em 11/09/2026, e o merge é dele.
+
+### 10.3 Depois do #305 e do #304 (medido em 21/09/2026)
+
+O dono mergeou o #305 em 17/09/2026 (`623ad96`) e implantou. A conferência foi
+refeita em 21/09/2026, com as mesmas sondas.
+
+**A D3 passou a barrar.**
+
+| Medição | 17/09, antes do #305 | 21/09, depois |
+|---|---|---|
+| Fichas no sitemap | 94.415 (58.169 filmes + 36.246 séries) | 90.007 (57.851 + 32.156) |
+| Delas, com slug `tmdb-N` | 11.922 (6.682 + 5.240) | **169** (68 + 101) |
+
+- As três fichas amostradas em 17/09 (`/pt/filmes/tmdb-1465816/`,
+  `/pt/filmes/tmdb-1729257/` e `/pt/filmes/tmdb-1744388/`) respondem 200 com
+  `noindex, follow`: a página continua acessível, só não se oferece ao índice.
+- As 169 que ficaram são as que a D3 manda manter. Três séries amostradas
+  (`tmdb-325807`, `tmdb-281967`, `tmdb-129748`) têm sinopse em pt-BR na
+  description e respondem `index`.
+- O total de fichas caiu menos que o de `tmdb-N` porque o catálogo publicado
+  cresceu no intervalo (INFERIDO: a ingestão segue rodando).
+
+**O #304 está no ar.** A folha global tem 39.469 B e não contém mais
+`.correction-notice`, que só vem com a folha da matéria. A home carrega 2 folhas
+(51.295 B); as fichas de filme e de série, 3 folhas (61.971 B).
+
+**Borda e e-mail: nenhum efeito visível em 21/09/2026.**
+
+| Item | Medido |
+|---|---|
+| I1 · `www` | `https://www.cinerie.com/pt/filmes/a-origem/` responde 200, sem redirect (a canonical aponta o apex) |
+| I2 · cache do sitemap | `cf-cache-status: DYNAMIC` em pedidos seguidos a `/sitemap.xml`, `/sitemaps/*` e `/news-sitemap.xml`; o índice leva de 2 a 9 s na origem |
+| I5 · e-mail | `cinerie.com` segue sem registro MX |
+| D7 · `robots.txt` | 161 B: um grupo `User-agent: *`, sem `Content-Signal` e sem `Disallow` para crawler de treino |
+| I7 · HSTS nos redirects | não conferido: o navegador não expõe cabeçalho de redirect, e o `curl` é bloqueado nesta máquina. Nas respostas 200 o HSTS sai (`max-age=63072000; includeSubDomains; preload`) |
