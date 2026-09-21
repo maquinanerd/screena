@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { SITEMAP_URL_LIMIT } from "./sitemap-plan.js";
+import { SITEMAP_PROTOCOL_URL_LIMIT, SITEMAP_URL_LIMIT } from "./sitemap-plan.js";
 import { SITEMAP_IMAGE_NAMESPACE, renderUrlset, type SitemapXmlUrl } from "./sitemap-xml.js";
 
 const URL_BASE = { loc: "https://cinerie.com/pt/filmes/a-origem/" };
@@ -79,6 +79,14 @@ describe("sitemap — extensao de imagem", () => {
 const PROTOCOL_MAX_BYTES = 52_428_800;
 
 /**
+ * O orcamento da CINERIE por arquivo, bem abaixo do protocolo. Medido em
+ * 21/09/2026: o arquivo de filmes com 50.000 URLs tinha 20,4 MB crus e levava
+ * 7,9 s para sair, montado a cada pedido. O arquivo leve e o motivo de
+ * `SITEMAP_URL_LIMIT` ser 10.000.
+ */
+const CINERIE_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
  * Uma URL de ficha como o shard de filmes a emite: `lastmod`, `changefreq`
  * monthly, `priority` 0.5, poster w500 e backdrop w1280 com caminhos do TMDB no
  * formato real (barra, 27 caracteres, extensao).
@@ -99,22 +107,37 @@ function fichaComArte(slugLength: number, i: number): SitemapXmlUrl {
 }
 
 describe("sitemap — orcamento de bytes com imagem", () => {
-  it("(7) shard cheio (50.000 URLs), duas imagens por URL e slug de 250 caracteres cabe em 50 MB", () => {
-    const xmlDe = (quantas: number): string =>
-      renderUrlset(Array.from({ length: quantas }, (_, i) => fichaComArte(250, i)));
+  const xmlDe = (quantas: number): string =>
+    renderUrlset(Array.from({ length: quantas }, (_, i) => fichaComArte(250, i)));
+  const porUrl = xmlDe(2).length - xmlDe(1).length;
+  const cabecalho = xmlDe(1).length - porUrl;
+
+  it("(7) um arquivo no limite do PROTOCOLO (50.000 URLs), com duas imagens e slug de 250 caracteres, cabe em 50 MB", () => {
     // Tudo ASCII: o comprimento da string E o numero de bytes.
     expect(xmlDe(3)).toMatch(/^[\x20-\x7e\n]*$/);
-
-    const porUrl = xmlDe(2).length - xmlDe(1).length;
-    const cabecalho = xmlDe(1).length - porUrl;
     // CONTROLE: o tamanho e linear no numero de URLs, entao a projecao vale.
     expect(xmlDe(1_000).length).toBe(cabecalho + 1_000 * porUrl);
 
-    expect(cabecalho + SITEMAP_URL_LIMIT * porUrl).toBeLessThan(PROTOCOL_MAX_BYTES);
+    // Vale para o limite do protocolo, nao so para o nosso: se o teto por arquivo
+    // voltar a subir, o renderer continua cabendo.
+    expect(cabecalho + SITEMAP_PROTOCOL_URL_LIMIT * porUrl).toBeLessThan(PROTOCOL_MAX_BYTES);
 
     // A folga: cada caractere de slug e um byte na <loc>. Ate este slug medio, um
-    // shard cheio de fichas com duas imagens continua dentro do limite.
-    const slugMaximo = 250 + Math.floor((PROTOCOL_MAX_BYTES - cabecalho) / SITEMAP_URL_LIMIT) - porUrl;
+    // arquivo cheio de fichas com duas imagens continua dentro do limite.
+    const slugMaximo =
+      250 + Math.floor((PROTOCOL_MAX_BYTES - cabecalho) / SITEMAP_PROTOCOL_URL_LIMIT) - porUrl;
     expect(slugMaximo).toBeGreaterThanOrEqual(500);
+  });
+
+  it("(8) o arquivo da Cinerie fica abaixo do protocolo em URLs e dentro de 10 MB no pior slug", () => {
+    expect(SITEMAP_URL_LIMIT).toBeLessThanOrEqual(SITEMAP_PROTOCOL_URL_LIMIT);
+    // Slug de 250 caracteres e o pior caso real; a ficha media tem slug curto.
+    expect(cabecalho + SITEMAP_URL_LIMIT * porUrl).toBeLessThan(CINERIE_MAX_BYTES);
+  });
+
+  it("(9) CONTROLE: com o teto antigo (50.000), o mesmo arquivo passaria do orcamento da Cinerie", () => {
+    // Prova que o (8) mede alguma coisa: o teto de 50.000 que vigorou ate
+    // 21/09/2026 estoura os 10 MB no pior slug.
+    expect(cabecalho + SITEMAP_PROTOCOL_URL_LIMIT * porUrl).toBeGreaterThan(CINERIE_MAX_BYTES);
   });
 });

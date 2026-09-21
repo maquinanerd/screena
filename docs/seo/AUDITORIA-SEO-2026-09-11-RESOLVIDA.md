@@ -310,8 +310,14 @@ refeita em 21/09/2026, com as mesmas sondas.
 
 | Medição | 17/09, antes do #305 | 21/09, depois |
 |---|---|---|
-| Fichas no sitemap | 94.415 (58.169 filmes + 36.246 séries) | 90.007 (57.851 + 32.156) |
+| Fichas no sitemap | 94.415 (58.169 filmes + 36.246 séries) | 89.979 (57.834 + 32.145) |
 | Delas, com slug `tmdb-N` | 11.922 (6.682 + 5.240) | **169** (68 + 101) |
+
+**Sobre a precisão da coluna de 17/09.** A primeira sonda lia o shard em pedaços e
+contava de novo o que caía nos últimos 40 caracteres do pedaço anterior: o shard de
+filmes 1 deu 50.018 URLs, e o exato é 50.000. Os números de 17/09 podem estar até
+~0,05% acima. Os de 21/09 foram refeitos contando bloco `<url>` por bloco, sem
+sobreposição. Nenhuma conclusão muda.
 
 - As três fichas amostradas em 17/09 (`/pt/filmes/tmdb-1465816/`,
   `/pt/filmes/tmdb-1729257/` e `/pt/filmes/tmdb-1744388/`) respondem 200 com
@@ -380,3 +386,33 @@ deixasse de comprimir, a borda poderia servir os estáticos em zstd ou brotli, e
 tamanho transferido provavelmente cairia — INFERIDO. Isso precisa ser medido antes
 de mudar o `compress` do Next, porque, sem compressão na borda, os arquivos
 passariam a ir crus.
+
+### 10.5 Sitemap: arquivos de 10.000 URLs (medido em 21/09/2026)
+
+O índice já era dividido — um arquivo por tipo e por página —, mas cada arquivo ia
+até o limite do protocolo, 50.000 URLs. Medido em produção, contando bloco `<url>`
+por bloco:
+
+| Arquivo | URLs | Imagens | Cru | Transferido | 1º byte | Total |
+|---|---|---|---|---|---|---|
+| `sitemap-pt-BR-movies-1.xml` | 50.000 | 80.683 | 20.357.582 B | 2.942.388 B | 4,5 s | 7,9 s |
+| `sitemap-pt-BR-series-1.xml` | 32.145 | 56.415 | 13.634.542 B | 1.986.104 B | 3,0 s | 5,6 s |
+| `sitemap-pt-BR-movies-2.xml` | 7.834 | 11.047 | 2.988.176 B | 427.743 B | 1,6 s | 3,0 s |
+
+Dentro do limite do Google (50.000 URLs e 50 MB por arquivo), mas pesado: as rotas
+são dinâmicas, então cada pedido monta o arquivo inteiro do PostgreSQL, e a extensão
+de imagem dobrou o tamanho por URL.
+
+**O que mudou:** `SITEMAP_URL_LIMIT` passa a 10.000 (o limite do protocolo fica em
+`SITEMAP_PROTOCOL_URL_LIMIT`). Pela proporção medida, cada arquivo fica perto de
+4 MB crus e 0,6 MB transferidos — INFERIDO até medir depois do deploy. O total de
+URLs não muda: muda só em quantos arquivos ele se divide. O que mais alivia a
+origem continua sendo o cache de borda (I2), que ainda não pega.
+
+**Risco medido, para o dono decidir.** O teto por tipo (`SITEMAP_TYPE_URL_CEILING`)
+é 150.000 para filme e série, e é fail-closed: o tipo que passa dele sai INTEIRO
+do sitemap. Descontadas as fichas que a D3 tirou, o sitemap de filmes ganhou cerca
+de 6,3 mil URLs entre 17 e 21/09/2026. Nesse ritmo — INFERIDO, com janela de
+quatro dias —, filme chegaria a 120.000 (alerta de 80%) em umas seis semanas e a
+150.000 em cerca de dois meses. Subir o teto é mudança revisada, e decidir o que
+fica no sitemap é do dono.
