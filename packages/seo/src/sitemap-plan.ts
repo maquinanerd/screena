@@ -14,8 +14,25 @@
  * PURO: sem rede, banco, IO, `Date` ou `Math.random`.
  */
 
-/** Limite duro do protocolo de sitemap (50.000 URLs por arquivo). */
-export const SITEMAP_URL_LIMIT = 50_000;
+/** Limite duro do protocolo de sitemap (sitemaps.org): 50.000 URLs por arquivo. */
+export const SITEMAP_PROTOCOL_URL_LIMIT = 50_000;
+
+/**
+ * URLs por ARQUIVO de sitemap que a Cinerie gera — abaixo do limite do protocolo,
+ * de proposito.
+ *
+ * Ate 21/09/2026 era o proprio limite do protocolo. Medido em producao nesse dia,
+ * o arquivo cheio de filmes tinha 50.000 URLs e 80.683 imagens: 20,4 MB crus,
+ * 2,9 MB transferidos, 4,5 s ate o primeiro byte e 7,9 s ate o fim. Dentro do
+ * limite, mas pesado: as rotas do sitemap sao dinamicas (cada pedido monta o
+ * arquivo do PostgreSQL), e a extensao de imagem dobrou o tamanho por URL.
+ *
+ * Com 10.000 por arquivo, cada um fica perto de 4 MB crus. O TOTAL de URLs nao
+ * muda — muda so em quantos arquivos ele se divide; o indice pode listar ate
+ * 50.000 arquivos. Quem segura o total e o teto por tipo
+ * (`SITEMAP_TYPE_URL_CEILING`, em `apps/web/src/server/seo/sitemap-index.ts`).
+ */
+export const SITEMAP_URL_LIMIT = 10_000;
 
 /** URL ja filtrada e pronta para o sitemap. */
 export interface SitemapUrl {

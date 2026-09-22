@@ -244,7 +244,8 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * POR QUE ISTO EXISTE. Em 2026-08-22 o sitemap tinha 53.054 URLs. Em 2026-08-27
  * tinha 4.069.444 — 77x em cinco dias — e NENHUM alarme disparou. Nao disparou
  * porque nada nunca comparou o total a coisa nenhuma: `SITEMAP_URL_LIMIT`
- * pagina o shard (50.000 por arquivo) e nao conhece o total, e as duas rotas do
+ * pagina o shard (50.000 por arquivo na epoca; 10.000 desde 21/09/2026) e nao
+ * conhece o total, e as duas rotas do
  * sitemap sao `force-dynamic` — elas nao sao geradas no build, sao montadas a
  * cada requisicao direto do PostgreSQL. Nao houve deploy, nao houve mudanca de
  * codigo e nao houve linha de log: o catalogo cresceu e o sitemap cresceu junto,
