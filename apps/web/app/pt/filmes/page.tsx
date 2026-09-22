@@ -73,7 +73,11 @@ const TITLE = 'Filmes'
 // caracteres ("Filmes | Cinerie"), o titulo antigo so nomeava a secao (auditoria
 // de SEO, 11/09/2026: titulos de listagem entre 16 e 25 caracteres).
 const META_TITLE = 'Filmes: fichas, elenco e notícias'
-const DESCRIPTION = 'Explore os filmes catalogados na Cinerie, com páginas editoriais em português.'
+// A descricao aparece no resultado da busca E abaixo do H1. Reescrita em
+// 22/09/2026: a anterior tinha menos de 100 caracteres e prometia "paginas
+// editoriais" que a ficha de catalogo nao e; esta diz o que a listagem entrega.
+const DESCRIPTION =
+  'Fichas de filmes em português: sinopse, elenco, direção, trailers e onde assistir de forma legal no Brasil.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getMovieIndexData()

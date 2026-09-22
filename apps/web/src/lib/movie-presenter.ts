@@ -131,6 +131,12 @@ export interface MoviePageView {
    */
   metaDescription: string | null;
   /**
+   * A `meta_description` EDITORIAL propria do locale publicado — sem cair na
+   * sinopse. A descricao composta da ficha a usa como esta quando existe; sem
+   * ela, monta abertura factual + sinopse (`composeCatalogDescriptionSource`).
+   */
+  editorialMetaDescription: string | null;
+  /**
    * Sinopse VISIVEL, com a procedencia de idioma junto.
    *
    * `source: 'original_language'` carrega `notice` obrigatorio — e o que
@@ -313,6 +319,7 @@ export function presentMovie(input: PresentMovieInput): MoviePageView {
     originalLanguageLabel: mapOriginalLanguage(input.record.originalLanguage),
     metaTitle: trimToNull(input.translation?.metaTitle),
     metaDescription: selectMetaDescription(input.translation),
+    editorialMetaDescription: trimToNull(input.translation?.metaDescription),
     blocks,
     renderableBlockCount: blocks.length,
     media: selectMovieMedia(input.record, input.imageAuthorization),

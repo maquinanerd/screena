@@ -176,3 +176,133 @@ export function describePersonFactually(facts: PersonDescriptionFacts): string |
     death !== "" ? sentence(`Falecimento: ${death}`) : null,
   ]);
 }
+
+// ---------------------------------------------------------------------------
+// A DESCRICAO COMPOSTA DA FICHA (22/09/2026)
+// ---------------------------------------------------------------------------
+//
+// O DEFEITO. Com sinopse, a descricao da ficha de filme e de serie era a
+// SINOPSE DO TMDB cortada em 160 caracteres — a mesma frase que o proprio TMDB e
+// todo site que reusa o TMDB mostram no resultado da busca. O snippet da Cinerie
+// era indistinguivel dos outros e nao dizia nada que a sinopse ja nao dissesse.
+//
+// A REGRA. Uma abertura CURTA com fatos que a pagina mostra — tipo, genero, ano,
+// direcao, elenco principal —, e depois a sinopse. O titulo NAO entra: ele ja
+// esta na aba e na linha azul do resultado. Descricao editorial propria vence
+// sempre, intocada. Quem corta em 160 continua sendo `buildMetaDescription`.
+
+/**
+ * Teto da ABERTURA factual. O resto dos 160 caracteres fica para a sinopse:
+ * com 90, sobram ~70 para o gancho do texto — o bastante para o leitor saber de
+ * que trata a obra.
+ */
+export const DESCRIPTION_LEAD_MAX = 90;
+
+/**
+ * Monta a abertura: a base e, em ordem de importancia, um trecho de cada grupo —
+ * o primeiro trecho do grupo que ainda couber no teto (o grupo de elenco oferece
+ * "A e B" e, na falta de espaco, so "A"). Um grupo que nao cabe e pulado, e a
+ * abertura fecha com ponto.
+ */
+function leadWithin(base: string, groups: ReadonlyArray<readonly string[]>): string {
+  let lead = base;
+  for (const alternatives of groups) {
+    const fits = alternatives.find(
+      (extra) => extra !== "" && `${lead}${extra}.`.length <= DESCRIPTION_LEAD_MAX,
+    );
+    if (fits !== undefined) lead += fits;
+  }
+  return sentence(lead);
+}
+
+/** Alternativas do grupo de elenco: os dois primeiros e, se nao couber, so o primeiro. */
+function castGroup(cast: readonly string[]): string[] {
+  if (cast.length === 0) return [];
+  const first = cast[0] ?? "";
+  return cast.length > 1 ? [`, com ${joinWithE(cast.slice(0, 2))}`, `, com ${first}`] : [`, com ${first}`];
+}
+
+export interface MovieLeadFacts {
+  readonly year: number | null;
+  /** Rotulos pt-BR, na ordem da pagina. So o primeiro entra. */
+  readonly genres: readonly string[];
+  readonly directors: readonly string[];
+  /** Elenco na ordem de credito da pagina. */
+  readonly cast: readonly string[];
+}
+
+/**
+ * "Filme de ficção científica (2010), dirigido por Christopher Nolan, com
+ * Leonardo DiCaprio e Elliot Page." — ou o que couber em
+ * `DESCRIPTION_LEAD_MAX`. Sem nenhum fato devolve `null`.
+ */
+export function movieDescriptionLead(facts: MovieLeadFacts): string | null {
+  const genre = firstNonEmpty(facts.genres, 1).map(inSentence)[0];
+  const director = firstNonEmpty(facts.directors, 1)[0];
+  const cast = firstNonEmpty(facts.cast, 2);
+  if (genre === undefined && facts.year === null && director === undefined && cast.length === 0) {
+    return null;
+  }
+  const base = `Filme${genre !== undefined ? ` de ${genre}` : ""}${facts.year !== null ? ` (${facts.year})` : ""}`;
+  return leadWithin(base, [
+    director !== undefined ? [`, dirigido por ${director}`] : [],
+    castGroup(cast),
+  ]);
+}
+
+export interface SeriesLeadFacts {
+  /** O periodo como a pagina o escreve ("2008–2013"). */
+  readonly periodLabel: string | null;
+  readonly genres: readonly string[];
+  readonly seasonsCount: number | null;
+  readonly cast: readonly string[];
+}
+
+/**
+ * "Série de drama (2008–2013) em 5 temporadas, com Bryan Cranston e Aaron
+ * Paul." — ou o que couber em `DESCRIPTION_LEAD_MAX`. Sem nenhum fato devolve
+ * `null`.
+ */
+export function seriesDescriptionLead(facts: SeriesLeadFacts): string | null {
+  const genre = firstNonEmpty(facts.genres, 1).map(inSentence)[0];
+  const period = textOrEmpty(facts.periodLabel);
+  const cast = firstNonEmpty(facts.cast, 2);
+  const seasons =
+    facts.seasonsCount !== null && Number.isInteger(facts.seasonsCount) && facts.seasonsCount > 0
+      ? facts.seasonsCount
+      : null;
+  if (genre === undefined && period === "" && seasons === null && cast.length === 0) return null;
+  const base = `Série${genre !== undefined ? ` de ${genre}` : ""}${period !== "" ? ` (${period})` : ""}`;
+  return leadWithin(base, [
+    seasons !== null ? [` em ${seasons} ${seasons === 1 ? "temporada" : "temporadas"}`] : [],
+    castGroup(cast),
+  ]);
+}
+
+export interface CatalogDescriptionSource {
+  /** Descricao EDITORIAL propria (`entity_translations.meta_description`). */
+  readonly editorial: string | null;
+  /** A abertura factual (`movieDescriptionLead` / `seriesDescriptionLead`). */
+  readonly lead: string | null;
+  /** A sinopse do locale publicado. */
+  readonly synopsis: string | null;
+}
+
+/**
+ * O TEXTO de origem da descricao da ficha, para `buildMetaDescription` cortar.
+ *
+ *  1. descricao editorial propria: vence, como esta;
+ *  2. abertura + sinopse;
+ *  3. so a sinopse, quando nao ha fato para a abertura;
+ *  4. sem editorial e sem sinopse: `null` — a pagina cai na descricao factual
+ *     completa (`describeMovieFactually` / `describeSeriesFactually`), que tem o
+ *     titulo e mais fatos, porque nao divide espaco com texto nenhum.
+ */
+export function composeCatalogDescriptionSource(source: CatalogDescriptionSource): string | null {
+  const editorial = textOrEmpty(source.editorial);
+  if (editorial !== "") return editorial;
+  const synopsis = textOrEmpty(source.synopsis);
+  if (synopsis === "") return null;
+  const lead = textOrEmpty(source.lead);
+  return lead !== "" ? `${lead} ${synopsis}` : synopsis;
+}

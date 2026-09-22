@@ -58,8 +58,11 @@ const TITLE = "Pessoas";
 // gemea em /pt/filmes/). A descricao, que aparece tambem na tela, ganha os acentos
 // que faltavam.
 const META_TITLE = "Pessoas: atores, diretores e equipe";
+// A descricao aparece no resultado da busca E abaixo do H1. Reescrita em
+// 22/09/2026: a anterior tinha menos de 100 caracteres e prometia "paginas
+// editoriais" que a ficha de catalogo nao e; esta diz o que a listagem entrega.
 const DESCRIPTION =
-  "Explore as pessoas catalogadas na Cinerie — atores, diretores e equipe, com páginas editoriais em português.";
+  "Atores, diretores e equipe de filmes e séries: foto, filmografia e os trabalhos mais conhecidos de cada um, em português.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getPersonIndexData();

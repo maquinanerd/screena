@@ -5,9 +5,11 @@ import type { ReactNode } from 'react'
 import {
   buildMetaDescription,
   buildSameAs,
+  composeCatalogDescriptionSource,
   describeSeriesFactually,
   schemaPeople,
   serializeJsonLd,
+  seriesDescriptionLead,
 } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
@@ -193,8 +195,20 @@ export async function generateMetadata({
     `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ''} — Série`
   // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
   // que a ficha ja mostra — antes a tag nao saia (auditoria de SEO, achado M4).
+  // A descricao COMPOSTA (22/09/2026) — ver a nota gemea na ficha de filme.
   const description =
-    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      composeCatalogDescriptionSource({
+        editorial: view.editorialMetaDescription,
+        lead: seriesDescriptionLead({
+          periodLabel: view.periodLabel,
+          genres,
+          seasonsCount: view.seasonsCount,
+          cast: cast.map((member) => member.name),
+        }),
+        synopsis: view.metaDescription,
+      }),
+    ) ??
     buildMetaDescription(
       describeSeriesFactually({
         title: view.title,
