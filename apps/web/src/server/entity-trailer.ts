@@ -62,13 +62,15 @@ type PrismaClient = ReturnType<typeof getPrismaClient>;
  * `sync_media` recusava `kind='season'`, então `tmdb_videos` nunca teve uma
  * linha com esse `entity_type`. Não era licença nem desenho: era coleta.
  *
- * `episode` fica de fora deste helper de propósito: vídeo de episódio é raro e,
- * quando existe, é bastidor ou cena — abrir um "Assistir ao trailer" que toca
- * um clipe de trinta segundos mentiria para o leitor, que é exatamente o que
- * `TRAILER_TYPE_RANK` já impede por tipo. Os vídeos de episódio, quando houver,
- * entram pela galeria, que lista o que existe sem prometer o que é.
+ * `episode` entrou em 2026-09-22, a pedido do dono ("trailer do episódio quando
+ * tiver"). O receio que o mantinha de fora — um "Assistir ao trailer" tocando um
+ * clipe de bastidor — não se realiza por construção: `pickTrailer` só aceita
+ * `video_type` `Trailer` ou `Teaser` (`isDisplayableTrailerRow`). Clipe,
+ * bastidor e cena continuam fora, e o episódio sem trailer de verdade continua
+ * sem o bloco. Vídeo de episódio é raro: a ausência é o caso comum, não um
+ * defeito.
  */
-export type TrailerOwnerType = "movie" | "tv" | "season";
+export type TrailerOwnerType = "movie" | "tv" | "season" | "episode";
 
 export async function getTrailerForEntity(
   prisma: PrismaClient,
