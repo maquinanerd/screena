@@ -78,7 +78,7 @@ da ficha de série (P9) também saíram: ver as linhas P6 e P9.
 | M10 | Cobertura editorial desigual entre títulos populares | Produção de `content_blocks` é offline, com revisão humana; um agente não gera nem publica bloco para cumprir auditoria (invariantes 12 e 13) | — | — | DEPENDÊNCIA EXTERNA DOCUMENTADA (produção editorial) |
 | M11 | "Onde assistir" vazio em 6/6 títulos correntes | A ficha diz a verdade quando a oferta está retida, e o lote de promoção passou a avançar sobre o pendente. A COBERTURA depende da ingestão licenciada | `src/server/entity-watch.ts`, `services/streaming/src/persistence/watch-review-store.ts` | `watch-absence-reason.test.ts` | DEPENDÊNCIA EXTERNA DOCUMENTADA (cobertura de dados) — código: `f0622d1`, `7799113` |
 | M12 | FAQ ausente em 100% da amostra | Não há bloco `faq` com prompt, payload e revisão ativos, e FAQ genérico escrito para a auditoria é proibido. `FAQPage` só com FAQ visível | — | — | DEPENDÊNCIA EXTERNA DOCUMENTADA (produção editorial) |
-| M13 | `/pt/pessoas/` abria com perfis sem biografia | D2: perfis aptos (biografia exibível + foto) primeiro, depois o nome | `src/server/entity-indexes.ts` | `validate:entity-indexes` (18, 21: controle) | RESOLVIDO (`e665405`) |
+| M13 | `/pt/pessoas/` abria com perfis sem biografia | D2: perfis aptos (biografia exibível + foto) primeiro, depois o nome. **Reaberto em 22/09/2026 (§10.6):** nenhum perfil era apto, e a página abria com nomes em hangul; agora abre com os aptos do elenco principal dos títulos populares | `src/server/entity-indexes.ts` | `validate:entity-indexes` (18, 21), `validate:person-eligibility` (20–22) | RESOLVIDO (`e665405`; §10.6) |
 | M14 | Notícia sem `dateModified` visível e sem `about`/`mentions` | "Atualizada em" visível em dia posterior; `mentions` das entidades citadas; `about` NÃO emitido (o banco não marca o assunto) | `news-presenter.ts`, `app/pt/noticias/[slug]/page.tsx`, `article-technical-seo.ts` | `news-presenter.test.ts`, `article-jsonld-attribution.test.ts` | RESOLVIDO (`be6c6d1`) |
 
 ## 4. Achados baixos (auditoria §5)
@@ -440,3 +440,69 @@ filmes 1 a 6, séries 1 a 4, notícias e estáticas.
   cache do I2 é o que tiraria esses dois da origem.
 - Filmes passaram de 57.834 para 59.612 URLs em um dia (+1.778). Esse ritmo
   confirma o risco do teto por tipo descrito acima.
+
+### 10.6 Pessoas: o portão da D2 barrava todas (medido em 22/09/2026)
+
+A D2 foi implementada como "biografia licenciada obrigatória". A coluna
+`biography_source_status` nasce `unknown`, e nada no repositório a altera: liberar
+a biografia do TMDB é decisão de licença, humana. Na prática, o portão não aprovava
+ninguém.
+
+Amostra em produção: 40 fichas sorteadas do sitemap e as 50 pessoas que elas
+citam, todas lidas.
+
+| Grupo | Pessoas | Obras na página | Palavras em `<main>` | Robots |
+|---|---|---|---|---|
+| com foto | 45 | 5 a 143 | 52 a 933 | todas `noindex, follow` |
+| sem foto | 5 | 1 a 5 | 22 a 84 | todas `noindex, follow` |
+
+Entre as 45 com foto estavam Josh Brolin (60 obras), Scarlett Johansson (73), Ewan
+McGregor (69) e Steven Soderbergh (77). O sitemap tinha zero pessoa. A listagem
+`/pt/pessoas/` abria com 24 nomes coreanos de uma sílaba ("길", "던", "료"…), de slug
+`tmdb-N`, com 3 obras e 38 palavras: sem perfil apto, a ordem caía no nome, e o
+collation do banco põe hangul antes do alfabeto latino.
+
+**O que mudou.** A própria D2 pede "biografia/conteúdo licenciado suficiente" e
+"filmografia/relevância". A filmografia é conteúdo licenciado: são os créditos do
+TMDB, sob a licença que a ficha da obra já usa. O portão passa a ser:
+
+```text
+nome + slug canônico
++ foto
++ (biografia exibível com ao menos 1 obra no índice
+   OU filmografia de ao menos 5 obras no índice)
+```
+
+"Obra no índice" é o predicado que põe a obra no sitemap: slug canônico, título
+original, portão de localização (D3) e decisão efetiva `index`. A conta é de OBRA
+distinta, não de linha de crédito, e ficha `tmdb-N` sem tradução não soma: uma
+filmografia que o próprio site tira do índice não sustenta a página para o leitor
+em pt-BR. Página, sitemap (contagem e página) e listagem usam o mesmo texto de SQL,
+travado por `tests/web/sitemap-person-eligibility.test.ts`. O produtor do censo
+aplica a versão mais frouxa (obra com slug), porque a decisão persistida mais
+restritiva venceria a página. A política do censo sobe para `catalog-indexability-v3`.
+
+**Por que cinco.** Na amostra, a pessoa com foto e menos obras tinha exatamente
+cinco; abaixo disso só havia perfis sem foto. Com cinco obras a página agrega o que
+está espalhado por várias fichas, em vez de repetir o elenco de uma ou duas.
+
+**A listagem** passa a sair do elenco principal (`billing_order` < 4) dos 60 filmes
+e 40 séries mais populares, com o mesmo portão, na ordem da obra mais popular. Se
+os aptos não enchem a página, as demais pessoas completam na ordem do nome.
+
+**Provas.** `validate:person-eligibility` contra PostgreSQL real: 22 de 22, com 14
+pessoas de fixture, uma por parte da regra, incluindo página e sitemap dando o
+mesmo veredito para as 14. Dois controles negativos feitos à mão reprovam o
+validador: trocar `UNION` por `UNION ALL` (contar linha em vez de obra) derruba 3
+checks, e desligar a D3 da obra derruba outros 3.
+
+**Escala: é indexação em massa (INFERIDO).** A amostra pesa pessoas pelo número de
+obras, porque quem tem mais créditos aparece em mais fichas. Repesada por 1/obras,
+cerca de 36% das pessoas com slug passariam, ou seja, algo perto de 26 mil das
+~73,5 mil. Com 50 pessoas na amostra, a margem é larga. O número exato será a soma
+dos arquivos `sitemap-pt-BR-people-*` depois do deploy. O merge é a decisão do
+dono (CLAUDE.md §6).
+
+**Custo.** A subconsulta por pessoa para na quinta obra encontrada. Ela entra na
+contagem do índice e em cada arquivo de pessoas. Depois do deploy, medir o tempo
+de origem do índice (`/sitemap.xml?nocache=…`) e de um arquivo de pessoas.

@@ -221,6 +221,8 @@ interface EntityFactRow {
   readonly has_title: boolean
   readonly has_translation: boolean
   readonly credits: number
+  /** Pessoa: OBRAS distintas (filme/serie) com slug canonico. 0 nos demais tipos. */
+  readonly works: number
   /** Sinopse/overview que a pagina exibe (ver `hasSynopsis` na politica). */
   readonly has_synopsis: boolean
   /** Imagem principal persistida (poster/still/profile) — fato, nao licenca. */
@@ -303,6 +305,7 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number, afterId:
              (BTRIM(COALESCE(e.${titleCol}, '')) <> '') AS has_title,
              (t.entity_id IS NOT NULL) AS has_translation,
              0 AS credits,
+             0 AS works,
              -- Sinopse em QUALQUER idioma: selectSynopsis (apps/web) aceita o
              -- idioma de origem com aviso na tela para titulo entrado sob
              -- demanda. Filtrar por $1 aqui marcaria como sem sinopse a pagina
@@ -346,6 +349,19 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number, afterId:
                 JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
                   AND ws.language_code = $1 AND ws.is_canonical
                WHERE rm.person_id = e.id AND rm.entity_type IN ('movie','tv')) AS credits,
+             -- OBRAS distintas, nao linhas de credito: quem dirige e roteiriza o
+             -- mesmo filme soma uma. O portao de pessoa (D2) le este numero para
+             -- decidir se a filmografia sustenta a pagina sem biografia.
+             (SELECT COUNT(*)::int FROM (
+                SELECT cm.entity_type, cm.entity_id FROM cast_members cm
+                 WHERE cm.person_id = e.id AND cm.entity_type IN ('movie','tv')
+                UNION
+                SELECT rm.entity_type, rm.entity_id FROM crew_members rm
+                 WHERE rm.person_id = e.id AND rm.entity_type IN ('movie','tv')
+              ) obra
+              WHERE EXISTS (SELECT 1 FROM slugs ws
+                             WHERE ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
+                               AND ws.language_code = $1 AND ws.is_canonical)) AS works,
              false AS has_synopsis,
              (BTRIM(COALESCE(e.profile_path, '')) <> '') AS has_image,
              -- Texto E licenca: a coluna de governanca nasce unknown, e bio
@@ -382,6 +398,7 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number, afterId:
              -- este campo para este tipo.
              true AS has_translation,
              0 AS credits,
+             0 AS works,
              (BTRIM(COALESCE(e.overview, '')) <> '') AS has_synopsis,
              (BTRIM(COALESCE(e.poster_path, '')) <> '') AS has_image,
              false AS has_biography,
@@ -411,6 +428,7 @@ function factsSql(entityType: CatalogDecisionEntityType, limit: number, afterId:
             AND se.season_number >= 1 AND e.episode_number >= 1) AS has_title,
            true AS has_translation,
            0 AS credits,
+           0 AS works,
            (BTRIM(COALESCE(e.overview, '')) <> '') AS has_synopsis,
            (BTRIM(COALESCE(e.still_path, '')) <> '') AS has_image,
            false AS has_biography,
@@ -525,6 +543,7 @@ function toFacts(
     return {
       ...base,
       publishableCreditCount: Number(row.credits),
+      publishableWorkCount: Number(row.works),
       hasDisplayableBiography: row.has_biography,
       hasImage: row.has_image,
     }

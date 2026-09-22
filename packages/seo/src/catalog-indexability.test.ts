@@ -15,6 +15,7 @@ import {
   type CatalogDecisionEntityType,
   type CatalogEntityFacts,
 } from "./catalog-indexability.js";
+import { MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY } from "./entity-quality-gates.js";
 
 const publishableMovie: CatalogEntityFacts = {
   entityType: "movie",
@@ -58,6 +59,7 @@ const complete: Record<CatalogDecisionEntityType, CatalogEntityFacts> = {
     hasTitle: true,
     hasTranslation: true,
     publishableCreditCount: 2,
+    publishableWorkCount: 2,
     hasDisplayableBiography: true,
     hasImage: true,
   },
@@ -194,37 +196,69 @@ describe("decideCatalogIndexability — gates por tipo", () => {
 // banimento por tipo passaria no lado "noindex" e reprovaria no lado "index".
 // ---------------------------------------------------------------------------
 describe("v2 — exclusao por falta de dado, e o par que a desfaz", () => {
-  it("(19) pessoa SEM biografia -> noindex/no_biography (as 23.207 de hoje)", () => {
+  it("(19) pessoa SEM biografia e com filmografia curta -> noindex/short_filmography", () => {
     const { hasDisplayableBiography: _omitted, ...semBio } = complete.person;
     const d = decideCatalogIndexability(semBio);
     expect(d.decision).toBe("noindex");
-    expect(d.reason).toBe("no_biography");
+    expect(d.reason).toBe("short_filmography");
   });
 
-  it("(20) A MESMA pessoa, mudando SO a biografia, volta a indexar", () => {
+  it("(20) A MESMA pessoa volta a indexar mudando SO a biografia — ou SO a filmografia", () => {
     const { hasDisplayableBiography: _omitted, ...semBio } = complete.person;
     expect(decideCatalogIndexability(semBio).decision).toBe("noindex");
     // Uma unica chave muda. Nada de tipo, nada de deploy.
     expect(
       decideCatalogIndexability({ ...semBio, hasDisplayableBiography: true }).decision,
     ).toBe("index");
+    // D2, leitura de 22/09/2026: sem biografia, a filmografia sustenta a pagina a
+    // partir do piso — o caso de quase todas as pessoas em producao.
+    expect(
+      decideCatalogIndexability({
+        ...semBio,
+        publishableWorkCount: MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY,
+      }).decision,
+    ).toBe("index");
+    expect(
+      decideCatalogIndexability({
+        ...semBio,
+        publishableWorkCount: MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY - 1,
+      }).reason,
+    ).toBe("short_filmography");
   });
 
   it("(21) bio ingerida mas NAO liberada nao conta: a tela nao a mostra", () => {
     // `hasDisplayableBiography` = texto + `biography_source_status` liberado.
     // O produtor apura os dois juntos; aqui o que se prova e que o campo e um
-    // so e que `false` exclui, venha a falta do texto ou da licenca.
+    // so e que `false` exclui, venha a falta do texto ou da licenca: o piso de
+    // obras continua o de quem NAO tem biografia.
     const d = decideCatalogIndexability({
       ...complete.person,
       hasDisplayableBiography: false,
     });
-    expect(d.reason).toBe("no_biography");
+    expect(d.reason).toBe("short_filmography");
+  });
+
+  it("(21b) CONTROLE fail-closed: sem a contagem de obras, a pessoa sem biografia NAO indexa", () => {
+    // Um produtor que esqueca de ler `publishableWorkCount` produz noindex com a
+    // razao exata — nunca um index por omissao.
+    const { publishableWorkCount: _semContagem, ...semObras } = complete.person;
+    const d = decideCatalogIndexability({ ...semObras, hasDisplayableBiography: false });
+    expect(d.decision).toBe("noindex");
+    expect(d.reason).toBe("short_filmography");
   });
 
   it("(22) pessoa com bio mas SEM foto -> noindex/no_image; com foto, indexa", () => {
     const semFoto = { ...complete.person, hasImage: false };
     expect(decideCatalogIndexability(semFoto).reason).toBe("no_image");
     expect(decideCatalogIndexability({ ...semFoto, hasImage: true }).decision).toBe("index");
+    // A foto vem ANTES da filmografia: filmografia enorme sem foto continua fora.
+    expect(
+      decideCatalogIndexability({
+        ...semFoto,
+        hasDisplayableBiography: false,
+        publishableWorkCount: 150,
+      }).reason,
+    ).toBe("no_image");
   });
 
   it("(23) episodio SEM sinopse -> noindex/no_synopsis (os ~29.500 de hoje)", () => {
@@ -381,17 +415,21 @@ describe("determinismo e churn", () => {
     }
   });
 
-  it("(30) a v2 e uma VERSAO NOVA: decisao v1 persistida precisa ser reemitida", () => {
-    // O gate mudou; sem o bump, a auditoria nao distinguiria "a entidade mudou"
-    // de "a regra mudou".
-    expect(CATALOG_POLICY_VERSION).toBe("catalog-indexability-v2");
+  it("(30) a v3 e uma VERSAO NOVA: decisao v1 ou v2 persistida precisa ser reemitida", () => {
+    // O gate de pessoa mudou em 22/09/2026 (D2: filmografia sustenta a pagina
+    // sem biografia); sem o bump, a auditoria nao distinguiria "a entidade
+    // mudou" de "a regra mudou".
+    expect(CATALOG_POLICY_VERSION).toBe("catalog-indexability-v3");
     const next = decideCatalogIndexability(publishableMovie);
-    expect(
-      decisionChanged(next, {
-        decision: next.decision,
-        reason: next.reason,
-        policyVersion: "catalog-indexability-v1",
-      }),
-    ).toBe(true);
+    for (const anterior of ["catalog-indexability-v1", "catalog-indexability-v2"]) {
+      expect(
+        decisionChanged(next, {
+          decision: next.decision,
+          reason: next.reason,
+          policyVersion: anterior,
+        }),
+        anterior,
+      ).toBe(true);
+    }
   });
 });

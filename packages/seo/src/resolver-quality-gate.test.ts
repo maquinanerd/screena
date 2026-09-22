@@ -86,7 +86,7 @@ describe("portao de qualidade no resolver", () => {
       biography: null,
       biographySourceStatus: "unknown",
       profilePath: null,
-      indexableCreditCount: 0,
+      indexableWorkCount: 0,
     });
     for (const portao of [evaluateGalleryGate(), pessoa, BARRADA]) {
       const r = resolvePageSeo({ ...BASE, qualityGate: portao });

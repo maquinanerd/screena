@@ -22,8 +22,9 @@
  * para acabar. O validador real de PostgreSQL prova que concordam.
  *
  * O PORTAO SE ABRE SOZINHO. Nenhum depende de um humano rodar comando: a ficha
- * que ganha titulo em pt-BR, a pessoa que ganha biografia licenciada e foto,
- * passam a indexar na revalidacao seguinte e entram no sitemap pelo mesmo motivo.
+ * que ganha titulo em pt-BR, a pessoa que ganha foto e filmografia (ou biografia
+ * liberada), passam a indexar na revalidacao seguinte e entram no sitemap pelo
+ * mesmo motivo.
  *
  * MODULO PURO: sem banco, sem rede, sem IO, sem Date.
  */
@@ -194,6 +195,34 @@ export const DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES = Object.freeze([
   "third_party",
 ] as const);
 
+/**
+ * Quantas OBRAS no indice sustentam, sozinhas, a pagina de uma pessoa que nao
+ * tem biografia exibivel.
+ *
+ * POR QUE EXISTE (22/09/2026). A D2 pede "biografia/conteudo licenciado
+ * suficiente" e "filmografia/relevancia". A primeira implementacao leu so
+ * "biografia" — e `biography_source_status` nasce `unknown` e nada no repositorio
+ * o altera, porque libera-lo e decisao de licenca (humana). Resultado medido em
+ * producao em 22/09/2026: o portao barrava TODAS as pessoas. As 50 pessoas
+ * alcancaveis a partir de 40 fichas sorteadas do sitemap estavam `noindex` —
+ * Josh Brolin (60 obras), Scarlett Johansson (73), Ewan McGregor (69), Steven
+ * Soderbergh (77) entre elas —, e o sitemap tinha zero URL de pessoa.
+ *
+ * A filmografia E conteudo licenciado: sao os creditos do TMDB, exibidos sob a
+ * mesma licenca que a ficha da obra usa. E e ela que responde a busca por uma
+ * pessoa ("filmes com fulano") — algo que a pagina da obra, que so lista o
+ * proprio elenco, nao responde.
+ *
+ * POR QUE CINCO. Na mesma amostra, as 45 pessoas com foto tinham de 5 a 143
+ * obras, e a pagina rendia de 52 a 933 palavras dentro de `<main>`; as 5 sem
+ * foto tinham de 1 a 5 obras e de 22 a 84 palavras. A foto e o que separa o
+ * perfil real do stub de elenco, e cinco obras e o piso em que a pagina deixa de
+ * repetir a lista de elenco de uma ou duas fichas: ela passa a AGREGAR o que so
+ * existe espalhado por varias. O corte nao descartou ninguem da amostra que
+ * tivesse foto — o menor com foto tinha exatamente cinco.
+ */
+export const MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY = 5;
+
 /** Fatos que o portao de pessoa le. */
 export interface PersonQualityGateInput {
   readonly name: string;
@@ -202,38 +231,61 @@ export interface PersonQualityGateInput {
   readonly biographySourceStatus: string | null;
   readonly profilePath: string | null;
   /**
-   * Creditos (elenco ou equipe) em FILME ou SERIE que tem slug canonico no
-   * locale e decisao efetiva `index` — a mesma definicao do `EXISTS` do sitemap.
+   * OBRAS distintas — filme ou serie — em que a pessoa tem credito (elenco ou
+   * equipe) e que estao, elas proprias, no indice: slug canonico no locale,
+   * titulo original, portao de localizacao (D3) e decisao efetiva `index`. E o
+   * predicado que poe a obra no sitemap, repetido no SQL de pessoa.
+   *
+   * Conta OBRA, nao linha de credito: quem dirige e roteiriza o mesmo filme soma
+   * uma. E so obra no indice: uma filmografia feita de fichas que o proprio site
+   * tira do indice (titulo no alfabeto original, sem traducao) nao sustenta a
+   * pagina da pessoa para o leitor em pt-BR.
    */
-  readonly indexableCreditCount: number;
+  readonly indexableWorkCount: number;
 }
 
-function isDisplayableBiography(biography: string | null, status: string | null): boolean {
+/**
+ * A biografia vai para a tela? Texto nao vazio E status que libera exibicao
+ * (invariante 6). Exportada porque a pagina e o SQL do sitemap precisam do MESMO
+ * criterio para escolher o piso de obras.
+ */
+export function isDisplayableBiography(biography: string | null, status: string | null): boolean {
   if (biography === null || biography.trim() === "") return false;
   return (DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES as readonly string[]).includes(status ?? "");
 }
 
 /**
+ * Quantas obras no indice a pessoa precisa ter: uma, quando a biografia vai para
+ * a tela (o texto e o conteudo proprio); `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY`,
+ * quando a pagina se sustenta so pela filmografia.
+ */
+export function requiredIndexableWorks(hasDisplayableBiography: boolean): number {
+  return hasDisplayableBiography ? 1 : MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY;
+}
+
+/**
  * D2: pessoa indexa so com material suficiente para sustentar a pagina.
  *
- * Os criterios sao os MESMOS que o sitemap ja exigia desde a valvula de
- * 2026-08-27 — a mudanca e que a pagina passa a exigi-los tambem. Ordem, do mais
- * tecnico ao mais editorial:
+ * A forma declarada pelo dono e "foto valida + identificacao confiavel +
+ * biografia/conteudo licenciado suficiente + filmografia/relevancia + dados
+ * minimos de entidade". Traduzida, na ordem do mais tecnico ao mais editorial:
  *
- *  1. nome e slug canonico (a regra de elegibilidade que ja existia);
- *  2. biografia com texto E com status que libera exibicao;
- *  3. foto;
- *  4. ao menos um credito em obra indexavel (a regra de elegibilidade).
+ *  1. nome e slug canonico (identificacao e dados minimos);
+ *  2. foto;
+ *  3. ao menos uma obra no indice (a regra de elegibilidade que ja existia);
+ *  4. conteudo proprio suficiente: biografia exibivel, OU uma filmografia de
+ *     `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY` obras no indice.
  *
- * Nao sao criterios inventados para a ocasiao: sem biografia exibivel e sem foto
- * a ficha rende ~52 palavras dentro de `<main>` — nome, papel e uma lista de
- * links — medido em 2026-08-27.
+ * O SQL do sitemap aplica o mesmo portao (`sitemap-index.ts`), e o produtor do
+ * censo aplica uma versao que nunca e mais restritiva que esta
+ * (`catalog-indexability.ts`) — a decisao persistida mais restritiva venceria a
+ * pagina.
  */
 export function evaluatePersonQualityGate(input: PersonQualityGateInput): QualityGateVerdict {
   const elegibilidade = evaluatePersonEligibility({
     name: input.name,
     hasCanonicalSlug: input.hasCanonicalSlug,
-    publishableCreditCount: input.indexableCreditCount,
+    publishableCreditCount: input.indexableWorkCount,
   });
   // Nome e slug primeiro: sem eles nao ha pagina para avaliar.
   if (
@@ -241,13 +293,6 @@ export function evaluatePersonQualityGate(input: PersonQualityGateInput): Qualit
     (elegibilidade.reason === "name_missing" || elegibilidade.reason === "slug_missing")
   ) {
     return failed("person", elegibilidade.reason, elegibilidade.explanation);
-  }
-  if (!isDisplayableBiography(input.biography, input.biographySourceStatus)) {
-    return failed(
-      "person",
-      "no_displayable_biography",
-      "Pessoa sem biografia exibivel (texto com status que libera exibicao): a ficha nao sustenta pagina propria no indice (decisao do dono D2, 2026-09-11).",
-    );
   }
   if (input.profilePath === null || input.profilePath.trim() === "") {
     return failed(
@@ -259,9 +304,20 @@ export function evaluatePersonQualityGate(input: PersonQualityGateInput): Qualit
   if (!elegibilidade.eligible) {
     return failed("person", elegibilidade.reason ?? "no_publishable_credit", elegibilidade.explanation);
   }
+  const comBiografia = isDisplayableBiography(input.biography, input.biographySourceStatus);
+  const piso = requiredIndexableWorks(comBiografia);
+  if (input.indexableWorkCount < piso) {
+    return failed(
+      "person",
+      "short_filmography",
+      `Pessoa sem biografia exibivel e com ${input.indexableWorkCount} obra(s) no indice, abaixo do minimo de ${piso}: a ficha repete o elenco de poucas obras e nao sustenta pagina propria no indice (decisao do dono D2, 2026-09-11). Indexa sozinha quando a filmografia chegar ao minimo ou a biografia for liberada.`,
+    );
+  }
   return passed(
     "person",
     "eligible",
-    `Pessoa com biografia exibivel, foto e ${input.indexableCreditCount} credito(s) em obra indexavel.`,
+    comBiografia
+      ? `Pessoa com foto, biografia exibivel e ${input.indexableWorkCount} obra(s) no indice.`
+      : `Pessoa com foto e filmografia de ${input.indexableWorkCount} obras no indice (minimo ${piso} sem biografia).`,
   );
 }

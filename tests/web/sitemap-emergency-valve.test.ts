@@ -195,16 +195,21 @@ describe("gate de pessoa no SQL — biografia exibivel e foto", () => {
     path.join(REPO_ROOT, "apps", "web", "src", "server", "seo", "sitemap-index.ts"),
   );
 
-  it("(12) as DUAS consultas de pessoa (contagem e pagina) exigem biografia e foto", () => {
+  it("(12) as DUAS consultas de pessoa (contagem e pagina) exigem foto e escolhem o piso pela biografia", () => {
     // Duas copias do WHERE: se so uma ganhar o gate, o index anuncia N shards
-    // que a pagina nao consegue preencher.
+    // que a pagina nao consegue preencher. Desde 22/09/2026 (D2) a biografia nao
+    // e mais um AND: ela so baixa o piso de obras no indice para 1 — sem ela, a
+    // filmografia sustenta a pagina a partir de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY.
     for (const predicado of [
-      "AND BTRIM(COALESCE(p.biography, '')) <> ''",
-      "AND p.biography_source_status::text IN ('official','licensed','third_party')",
       "AND BTRIM(COALESCE(p.profile_path, '')) <> ''",
+      "WHEN BTRIM(COALESCE(p.biography, '')) <> ''",
+      "AND p.biography_source_status::text IN ('official','licensed','third_party')",
+      "ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}",
     ]) {
-      expect(fonte.split(predicado).length - 1).toBe(2);
+      expect(fonte.split(predicado).length - 1, predicado).toBe(2);
     }
+    // A biografia como AND solto seria a regra antiga — que barrava todo mundo.
+    expect(fonte).not.toContain("\n        AND BTRIM(COALESCE(p.biography, '')) <> ''");
   });
 
   it("(13) a licenca da bio nao pode ser esquecida: texto sem status liberado nao conta (invariante 6)", () => {

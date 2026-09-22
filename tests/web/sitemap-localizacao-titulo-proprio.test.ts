@@ -23,10 +23,12 @@
  * O QUE ESTE ARQUIVO TRAVA
  * ============================================================================
  * A regra pura vive em `isLocalizedTitle` e e testada em `packages/seo`. O SQL do
- * sitemap e a SEGUNDA traducao da mesma regra, escrita a mao em quatro lugares
- * (contagem e pagina, para filme e para serie). Aqui se prova que os quatro
- * comparam com o original — e, principalmente, que nenhum teste de "titulo nao
- * vazio" sobrou SEM a comparacao ao lado, que e a forma exata do defeito.
+ * sitemap e a SEGUNDA traducao da mesma regra, escrita a mao em seis lugares:
+ * contagem e pagina, para filme e para serie, e — desde 22/09/2026 — contagem e
+ * pagina de PESSOA, onde a obra so soma na filmografia se passar na D3. Aqui se
+ * prova que os seis comparam com o original — e, principalmente, que nenhum
+ * teste de "titulo nao vazio" sobrou SEM a comparacao ao lado, que e a forma
+ * exata do defeito.
  *
  * Guard textual nao prova comportamento: quem prova que pagina e sitemap
  * concordam e `validate:seo-runtime` contra PostgreSQL real (checks 43 a 47 e
@@ -47,6 +49,9 @@ const SITEMAP = path.join(REPO_ROOT, 'apps', 'web', 'src', 'server', 'seo', 'sit
 const TITULO_NAO_VAZIO = "BTRIM(COALESCE(et.title, '')) <> ''"
 const CONTRA_ORIGINAL_FILME = "BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(m.title_original, ''))"
 const CONTRA_ORIGINAL_SERIE = "BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, ''))"
+/** No portao de pessoa a obra pode ser filme OU serie: o original vem de quem existir. */
+const CONTRA_ORIGINAL_OBRA =
+  "BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, ''))"
 
 function ocorrencias(texto: string, literal: string): number {
   return texto.split(literal).length - 1
@@ -55,10 +60,11 @@ function ocorrencias(texto: string, literal: string): number {
 describe('D3 no SQL do sitemap — titulo proprio', () => {
   const fonte = readSourceWithoutComments(SITEMAP)
 
-  it('(1) INSTRUMENTO: o arquivo lido e o do sitemap, com os quatro predicados de escopo', () => {
-    // 1 import + 4 usos. Se este numero mudar, um predicado nasceu ou morreu, e
-    // as contagens abaixo precisam ser reconferidas em vez de ajustadas.
-    expect(ocorrencias(fonte, 'TMDB_FALLBACK_SLUG_SQL_PATTERN')).toBe(5)
+  it('(1) INSTRUMENTO: o arquivo lido e o do sitemap, com os seis predicados de escopo', () => {
+    // 1 import + 4 usos nas fichas + 2 no portao de pessoa. Se este numero mudar,
+    // um predicado nasceu ou morreu, e as contagens abaixo precisam ser
+    // reconferidas em vez de ajustadas.
+    expect(ocorrencias(fonte, 'TMDB_FALLBACK_SLUG_SQL_PATTERN')).toBe(7)
   })
 
   it('(2) filme: contagem e pagina comparam o titulo publicado com m.title_original', () => {
@@ -69,10 +75,17 @@ describe('D3 no SQL do sitemap — titulo proprio', () => {
     expect(ocorrencias(fonte, CONTRA_ORIGINAL_SERIE)).toBe(2)
   })
 
+  it('(3b) pessoa: contagem e pagina comparam o titulo da OBRA com o original dela', () => {
+    expect(ocorrencias(fonte, CONTRA_ORIGINAL_OBRA)).toBe(2)
+  })
+
   it('(4) nenhum "titulo nao vazio" sobrou sem a comparacao ao lado', () => {
     const naoVazio = ocorrencias(fonte, TITULO_NAO_VAZIO)
-    const comparados = ocorrencias(fonte, CONTRA_ORIGINAL_FILME) + ocorrencias(fonte, CONTRA_ORIGINAL_SERIE)
-    expect(naoVazio).toBe(4)
+    const comparados =
+      ocorrencias(fonte, CONTRA_ORIGINAL_FILME) +
+      ocorrencias(fonte, CONTRA_ORIGINAL_SERIE) +
+      ocorrencias(fonte, CONTRA_ORIGINAL_OBRA)
+    expect(naoVazio).toBe(6)
     expect(comparados).toBe(naoVazio)
   })
 
@@ -80,8 +93,17 @@ describe('D3 no SQL do sitemap — titulo proprio', () => {
     const adulterado = fonte.replace(CONTRA_ORIGINAL_FILME, "BTRIM(COALESCE(et.title, '')) <> ''")
     expect(ocorrencias(adulterado, CONTRA_ORIGINAL_FILME)).toBe(1)
     expect(
-      ocorrencias(adulterado, CONTRA_ORIGINAL_FILME) + ocorrencias(adulterado, CONTRA_ORIGINAL_SERIE),
+      ocorrencias(adulterado, CONTRA_ORIGINAL_FILME) +
+        ocorrencias(adulterado, CONTRA_ORIGINAL_SERIE) +
+        ocorrencias(adulterado, CONTRA_ORIGINAL_OBRA),
     ).not.toBe(ocorrencias(adulterado, TITULO_NAO_VAZIO))
+    // O mesmo controle no portao de pessoa: tirar a comparacao da OBRA tambem cai.
+    const semObra = fonte.replace(CONTRA_ORIGINAL_OBRA, "BTRIM(COALESCE(et.title, '')) <> ''")
+    expect(
+      ocorrencias(semObra, CONTRA_ORIGINAL_FILME) +
+        ocorrencias(semObra, CONTRA_ORIGINAL_SERIE) +
+        ocorrencias(semObra, CONTRA_ORIGINAL_OBRA),
+    ).not.toBe(ocorrencias(semObra, TITULO_NAO_VAZIO))
   })
 
   it('(6) a regra que o SQL descreve e a mesma da pagina', () => {

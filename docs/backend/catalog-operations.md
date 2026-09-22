@@ -198,19 +198,23 @@ A politica geral (licenca -> idioma -> caso tecnico -> index) continua vindo de
 | filme / serie | slug canonico + titulo + traducao + **sinopse** + **poster** |
 | temporada | herda a serie + **sinopse OU pelo menos um episodio listado** |
 | episodio | herda a serie + **sinopse propria** |
-| pessoa | credito em obra publicavel + **biografia EXIBIVEL** + **foto** |
+| pessoa | credito em obra publicavel + **foto** + (**biografia EXIBIVEL** ou **5 obras** com slug) |
 
 Herdar a serie e fail-closed: pai desconhecido -> `parent_not_publishable`.
 "Biografia exibivel" = texto em `people.biography` **e**
 `people.biography_source_status` em `official`/`licensed`/`third_party` — o
 default da coluna e `unknown`, e bio ingerida sem liberacao nao aparece na tela.
+Sem ela, a filmografia sustenta a pagina a partir de 5 obras distintas (D2, leitura
+de 22/09/2026; `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY`). O censo conta obra com
+slug; a pagina e o sitemap exigem a obra NO INDICE — o censo e o lado frouxo de
+proposito, porque a decisao persistida mais restritiva venceria a pagina.
 
 **Reversivel sem deploy.** Preencheu a sinopse/biografia que faltava? A proxima
 execucao do produtor devolve a pagina ao indice sozinha. E por isso que o gate
 pergunta pelo DADO e nao pelo tipo.
 
 **As razoes do censo** (`--json` agrega por elas): `eligible`, `missing_slug`,
-`missing_title`, `missing_translation`, `no_synopsis`, `no_biography`,
+`missing_title`, `missing_translation`, `no_synopsis`, `short_filmography`,
 `no_image`, `no_eligible_credit`, `parent_not_publishable`,
 `insufficient_data`, `language_not_published`, `blocked_license`.
 

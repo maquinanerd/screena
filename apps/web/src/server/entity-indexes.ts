@@ -60,7 +60,13 @@ import {
   type PersonListItemInput,
   type SeriesListItemInput,
 } from "../lib/entity-index-presenter";
-import { DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES, type IndexabilityResult } from "@screena/seo";
+import {
+  MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY,
+  TMDB_FALLBACK_SLUG_SQL_PATTERN,
+  type IndexabilityResult,
+} from "@screena/seo";
+import { PUBLISHED_LOCALES } from "../lib/synopsis-language";
+import { absentDecisionFor, readDecisionCoverageForPage } from "./seo/decision-coverage";
 
 const LANGUAGE_CODE = "pt-BR";
 const MOVIE_INDEX_PATH = "/pt/filmes/";
@@ -216,34 +222,143 @@ const SERIES_COUNT_SQL = `
 `;
 
 /**
- * Perfil APTO a abrir a listagem de pessoas: biografia com texto E liberada para
- * exibicao (invariante 6) E foto — os dois predicados de CONTEUDO do portao de
- * pessoa (`evaluatePersonQualityGate`, decisao do dono D2), com a MESMA lista de
- * status de `@screena/seo`.
- *
- * O terceiro predicado do portao — credito em obra indexavel — NAO entra aqui, e
- * de proposito: e um EXISTS sobre elenco, equipe e decisoes, que seria avaliado
- * para CADA pessoa com slug antes do LIMIT. Ele continua decidindo o robots de
- * cada ficha e o sitemap; a listagem so precisa nao abrir com perfis vazios.
- *
- * Os status sao constantes do codigo, nunca entrada de usuario — por isso cabem
- * interpolados no SQL.
+ * Locales publicados como parametro de SQL — os MESMOS que o sitemap passa ao
+ * portao de localizacao das obras (`seo/sitemap-index.ts`).
  */
-const PERSON_LISTING_READY_SQL = `(
-    BTRIM(COALESCE(p.biography, '')) <> ''
-    AND p.biography_source_status::text IN (${DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES.map((status) => `'${status}'`).join(", ")})
-    AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-  )`;
+const PUBLISHED_LOCALE_CODES: string[] = [...PUBLISHED_LOCALES];
 
 /**
- * Pessoa nao tem ano. A ordem: primeiro os perfis APTOS
- * (`PERSON_LISTING_READY_SQL` — decisao do dono D2, "a listagem passa a priorizar
- * perfis aptos"; a auditoria de SEO de 11/09/2026, M13, achou a primeira pagina
- * cheia de perfis sem biografia), depois o nome exibivel (traducao ou `name`).
+ * De onde sai a listagem de pessoas: o elenco PRINCIPAL das obras mais populares
+ * de cada tipo (`popularity` do TMDB, indexada nas duas tabelas).
  *
- * `COALESCE(..., false)`: um NULL no predicado nao pode subir — em ORDER BY
- * DESC o PostgreSQL poe NULL PRIMEIRO. O presenter continua montando o card; a
- * ordem e do banco (`preordered`), e ele nao a refaz.
+ * POR QUE NAO "TODAS AS PESSOAS POR NOME". Ate 22/09/2026 a listagem ordenava as
+ * ~73 mil pessoas com slug por um predicado de biografia que nenhuma cumpria e,
+ * depois, pelo nome — e o collation do banco poe nomes em hangul antes do
+ * alfabeto latino. Medido em producao: os 24 cards de /pt/pessoas/ eram nomes
+ * coreanos de uma silaba ("길", "던", "료"...), de slug `tmdb-N`, com tres obras
+ * e 38 palavras. A D2 manda a listagem "priorizar perfis aptos"; o portao de
+ * pessoa agora e avaliavel, mas custa uma subconsulta por pessoa — avalia-lo nas
+ * 73 mil a cada visita custaria segundos.
+ *
+ * O recorte o torna barato e util: poucas centenas de candidatos (os primeiros
+ * creditos de elenco das obras mais populares), o MESMO portao do sitemap sobre
+ * eles, e a ordem pela popularidade da obra mais popular de cada um.
+ */
+const PERSON_LISTING_SOURCE_MOVIES = 60;
+const PERSON_LISTING_SOURCE_SERIES = 40;
+/** "Elenco principal": as primeiras posicoes de credito (`billing_order`) de cada obra. */
+const PERSON_LISTING_TOP_BILLING = 4;
+
+/**
+ * Pessoas APTAS (portao D2) do elenco principal das obras populares, da obra mais
+ * popular para a menos.
+ *
+ * O bloco do portao e o do SQL do sitemap, caractere a caractere
+ * (`tests/web/sitemap-person-eligibility.test.ts` trava): quem abre a listagem e
+ * exatamente quem o sitemap oferece ao indice — nunca um perfil que a propria
+ * ficha marca `noindex`. Inclui a decisao persistida da PESSOA, como o sitemap.
+ */
+async function readFeaturedPeople(
+  prisma: ReturnType<typeof getPrismaClient>,
+  limit: number,
+): Promise<PersonRow[]> {
+  const language = LANGUAGE_CODE;
+  const coverage = await readDecisionCoverageForPage(language);
+  const absentMovie = absentDecisionFor(coverage, "movie");
+  const absentTv = absentDecisionFor(coverage, "tv");
+  const absentPerson = absentDecisionFor(coverage, "person");
+  return prisma.$queryRaw<PersonRow[]>`
+      WITH obras_populares AS (
+        (SELECT 'movie'::"EntityType" AS entity_type, m.id AS entity_id, m.popularity AS popularity
+           FROM movies m
+          WHERE m.popularity IS NOT NULL
+          ORDER BY m.popularity DESC
+          LIMIT ${PERSON_LISTING_SOURCE_MOVIES})
+        UNION ALL
+        (SELECT 'tv'::"EntityType" AS entity_type, t.id AS entity_id, t.popularity AS popularity
+           FROM tv_shows t
+          WHERE t.popularity IS NOT NULL
+          ORDER BY t.popularity DESC
+          LIMIT ${PERSON_LISTING_SOURCE_SERIES})
+      ),
+      candidatos AS (
+        SELECT cm.person_id, MAX(o.popularity) AS relevancia
+          FROM obras_populares o
+          JOIN cast_members cm ON cm.entity_type = o.entity_type AND cm.entity_id = o.entity_id
+         WHERE cm.billing_order < ${PERSON_LISTING_TOP_BILLING}
+         GROUP BY cm.person_id
+      )
+      SELECT p.id, p.name, p.known_for_department, p.profile_path, s.slug, tr.title AS translation_title
+      FROM candidatos c
+      JOIN people p ON p.id = c.person_id
+      JOIN slugs s ON s.entity_type = 'person' AND s.entity_id = p.id
+        AND s.language_code = ${language} AND s.is_canonical = true
+      LEFT JOIN entity_translations tr
+        ON tr.entity_type = 'person' AND tr.entity_id = p.id AND tr.language_code = ${language}
+      WHERE BTRIM(p.name) <> ''
+        -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
+        -- foto E conteudo proprio suficiente. Biografia EXIBIVEL com ao menos uma
+        -- obra no indice, OU uma filmografia de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY
+        -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
+        -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
+        -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
+        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
+        -- titulo original, portao de localizacao D3 e decisao efetiva index.
+        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
+        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND BTRIM(COALESCE(p.profile_path, '')) <> ''
+        AND (
+          SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM (
+              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
+              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+              UNION
+              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
+              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            ) obra
+            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
+              AND ws.language_code = ${language} AND ws.is_canonical = true
+            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
+            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
+            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+              AND NOT (
+                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+                AND NOT EXISTS (
+                  SELECT 1 FROM entity_translations et
+                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
+                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                      OR BTRIM(COALESCE(et.summary, '')) <> ''
+                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+                )
+              )
+              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
+                  AND wd.language_code = ${language} AND wd.is_current = true
+                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+          ) obras_no_indice
+        ) >= CASE
+          WHEN BTRIM(COALESCE(p.biography, '')) <> ''
+            AND p.biography_source_status::text IN ('official','licensed','third_party')
+          THEN 1
+          ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+        END
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
+          WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentPerson}) = 'index'
+      ORDER BY c.relevancia DESC, p.id ASC
+      LIMIT ${limit}`;
+}
+
+/**
+ * Complemento, so quando os aptos nao enchem a pagina (banco pequeno, ou sem
+ * `popularity`): as demais pessoas com slug, na ordem do nome exibivel. Em
+ * producao ha milhares de aptos e esta consulta nao roda.
  */
 const PERSON_PAGE_SQL = `
   SELECT p.id,
@@ -262,8 +377,7 @@ const PERSON_PAGE_SQL = `
     AND s.language_code = $1
     AND s.is_canonical
     AND ${DISPLAY_TITLE_SQL("p.name")} IS NOT NULL
-  ORDER BY COALESCE(${PERSON_LISTING_READY_SQL}, false) DESC,
-           ${DISPLAY_TITLE_SQL("p.name")} ASC,
+  ORDER BY ${DISPLAY_TITLE_SQL("p.name")} ASC,
            p.id ASC
   LIMIT $2
 `;
@@ -367,10 +481,23 @@ export const getSeriesIndexData = cache(async (): Promise<EntityIndexData> => {
 
 export const getPersonIndexData = cache(async (): Promise<EntityIndexData> => {
   const prisma = getPrismaClient();
-  const [rows, counts] = await Promise.all([
-    prisma.$queryRawUnsafe<PersonRow[]>(PERSON_PAGE_SQL, LANGUAGE_CODE, INDEX_FETCH_LIMIT),
+  const [featured, counts] = await Promise.all([
+    readFeaturedPeople(prisma, INDEX_FETCH_LIMIT),
     prisma.$queryRawUnsafe<CountRow[]>(PERSON_COUNT_SQL, LANGUAGE_CODE),
   ]);
+  const rows = [...featured];
+  if (rows.length < INDEX_FETCH_LIMIT) {
+    const chosen = new Set(rows.map((row) => row.id.toString()));
+    const rest = await prisma.$queryRawUnsafe<PersonRow[]>(
+      PERSON_PAGE_SQL,
+      LANGUAGE_CODE,
+      INDEX_FETCH_LIMIT,
+    );
+    for (const row of rest) {
+      if (rows.length >= INDEX_FETCH_LIMIT) break;
+      if (!chosen.has(row.id.toString())) rows.push(row);
+    }
+  }
 
   const items: PersonListItemInput[] = rows.map((row) => ({
     id: row.id.toString(),
