@@ -440,12 +440,18 @@ describe("sitemap: o teto declarado", () => {
 
   it("(9) estourar o teto de FILMES tira so filmes — series e pessoas continuam na saida", async () => {
     // O defeito que a auditoria de 11/09/2026 mediu, com filmes no papel de "o
-    // tipo que cresceu sozinho". Com o teto GLOBAL antigo este mesmo conjunto
-    // produzia um index VAZIO: 400.000 filmes arrastavam series, pessoas e
-    // noticias para fora junto.
+    // tipo que cresceu sozinho". Com o teto GLOBAL antigo um conjunto assim
+    // produzia um index VAZIO: os filmes arrastavam series, pessoas e noticias
+    // para fora junto. O volume sai da CONSTANTE (teto + 1): quando o teto de
+    // filme subiu (22/09/2026), um numero literal teria deixado de estourar e o
+    // teste passaria a provar o contrario do que diz.
     const grande: DataSet = {
       ...dataset(),
-      movies: build("filme", 1_000, { index: 400_000, noindex: 0, missing: 0 }),
+      movies: build("filme", 1_000, {
+        index: SITEMAP_TYPE_URL_CEILING.movies + 1,
+        noindex: 0,
+        missing: 0,
+      }),
     };
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
     try {

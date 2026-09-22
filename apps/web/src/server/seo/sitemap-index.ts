@@ -305,10 +305,19 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * tipo acima do teto NAO e cortado nas primeiras N URLs: publicar um recorte que
  * ninguem escolheu seria pior do que nao publicar o tipo.
  *
- * Filme e serie ficam em ~4x o volume medido em 2026-08-27 (34.799 e 32.392) — a
+ * Filme e serie ficaram em ~4x o volume medido em 2026-08-27 (34.799 e 32.392) — a
  * mesma ordem de folga do teto global, agora sem que o crescimento de um tipo
- * consuma a folga do outro. Pessoa tem o teto de filme de proposito: o portao de
- * pessoa (decisao do dono D2) vai abrir, e o 0 medido nao e um volume.
+ * consuma a folga do outro. Pessoa tem o teto de 150.000 de proposito: o portao
+ * de pessoa (decisao do dono D2) vai abrir, e o 0 medido nao e um volume.
+ *
+ * FILME SUBIU PARA 500.000 EM 22/09/2026, por crescimento LEGITIMO medido. O
+ * sitemap de filmes foi de 34.799 (27/08) para 57.834 (21/09) e 59.612 (22/09):
+ * +1.778 URLs num dia, com o catalogo sendo ingerido e a D3 ja aplicada. Nesse
+ * ritmo, os 150.000 chegariam em menos de dois meses, e o corte fail-closed
+ * tiraria TODOS os filmes do sitemap de uma vez — o tipo mais valioso do site. A
+ * 500.000, o alerta de 80% (400.000) fica a meses de distancia e o teto continua
+ * detector de anomalia: um salto ate ele seria ~8x o volume de hoje. Serie ficou
+ * em 150.000 porque cresce ~180 URLs por dia (32.145 -> 32.328 no mesmo dia).
  *
  * Tipos suspensos (temporada, episodio) e tipos fora do sitemap por decisao do
  * dono tambem tem teto declarado: se voltarem a publicar, voltam com o detector
@@ -319,7 +328,7 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * crescimento e a politica por DADO de cada tipo, nao um numero maior aqui.
  */
 export const SITEMAP_TYPE_URL_CEILING: Readonly<Record<EntitySitemapType, number>> = Object.freeze({
-  movies: 150_000,
+  movies: 500_000,
   series: 150_000,
   people: 150_000,
   news: 50_000,

@@ -159,8 +159,8 @@ describe("teto declarado do sitemap", () => {
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
     const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      // Toda contagem = 100.000. Filme, serie e pessoa tem teto de 150.000 (67%);
-      // noticia tem 50.000 — so noticia estoura.
+      // Toda contagem = 100.000. Filme tem teto de 500.000, serie e pessoa de
+      // 150.000 — todos acima; noticia tem 50.000 — so noticia estoura.
       //
       // O MESMO conjunto, com o teto global antigo (6 tipos x 100.000 = 600.000
       // contra 300.000), produzia um index VAZIO. E essa a diferenca sob teste.
@@ -187,6 +187,11 @@ describe("teto declarado do sitemap", () => {
     expect(SITEMAP_TYPE_URL_CEILING.movies).toBeGreaterThan(34_799);
     expect(SITEMAP_TYPE_URL_CEILING.series).toBeGreaterThan(32_392);
     expect(SITEMAP_TYPE_URL_CEILING.imagens).toBeGreaterThan(43_155);
+    // Medido em 22/09/2026, com os arquivos de 10.000 URLs: 59.612 filmes e 32.328
+    // series. O teto de filme precisa de folga de MESES sobre o ritmo de ~1.800 por
+    // dia: o alerta de 80% nao pode estar a semanas do volume de hoje.
+    expect(SITEMAP_TYPE_URL_CEILING.movies * 0.8).toBeGreaterThan(59_612 + 1_800 * 120);
+    expect(SITEMAP_TYPE_URL_CEILING.series).toBeGreaterThan(32_328);
   });
 });
 

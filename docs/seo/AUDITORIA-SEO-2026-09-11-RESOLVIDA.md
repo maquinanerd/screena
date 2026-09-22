@@ -440,3 +440,21 @@ filmes 1 a 6, séries 1 a 4, notícias e estáticas.
   cache do I2 é o que tiraria esses dois da origem.
 - Filmes passaram de 57.834 para 59.612 URLs em um dia (+1.778). Esse ritmo
   confirma o risco do teto por tipo descrito acima.
+
+**O teto de filme subiu para 500.000 (22/09/2026, com autorização do dono).** No
+ritmo medido, os 150.000 chegariam em menos de dois meses, e o corte fail-closed
+tiraria todos os filmes do sitemap de uma vez. A 500.000, o alerta de 80%
+(400.000) fica a meses de distância, e o teto continua detectando anomalia: um
+salto até ele seria ~8x o volume de hoje. Série ficou em 150.000, porque cresce
+~180 URLs por dia. Um teste novo trava a folga: o alerta de 80% tem de ficar a
+mais de 120 dias do volume medido, no ritmo de 1.800 por dia.
+
+**Borda, 22/09/2026 (feito pelo agente, com autorização do dono):**
+
+| Item | Estado |
+|---|---|
+| I1 · `www` → apex | Redirect Rule 301, preservando caminho e query string. Medido: `https://www.cinerie.com/pt/filmes/a-origem/?teste=redirect` chega em `https://cinerie.com/pt/filmes/a-origem/?teste=redirect` |
+| I2 · cache do sitemap | Cache Rule `sitemaps-cacheaveis` para `/sitemap.xml`, `/news-sitemap.xml` e `/sitemaps/*`, respeitando o `Cache-Control` da origem. Medido: índice 3.969 ms (MISS) → 74 ms (HIT); `static-1` 3.523 → 43 ms; `news-1` 1.168 → 55 ms |
+| I5 · e-mail | Email Routing: MX `route1/2/3.mx.cloudflare.net`, DKIM `cf2024-1._domainkey` e SPF `v=spf1 include:_spf.mx.cloudflare.net ~all`, conferidos no DNS público. `contato@` e `privacidade@` encaminham para a caixa do dono; o catch-all segue desligado |
+| D7 · `robots.txt` | Política de bots de IA: busca e agentes liberados, treino `Disallow`, Bot Preference Sync ligado. Os crawlers de treino já eram bloqueados na borda. O bloco gerenciado ainda não aparecia no `robots.txt` publicado ao fim desta rodada |
+| I7 · HSTS nos redirects | não aplicado: o modo automático do agente recusa mudança de certificado/HSTS; fica com o dono |
