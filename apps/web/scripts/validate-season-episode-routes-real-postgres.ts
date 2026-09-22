@@ -91,6 +91,7 @@ type PrismaLike = {
   season: { create: (args: unknown) => Promise<{ id: bigint }> };
   episode: { create: (args: unknown) => Promise<{ id: bigint }> };
   pageIndexabilityDecision: { create: (args: unknown) => Promise<unknown> };
+  tmdbVideo: { create: (args: unknown) => Promise<unknown> };
 };
 
 async function seedSeries(
@@ -136,10 +137,13 @@ async function seedEpisode(
     tvShowId: bigint;
     episodeNumber: number;
     still?: string | null;
+    /** `episodes.tmdb_id`: sem ele nao ha chave de midia (imagem, trailer). */
+    tmdbId?: number | null;
   },
 ): Promise<bigint> {
   const episode = await prisma.episode.create({
     data: {
+      tmdbId: opts.tmdbId ?? null,
       seasonId: opts.seasonId,
       tvShowId: opts.tvShowId,
       episodeNumber: opts.episodeNumber,
@@ -195,6 +199,7 @@ interface Seams {
       prevEpisode: { episodeNumber: number } | null;
       nextEpisode: { episodeNumber: number } | null;
     };
+    trailer: { embedUrl: string } | null;
     seo: { decision: string };
     canonicalUrl: string;
   } | null>;
@@ -218,8 +223,8 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   const a4 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 4, episodeCount: 1 });
   const b1 = await seedSeason(prisma, { tvShowId: idB, seasonNumber: 1, episodeCount: 1 });
 
-  const a1e1 = await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 1, still: "/media/still.jpg" });
-  await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 2 });
+  const a1e1 = await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 1, still: "/media/still.jpg", tmdbId: 97100011 });
+  await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 2, tmdbId: 97100012 });
   const a1e3 = await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 3 });
   await seedEpisode(prisma, { seasonId: a2, tvShowId: idA, episodeNumber: 1 });
   await seedEpisode(prisma, { seasonId: a2, tvShowId: idA, episodeNumber: 2 });
@@ -228,6 +233,27 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   await seedEpisode(prisma, { seasonId: b1, tvShowId: idB, episodeNumber: 1 });
 
   void a1e1;
+  // Trailer de EPISODIO (22/09/2026). O 1x1 tem um `Trailer` liberado; o 1x2 so
+  // tem um `Clip` liberado — o controle: clipe nunca vira "trailer".
+  const video = (tmdbId: number, id: string, key: string, videoType: string) =>
+    prisma.tmdbVideo.create({
+      data: {
+        entityType: "episode",
+        tmdbId,
+        tmdbVideoId: id,
+        site: "YouTube",
+        videoKey: key,
+        name: `${videoType} do episodio`,
+        videoType,
+        official: true,
+        languageCode: "pt-BR",
+        payloadHash: `hash-${id}`,
+        licenseStatus: "licensed",
+        displayAllowed: true,
+      },
+    });
+  await video(97100011, "ep-trailer-1", "dQw4w9WgXcQ", "Trailer");
+  await video(97100012, "ep-clip-2", "oHg5SJYRHA0", "Clip");
   await seedNoindex(prisma, "season", a4); // temporada 4 de A -> noindex
   await seedNoindex(prisma, "episode", a1e3); // S1E3 de A -> noindex
   await seedNoindex(prisma, "episode", a4e1); // S4E1 de A -> noindex
@@ -280,6 +306,8 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   // decide. Aqui exigimos que o motivo NAO seja o da valvula.
   record(22, "decisao persistida noindex chega ao episodio (motivo != valvula); ultimo nao tem proximo", epA1E3?.seo.decision === "noindex" && epA1E3?.seo.reason !== SUSPENSION_REASON && epA1E3?.view.nextEpisode === null, `seo=${epA1E3?.seo.decision}, motivoValvula=${epA1E3?.seo.reason === SUSPENSION_REASON}, next=${epA1E3?.view.nextEpisode}`);
   record(23, "canonical do episodio correto", epA1E1?.canonicalUrl === `${SITE}/pt/series/serie-a/temporadas/1/episodios/1/`, `canonical=${epA1E1?.canonicalUrl}`);
+  record(33, "episodio com `Trailer` proprio liberado -> trailer na pagina", epA1E1?.trailer?.embedUrl.endsWith("/embed/dQw4w9WgXcQ") === true, `trailer=${epA1E1?.trailer?.embedUrl ?? "null"}`);
+  record(34, "CONTROLE: episodio so com `Clip` -> sem trailer (clipe nunca vira trailer)", epA1E2 !== null && epA1E2.trailer === null, `trailer=${epA1E2?.trailer?.embedUrl ?? "null"}`);
 
   // ---- Sitemap: temporada e episodio SUSPENSOS (valvula de 2026-08-27) -----
   //

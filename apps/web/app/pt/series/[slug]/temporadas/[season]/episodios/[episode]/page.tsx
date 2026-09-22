@@ -10,6 +10,7 @@ import { GalleryImageGrid } from '../../../../../../../_components/gallery-grids
 import { PrevNextNav } from '../../../../../../../_components/prev-next-nav'
 import { SectionBoundary } from '../../../../../../../_components/section-boundary'
 import { SectionHead } from '../../../../../../../_components/section-head'
+import { TrailerModal } from '../../../../../../../_components/trailer-modal'
 import { decideSection } from '../../../../../../../../src/lib/section-absence'
 import {
   episodeImagesGalleryPath,
@@ -142,7 +143,7 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
     if (target !== null) permanentRedirect(target)
   }
 
-  const { view, credits, images, seo, canonicalUrl, seasonUrl, seriesUrl } = data
+  const { view, credits, images, trailer, seo, canonicalUrl, seasonUrl, seriesUrl } = data
   // A valvula de 2026-08-27 poe estas paginas em `noindex`, e isso NAO e
   // revisao editorial pendente: a pagina esta pronta, so nao se sustenta no
   // indice. Sem esta distincao o aviso apareceria em 3,9 milhoes de telas.
@@ -180,6 +181,11 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
     ...escopo,
     section: 'imagens-do-episodio',
     reason: 'no_episode_images',
+  })
+  const trailerSection = decideSection(trailer, {
+    ...escopo,
+    section: 'trailer-do-episodio',
+    reason: 'no_episode_trailer',
   })
   const galeriaHref = episodeImagesGalleryPath(
     view.seriesSlug,
@@ -324,6 +330,46 @@ export default async function EpisodePage({ params }: { params: Promise<EpisodeR
           previous={view.prevEpisode}
           next={view.nextEpisode}
         />
+
+        {/* ===== Trailer do episódio =====
+            Só `Trailer`/`Teaser` do PRÓPRIO episódio (`pickTrailer`); nunca o
+            da temporada ou da série. O mesmo `TrailerModal` de filme, série e
+            temporada: nada do YouTube carrega antes do clique. A geometria é a
+            do trailer da temporada (`.season-trailer`, em `detail.css`), com o
+            still do episódio atrás do botão. */}
+        <SectionBoundary decision={trailerSection}>
+          {(video) => (
+            <section aria-labelledby="episodio-trailer-titulo" style={{ paddingTop: 40 }}>
+              <SectionHead
+                headingId="episodio-trailer-titulo"
+                kicker="Mídia"
+                thin="do episódio"
+                title="Trailer"
+              />
+              <div className="season-trailer" data-trailer="ready">
+                {view.still !== null ? (
+                  <img
+                    alt=""
+                    height={view.still.height}
+                    loading="lazy"
+                    src={view.still.src}
+                    width={view.still.width}
+                  />
+                ) : null}
+                <span className="media-strip__playwrap">
+                  <TrailerModal
+                    title={`${view.seriesTitle} — ${view.episodeTitle}`}
+                    trailer={video}
+                    triggerClassName="media-strip__play"
+                  />
+                </span>
+                {video.name !== null ? (
+                  <span className="media-strip__caption">{video.name}</span>
+                ) : null}
+              </div>
+            </section>
+          )}
+        </SectionBoundary>
 
         {/* ===== Equipe técnica: direção e roteiro ===== */}
         <SectionBoundary decision={crewSection}>

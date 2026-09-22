@@ -19,6 +19,7 @@ import {
   type EpisodePageView,
 } from "../lib/season-episode-presenter";
 import { buildImagesGallery, type ImagesGalleryView } from "../lib/gallery-presenter";
+import type { TrailerView } from "../lib/trailer-presenter";
 import {
   episodeCanonicalUrl,
   seasonCanonicalUrl,
@@ -26,6 +27,7 @@ import {
 } from "../lib/site";
 import { getEpisodeCredits, type EpisodeCredits } from "./episode-credits";
 import { getImagesForEntity } from "./entity-gallery";
+import { getTrailerForEntity } from "./entity-trailer";
 import { getImageDisplayAuthorization } from "./image-license";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { applyPageSuspension } from "./seo/suspended-pages";
@@ -46,6 +48,12 @@ export interface EpisodePageData {
    * lista divergiriam no primeiro conserto aplicado a uma só.
    */
   images: ImagesGalleryView;
+  /**
+   * O trailer DO EPISODIO — `Trailer` ou `Teaser` com gate de licenca por
+   * linha —, ou `null`. Nunca cai para o trailer da temporada ou da serie: isso
+   * apresentaria o video de outra coisa como se fosse deste episodio.
+   */
+  trailer: TrailerView | null;
   /** Resolucao FINAL de SEO do episodio (fatos vivos + decisao vigente). */
   seo: PageSeoResolution;
   canonicalSlug: string;
@@ -184,7 +192,7 @@ export const getEpisodePageData = cache(
      * independentes do mesmo PostgreSQL, e encadeá-las somaria três idas ao
      * banco no tempo de resposta de uma página que já é servida com ISR.
      */
-    const [credits, imageRows, authorization] = await Promise.all([
+    const [credits, imageRows, authorization, trailer] = await Promise.all([
       getEpisodeCredits(prisma, episode.id),
       // Sem `tmdb_id` próprio não há chave de mídia: a lista sai vazia e a
       // página omite o bloco. Nunca cai para o id da série — isso mostraria as
@@ -193,6 +201,10 @@ export const getEpisodePageData = cache(
         ? Promise.resolve([] as const)
         : getImagesForEntity(prisma, "episode", episode.tmdbId),
       getImageDisplayAuthorization(prisma),
+      // A mesma regra para o video: sem id proprio, sem trailer.
+      episode.tmdbId === null
+        ? Promise.resolve(null)
+        : getTrailerForEntity(prisma, "episode", episode.tmdbId),
     ]);
 
     const resolved = await resolveEntityPageSeo(
@@ -213,6 +225,7 @@ export const getEpisodePageData = cache(
       view,
       credits,
       images: buildImagesGallery(imageRows, view.episodeTitle, authorization),
+      trailer,
       seo,
       canonicalSlug,
       canonicalUrl,

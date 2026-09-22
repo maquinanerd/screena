@@ -35,7 +35,40 @@ describe("buildCrewGroups: ordem", () => {
       10,
     );
 
-    expect(grupos.map((g) => g.job)).toEqual(["Director", "Writer", "Editor", "Executive Producer"]);
+    // Depois da autoria, a ordem da ficha técnica: produção antes de montagem.
+    expect(grupos.map((g) => g.job)).toEqual(["Director", "Writer", "Executive Producer", "Editor"]);
+  });
+
+  it("as funções CRIATIVAS cabem no teto antes das técnicas, mesmo que o rótulo técnico venha antes no alfabeto", () => {
+    // Medido no 1x1 de "Terra da Máfia" (22/09/2026): com 74 pessoas na equipe e
+    // teto de 8 grupos, a ficha mostrava `"A" Camera Operator`, `Additional
+    // Photography`, `Boom Operator`... e escondia fotografia, montagem e música.
+    const entrada = [
+      membro({ name: "Op A", department: "Camera", job: '"A" Camera Operator' }),
+      membro({ name: "Foto Extra", department: "Camera", job: "Additional Photography" }),
+      membro({ name: "Boom", department: "Sound", job: "Boom Operator" }),
+      membro({ name: "Guy Ritchie", department: "Directing", job: "Director" }),
+      membro({ name: "Ronan Bennett", department: "Writing", job: "Writer" }),
+      membro({ name: "Prod Exec", department: "Production", job: "Executive Producer" }),
+      membro({ name: "Fotografo", department: "Camera", job: "Director of Photography" }),
+      membro({ name: "Montador", department: "Editing", job: "Editor" }),
+      membro({ name: "Compositor", department: "Sound", job: "Original Music Composer" }),
+      membro({ name: "Elenco", department: "Production", job: "Casting" }),
+    ];
+    const grupos = buildCrewGroups(entrada, 7);
+    expect(grupos.map((g) => g.label)).toEqual([
+      "Direção",
+      "Roteiro",
+      "Produção executiva",
+      "Direção de fotografia",
+      "Montagem",
+      "Trilha sonora",
+      "Seleção de elenco",
+    ]);
+    // CONTROLE: com teto folgado, as técnicas continuam na ficha, com o nome
+    // original — nada some, só vem depois.
+    const todos = buildCrewGroups(entrada, 20).map((g) => g.job);
+    expect(todos.slice(-3)).toEqual(['"A" Camera Operator', "Additional Photography", "Boom Operator"]);
   });
 
   it("função FORA da lista de prioridade vai depois de TODA a lista, não antes", () => {
@@ -73,6 +106,10 @@ describe("buildCrewGroups: rótulos", () => {
   it("traduz as funções que a ficha de episódio nomeia", () => {
     expect(crewJobLabel("Director")).toBe("Direção");
     expect(crewJobLabel("Writer")).toBe("Roteiro");
+    expect(crewJobLabel("Teleplay")).toBe("Roteiro para TV");
+    expect(crewJobLabel("Director of Photography")).toBe("Direção de fotografia");
+    expect(crewJobLabel("Casting")).toBe("Seleção de elenco");
+    expect(crewJobLabel("Costume Design")).toBe("Figurino");
   });
 
   it("função DESCONHECIDA aparece com o próprio nome, nunca como 'Outro'", () => {
