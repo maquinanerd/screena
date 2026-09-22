@@ -34,7 +34,9 @@ const LEGAL_PAGES = [
   path.join(repoRoot, "apps", "web", "app", "pt", "privacidade", "page.tsx"),
 ];
 
-const robotsRoute = path.join(repoRoot, "apps", "web", "app", "robots.ts");
+// As REGRAS do robots.txt saem daqui desde 22/09/2026; o Route Handler em
+// `app/robots.txt/route.ts` so escreve o texto.
+const robotsRoute = path.join(repoRoot, "apps", "web", "src", "lib", "robots-txt.ts");
 const siteLib = path.join(repoRoot, "apps", "web", "src", "lib", "site.ts");
 
 function read(file: string): string {
