@@ -622,19 +622,73 @@ async function main(): Promise<void> {
     }
 
     // O outro lado do contrato: o que é noindex NÃO pode estar no sitemap.
+    //
+    // CADA PADRÃO É ANCORADO NA ROTA, e isso não é preciosismo. `/\/imagens\/?$/`
+    // sozinho acusava `https://cinerie.com/pt/filmes/imagens/` — que é o filme
+    // "Imagens" (1972), do Robert Altman, cujo slug É `imagens`: ficha legítima,
+    // `index, follow`, canonical autorreferente. Um checador que grita em página
+    // correta acaba sendo ignorado, e aí o vazamento de verdade passa junto.
+    //
+    // A diferença entre a ficha e a galeria é ESTRUTURAL, não textual: a galeria
+    // tem o segmento DEPOIS do slug da entidade. É isso que os padrões exigem.
     const proibidos = [
-      { rotulo: "galeria de imagens", pattern: /\/imagens\/?$/ },
-      { rotulo: "galeria de vídeos", pattern: /\/videos\/?$/ },
-      { rotulo: "temporada", pattern: /\/temporadas\/\d+\/?$/ },
-      { rotulo: "episódio", pattern: /\/episodios\/\d+\/?$/ },
+      {
+        rotulo: "galeria de imagens",
+        pattern:
+          /\/pt\/(?:filmes|series)\/[^/]+(?:\/temporadas\/\d+(?:\/episodios\/\d+)?)?\/imagens\/?$/,
+        // O controle de cada padrão: uma URL que ELE TEM de acusar, e uma que
+        // ele NÃO pode acusar. Sem os dois, "0 vazamentos" pode ser um padrão
+        // que não casa com nada.
+        vazamento: "https://cinerie.com/pt/filmes/um-filme-qualquer/imagens/",
+        legitima: "https://cinerie.com/pt/filmes/imagens/",
+      },
+      {
+        rotulo: "galeria de vídeos",
+        pattern: /\/pt\/(?:filmes|series)\/[^/]+\/videos\/?$/,
+        vazamento: "https://cinerie.com/pt/series/uma-serie/videos/",
+        legitima: "https://cinerie.com/pt/filmes/videos/",
+      },
+      {
+        rotulo: "galeria de fotos",
+        pattern: /\/pt\/pessoas\/[^/]+\/fotos\/?$/,
+        vazamento: "https://cinerie.com/pt/pessoas/alguem/fotos/",
+        legitima: "https://cinerie.com/pt/pessoas/fotos/",
+      },
+      {
+        rotulo: "temporada",
+        pattern: /\/pt\/series\/[^/]+\/temporadas\/\d+\/?$/,
+        vazamento: "https://cinerie.com/pt/series/uma-serie/temporadas/1/",
+        legitima: "https://cinerie.com/pt/series/temporadas/",
+      },
+      {
+        rotulo: "episódio",
+        pattern: /\/pt\/series\/[^/]+\/temporadas\/\d+\/episodios\/\d+\/?$/,
+        vazamento: "https://cinerie.com/pt/series/uma-serie/temporadas/1/episodios/1/",
+        legitima: "https://cinerie.com/pt/series/episodios/",
+      },
     ];
-    for (const { rotulo, pattern } of proibidos) {
+    for (const { rotulo, pattern, vazamento, legitima } of proibidos) {
+      const check = `sitemap-${rotulo.replace(/\s/g, "-")}`;
+      expect(
+        pattern.test(vazamento),
+        "fail",
+        `${BASE}/sitemap.xml`,
+        `${check}-controle`,
+        `o padrão de ${rotulo} não acusa nem o exemplo (${vazamento}) — checador vazio`,
+      );
+      expect(
+        !pattern.test(legitima),
+        "fail",
+        `${BASE}/sitemap.xml`,
+        `${check}-falso-positivo`,
+        `o padrão de ${rotulo} acusa uma ficha legítima (${legitima})`,
+      );
       const vazados = [...sitemap.urls].filter((u) => pattern.test(u));
       expect(
         vazados.length === 0,
         "fail",
         `${BASE}/sitemap.xml`,
-        `sitemap-${rotulo.replace(/\s/g, "-")}`,
+        check,
         `${vazados.length} URL(s) de ${rotulo} no sitemap; ex.: ${vazados[0] ?? "-"}`,
       );
     }
