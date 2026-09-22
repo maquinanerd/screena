@@ -22,6 +22,19 @@ import { hasEnoughUpcoming } from '../../src/lib/home-upcoming-presenter'
 import { RANKING_TABS } from '../../src/lib/popular-rankings'
 import { getPopularRankings } from '../../src/server/popular-rankings'
 import { CINERIE_ORGANIZATION_LOGO } from '../../src/lib/brand-logos'
+import {
+  GENERAL_CONTACT_EMAIL,
+  OFFICIAL_PROFILES,
+  PRIVACY_CONTACT_EMAIL,
+  SITE_CONTROLLER,
+  SITE_CONTROLLER_ADDRESS,
+} from '../../src/lib/institutional-facts'
+import {
+  ABOUT_PATH,
+  AUTHORS_INDEX_PATH,
+  CONTACT_PATH,
+  EDITORIAL_POLICY_PATH,
+} from '../../src/lib/routes'
 import { HOME_PATH, SITE_URL, canonicalPublicUrl, publicRobots } from '../../src/lib/site'
 import { socialMetadata } from '../../src/lib/social-metadata'
 import { getHomeCatalogData } from '../../src/server/home-catalog'
@@ -89,13 +102,53 @@ const HOME_DESCRIPTION =
 // M7). A regra vive em `@screena/seo` (`site-identity.ts`).
 const HOME_ORGANIZATION_JSONLD = {
   '@context': 'https://schema.org',
-  '@type': 'Organization',
+  // `NewsMediaOrganization` e SUBTIPO de `Organization`: o buscador continua
+  // lendo tudo o que lia da marca, e ganha as propriedades de transparencia que
+  // ele usa para publicador de noticia. O tipo descreve o que a Cinerie e — ela
+  // publica materia assinada, com politica editorial e nota de correcao.
+  //
+  // POR QUE A IDENTIDADE FICOU MAIOR (22/09/2026): a home dizia apenas nome,
+  // URL, logo e politica. Sem quem responde, sem canal e sem `sameAs`, nao ha
+  // como o buscador tratar "Cinerie" como uma ENTIDADE — que e o que sustenta o
+  // painel de marca e os sitelinks de marca que IMDb, Omelete e IGN mostram.
+  // Cada campo abaixo e um fato que o proprio site ja publica em /pt/sobre/ e
+  // /pt/contato/; nenhum e afirmacao nova.
+  '@type': 'NewsMediaOrganization',
   '@id': organizationId(SITE_URL),
   name: 'Cinerie',
   url: publicHomeUrl(SITE_URL),
+  description: HOME_DESCRIPTION,
+  knowsLanguage: 'pt-BR',
+  // Quem responde pelo site: os MESMOS fatos de /pt/sobre/ (item "Quem responde
+  // pela Cinerie") — nome civil, CNPJ e sede.
+  legalName: SITE_CONTROLLER.name,
+  taxID: SITE_CONTROLLER.cnpj,
+  address: { '@type': 'PostalAddress', ...SITE_CONTROLLER_ADDRESS },
+  email: GENERAL_CONTACT_EMAIL,
+  contactPoint: [
+    {
+      '@type': 'ContactPoint',
+      contactType: 'dúvidas gerais e erros de informação',
+      email: GENERAL_CONTACT_EMAIL,
+      availableLanguage: 'pt-BR',
+    },
+    {
+      '@type': 'ContactPoint',
+      contactType: 'privacidade e dados pessoais',
+      email: PRIVACY_CONTACT_EMAIL,
+      availableLanguage: 'pt-BR',
+    },
+  ],
   // Como a organizacao publica: a Politica editorial (auditoria de SEO de
   // 11/09/2026, secao 3.6 — a pagina nao existia).
   publishingPrinciples: publishingPrinciplesUrl(SITE_URL),
+  // As quatro paginas de transparencia que EXISTEM, cada uma no seu papel: a
+  // secao de correcao da politica, a pagina que diz quem responde, o canal de
+  // contato e a lista de quem assina.
+  correctionsPolicy: `${SITE_URL}${EDITORIAL_POLICY_PATH}#erros-e-pedidos`,
+  ownershipFundingInfo: `${SITE_URL}${ABOUT_PATH}`,
+  actionableFeedbackPolicy: `${SITE_URL}${CONTACT_PATH}`,
+  masthead: `${SITE_URL}${AUTHORS_INDEX_PATH}`,
   // A marca-mãe em PNG (672x163, entregue em 2026-09-11): raster e acima dos
   // 112 px mínimos que o Google pede para logo de Organization. O SVG anterior
   // era texto com fonte não embutida, 78 px de altura.
@@ -105,6 +158,9 @@ const HOME_ORGANIZATION_JSONLD = {
     width: CINERIE_ORGANIZATION_LOGO.width,
     height: CINERIE_ORGANIZATION_LOGO.height,
   },
+  // `sameAs` so existe quando ha perfil oficial declarado. Emitir a chave vazia
+  // afirmaria "a marca nao esta em lugar nenhum"; omitir nao afirma nada.
+  ...(OFFICIAL_PROFILES.length > 0 ? { sameAs: [...OFFICIAL_PROFILES] } : {}),
 }
 
 const HOME_WEBSITE_JSONLD = {
