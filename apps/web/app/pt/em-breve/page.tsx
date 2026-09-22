@@ -55,8 +55,11 @@ const TITLE = 'Mais Aguardados'
 // O <title> diz o que a pagina tem; o H1 e a trilha continuam "Mais Aguardados"
 // (ver a nota gemea em /pt/filmes/).
 const META_TITLE = 'Mais aguardados: próximas estreias de filmes e séries'
+// A descricao aparece no resultado da busca E abaixo do H1. Reescrita em
+// 22/09/2026: a anterior tinha menos de 100 caracteres e prometia "paginas
+// editoriais" que a ficha de catalogo nao e; esta diz o que a listagem entrega.
 const DESCRIPTION =
-  'Próximas estreias de filmes, séries, temporadas e episódios já confirmadas no catálogo da Cinerie.'
+  'Próximas estreias de filmes, séries, temporadas e episódios, com as datas de lançamento já confirmadas no catálogo da Cinerie.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const data = await getAnticipatedData()

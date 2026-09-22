@@ -25,8 +25,11 @@ const TITLE = 'Notícias'
 // O <title> diz o que a pagina tem; o H1 e a trilha continuam "Notícias" (ver a
 // nota gemea em /pt/filmes/).
 const META_TITLE = 'Notícias de cinema e séries'
+// A descricao aparece no resultado da busca E abaixo do H1. Reescrita em
+// 22/09/2026: a anterior tinha menos de 100 caracteres e prometia "paginas
+// editoriais" que a ficha de catalogo nao e; esta diz o que a listagem entrega.
 const DESCRIPTION =
-  'Últimas notícias e análises editoriais da Cinerie sobre cinema e séries, em português.'
+  'Notícias de cinema e séries em português: estreias, trailers, bastidores e análises da redação da Cinerie.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getNewsIndexData()

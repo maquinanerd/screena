@@ -73,8 +73,11 @@ const TITLE = 'Onde assistir'
 // O <title> diz o que a pagina tem; o H1 e a trilha continuam "Onde assistir" (ver
 // a nota gemea em /pt/filmes/).
 const META_TITLE = 'Onde assistir: streaming legal no Brasil'
+// A descricao aparece no resultado da busca E abaixo do H1. Reescrita em
+// 22/09/2026: a anterior tinha menos de 100 caracteres e prometia "paginas
+// editoriais" que a ficha de catalogo nao e; esta diz o que a listagem entrega.
 const DESCRIPTION =
-  'Filmes e séries com disponibilidade legal de streaming no Brasil, organizados por provedor.'
+  'Onde assistir filmes e séries de forma legal no Brasil: a disponibilidade em cada serviço de streaming, organizada por provedor.'
 const BROWSE_PATH = '/pt/onde-assistir/'
 
 function formatUpdatedAt(iso: string | null): string | null {
