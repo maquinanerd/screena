@@ -405,7 +405,7 @@ de imagem dobrou o tamanho por URL.
 
 **O que mudou:** `SITEMAP_URL_LIMIT` passa a 10.000 (o limite do protocolo fica em
 `SITEMAP_PROTOCOL_URL_LIMIT`). Pela proporção medida, cada arquivo fica perto de
-4 MB crus e 0,6 MB transferidos — INFERIDO até medir depois do deploy. O total de
+4 MB crus e 0,6 MB transferidos — confirmado depois do deploy, logo abaixo. O total de
 URLs não muda: muda só em quantos arquivos ele se divide. O que mais alivia a
 origem continua sendo o cache de borda (I2), que ainda não pega.
 
@@ -416,3 +416,27 @@ de 6,3 mil URLs entre 17 e 21/09/2026. Nesse ritmo — INFERIDO, com janela de
 quatro dias —, filme chegaria a 120.000 (alerta de 80%) em umas seis semanas e a
 150.000 em cerca de dois meses. Subir o teto é mudança revisada, e decidir o que
 fica no sitemap é do dono.
+
+**Depois do deploy do #308 (MEDIDO em 22/09/2026).** O índice lista 12 arquivos:
+filmes 1 a 6, séries 1 a 4, notícias e estáticas.
+
+| Arquivos | URLs | Cru por arquivo | Transferido por arquivo | 1º byte | Total |
+|---|---|---|---|---|---|
+| filmes 1–6 | 59.612 (5 × 10.000 + 9.612) | 3,7–4,3 MB | 526–622 KB | 1,5–1,9 s | 2,1–3,5 s |
+| séries 1–4 | 32.328 (3 × 10.000 + 2.328) | 0,9–4,4 MB | 136–647 KB | 1,3–2,0 s | 2,0–11,5 s |
+| notícias 1 | 381 | 81 KB | 10 KB | 0,7 s | 0,7 s |
+| estáticas 1 | 14 | 2 KB | 0,4 KB | 4,1 s | 4,1 s |
+
+- Antes, o maior arquivo tinha 20,4 MB crus e 2,9 MB transferidos, com 4,5 s até
+  o primeiro byte. A previsão (~4 MB e ~0,6 MB por arquivo) se confirmou.
+- **Nenhuma URL se perdeu nem repetiu:** as 92.335 URLs lidas nos 12 arquivos são
+  todas distintas e somam exatamente os quatro tipos. `movies-7` e `series-5`
+  respondem 404.
+- O total de 11,5 s de `series-1` foi uma transferência lenta, não a origem: o
+  primeiro byte chegou em 1,7 s, e os outros arquivos de série fecharam em 2–4,6 s.
+- Continuam lentos, e não por causa do tamanho: o **índice** (5,6 s, porque conta
+  cada tipo a cada pedido) e o arquivo de **estáticas** (4,1 s para 14 URLs, porque
+  pergunta aos loaders das próprias páginas). A borda ainda responde `DYNAMIC`: o
+  cache do I2 é o que tiraria esses dois da origem.
+- Filmes passaram de 57.834 para 59.612 URLs em um dia (+1.778). Esse ritmo
+  confirma o risco do teto por tipo descrito acima.
