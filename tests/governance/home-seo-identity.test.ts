@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 import { PUBLIC_HOME_PATH } from '@screena/seo'
 
+import { OFFICIAL_PROFILES } from '../../apps/web/src/lib/institutional-facts'
 import { HOME_PATH } from '../../apps/web/src/lib/routes'
 
 const ROOT = process.cwd()
@@ -52,13 +53,65 @@ describe('governança SEO: home entity-first e grafo de identidade', () => {
     expect(code).toContain('className="visually-hidden">Cinerie — filmes, séries e pessoas</h1>')
   })
 
-  it('home emite Organization e WebSite, sem SearchAction nem AggregateRating', () => {
+  it('home emite a organização e o WebSite, sem SearchAction nem AggregateRating', () => {
     const raw = read(HOME_REL)
-    expect(raw).toMatch(/["']@type["']:\s*["']Organization["']/)
+    // `NewsMediaOrganization` e subtipo de `Organization`; qualquer um dos dois
+    // serve como no de identidade, e nenhum outro tipo serve.
+    expect(raw).toMatch(/["']@type["']:\s*["'](?:News(?:Media)?)?Organization["']/)
     expect(raw).toMatch(/["']@type["']:\s*["']WebSite["']/)
     const code = withoutComments(raw)
     expect(code).not.toMatch(/SearchAction/)
     expect(code).not.toMatch(/AggregateRating/)
+  })
+
+  /**
+   * A marca precisa ser uma ENTIDADE para a busca (22/09/2026): a home dizia so
+   * nome, URL, logo e politica editorial. Sem quem responde, sem canal e sem
+   * `sameAs`, nao ha o que o buscador reconheca como "Cinerie" — que e o que
+   * sustenta o painel de marca e os sitelinks de marca.
+   *
+   * Cada propriedade aqui aponta para uma pagina que EXISTE e repete um fato que
+   * o site ja publica. O guarda cruza as duas pontas: a home referencia a rota
+   * pela constante, e a pagina de destino tem a ancora citada.
+   */
+  it('identidade da marca: transparência de publicador apontando para páginas reais', () => {
+    const code = withoutComments(read(HOME_REL))
+    for (const [prop, route] of [
+      ['correctionsPolicy', 'EDITORIAL_POLICY_PATH'],
+      ['ownershipFundingInfo', 'ABOUT_PATH'],
+      ['actionableFeedbackPolicy', 'CONTACT_PATH'],
+      ['masthead', 'AUTHORS_INDEX_PATH'],
+    ] as const) {
+      expect(code, `${prop} monta a URL pela rota`).toMatch(
+        new RegExp(`${prop}: \`\\$\\{SITE_URL\\}\\$\\{${route}\\}`),
+      )
+    }
+    // A ancora do `correctionsPolicy` tem de existir na politica editorial —
+    // renomear o `id` la quebra a URL que a home afirma aqui.
+    expect(read('apps/web/app/pt/politica-editorial/page.tsx')).toContain('id="erros-e-pedidos"')
+    // Quem responde pela Cinerie: os MESMOS fatos de /pt/sobre/, nunca inventados.
+    expect(code).toContain('legalName: SITE_CONTROLLER.name')
+    expect(code).toContain('taxID: SITE_CONTROLLER.cnpj')
+    expect(code).toContain("address: { '@type': 'PostalAddress', ...SITE_CONTROLLER_ADDRESS }")
+    expect(code).toMatch(/contactType: '/)
+  })
+
+  /**
+   * `sameAs` e o que liga o site a MESMA marca em outros lugares — e por isso
+   * mesmo nao pode ser adivinhado. So entra perfil que a Cinerie controla.
+   */
+  it('sameAs da marca: só existe quando há perfil oficial declarado', () => {
+    const code = withoutComments(read(HOME_REL))
+    expect(code).toContain(
+      "...(OFFICIAL_PROFILES.length > 0 ? { sameAs: [...OFFICIAL_PROFILES] } : {})",
+    )
+    // Enquanto a lista estiver vazia, a home nao pode emitir `sameAs` de outro jeito.
+    if (OFFICIAL_PROFILES.length === 0) {
+      expect(countMatches(code, /sameAs:/g)).toBe(1)
+    }
+    for (const profile of OFFICIAL_PROFILES) {
+      expect(profile, 'perfil oficial é URL absoluta').toMatch(/^https:\/\//)
+    }
   })
 
   it('fichas emitem @id, mainEntityOfPage e sameAs real, sem AggregateRating', () => {

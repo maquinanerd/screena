@@ -132,7 +132,8 @@ export default function EditorialPolicyPage() {
           aviso, e por isso a data da última atualização aparece junto das ofertas.
         </p>
 
-        <h2>Erros e pedidos</h2>
+        {/* A âncora é endereçada pelo `correctionsPolicy` da Organization (home). */}
+        <h2 id="erros-e-pedidos">Erros e pedidos</h2>
         <p>
           Quando a redação corrige uma matéria já publicada, a matéria passa a mostrar uma nota de
           correção, com a data e o texto da correção.
