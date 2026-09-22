@@ -26,12 +26,17 @@
 
 | Estado | Itens |
 |---|---|
-| RESOLVIDO | **44** |
+| RESOLVIDO | **45** |
 | VALIDADO | 1 |
 | NÃO APLICÁVEL | 3 |
-| DEPENDÊNCIA EXTERNA DOCUMENTADA | 10 |
+| DEPENDÊNCIA EXTERNA DOCUMENTADA | 9 |
 | PENDENTE | 0 |
 | **Total** | **58** |
+
+> Atualizado em 22/09/2026: o **B2** saiu de "dependência externa (I7)" para
+> RESOLVIDO. Ele estava atribuído à borda por uma premissa errada — "o HSTS não
+> vem do app". Vinha: o que faltava era o 308 de barra final **passar pelo
+> middleware**, que já escreve os cabeçalhos. Ver §10.1.
 
 Não sobrou PENDENTE. O último era o P10 (§7.7: dois chunks de JS com 62–67% sem
 executar). Medido em produção em 21/09/2026, os dois chunks são o **React DOM** e o
@@ -86,7 +91,7 @@ da ficha de série (P9) também saíram: ver as linhas P6 e P9.
 | ID | Achado | Ação | Arquivos | Teste | Estado |
 |---|---|---|---|---|---|
 | B1 | Raiz com 307 | 308 (destino fixo enquanto só `pt` publica) | `apps/web/middleware.ts` | `root-locale-redirect.test.ts`, `seo:audit` local (raiz) | RESOLVIDO (`3d870f7`) |
-| B2 | 308 de barra final sem HSTS | O HSTS não vem do app; ligar na borda cobre os redirects | — | conferência pós-deploy (I7) | DEPENDÊNCIA EXTERNA DOCUMENTADA (I7) |
+| B2 | 308 de barra final sem HSTS | **Era do APP, não da borda** (medido em 22/09/2026): aquele 308 vinha do roteador, DEPOIS do middleware, e saía sem cabeçalho nenhum — nem HSTS, nem CSP, nem `X-Frame-Options`. `skipTrailingSlashRedirect` + normalização no middleware, que já os escreve | `apps/web/src/lib/trailing-slash.ts`, `middleware.ts`, `next.config.ts` | `trailing-slash.test.ts`, `middleware-trailing-slash-runtime.test.ts` + matriz de 20 caminhos em servidor real | RESOLVIDO (§10.1) |
 | B3 | Dois grupos `User-agent: *` | O app emite UM (MEDIDO pelo `seo:audit` local); o segundo é o bloco gerenciado da Cloudflare — opções em I3 | — | `seo:audit` (`robots-grupo-duplicado`) | DEPENDÊNCIA EXTERNA DOCUMENTADA (I3) |
 | B4 | `lastmod` do índice por tipo, não por shard | Mantido: o índice lê só contagens e `MAX(updated_at)` por tipo; `lastmod` por shard exigiria agregar página a página a cada leitura — o custo que M2 condena | — | — | NÃO APLICÁVEL |
 | B5 | `static-1` sem `lastmod` e incompleto | `lastmod` real por hub; hubs, autores e páginas institucionais no shard | `sitemap-index.ts` | `sitemap-static-hubs.test.ts` (7 casos) | RESOLVIDO (`47a3b23`, `be6c6d1`, `5bcc5e0`) |
