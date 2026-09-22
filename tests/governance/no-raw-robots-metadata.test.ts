@@ -128,7 +128,12 @@ describe("governanca: o kill switch de indexacao nao pode ser burlado por pagina
 
   it("robots.txt e dinamico: a flag vale em runtime, sem exigir rebuild", () => {
     // Era rota Static: o valor da flag ficava assado em .next no `next build`.
-    const robotsRoute = readFileSync(path.join(appDir, "robots.ts"), "utf-8");
+    // Desde 22/09/2026 e um Route Handler (`app/robots.txt/route.ts`), porque a
+    // rota de metadados do Next nao serializa a diretiva `Content-Signal` da D7.
+    const robotsRoute = readFileSync(path.join(appDir, "robots.txt", "route.ts"), "utf-8");
     expect(robotsRoute).toMatch(/export const dynamic\s*=\s*["']force-dynamic["']/);
+    // E o handler tem de LER a env por request: uma resposta literal no arquivo
+    // seria estatica na pratica, com `force-dynamic` ou sem.
+    expect(robotsRoute).toContain("renderRobotsTxt()");
   });
 });

@@ -273,6 +273,31 @@ de treino: o bloco gerenciado da Cloudflare não está mais sendo servido. A D7
 manda mantê-lo. Se a duplicidade do I3 foi resolvida desligando o bloco, o
 bloqueio de treino saiu junto.
 
+> **RESOLVIDO em 22/09/2026 — e a decisão saiu do painel.** Reconferido em
+> produção: 161 B, um grupo só, sem `Content-Signal` e sem bloqueio de treino. A
+> Cloudflare continua bloqueando os crawlers de treino **na borda** (pelas chaves
+> individuais do "Controle de rastreamento de IA"), mas o *Bot Preference Sync*
+> ligado **não acrescenta nada ao arquivo** — medido com o cache limpo. Ou seja:
+> a aplicação existia, a **declaração** não.
+>
+> O app passou a emiti-la. `/robots.txt` deixou de ser rota de metadados do Next
+> (que só serializa `User-Agent`/`Allow`/`Disallow`/`Crawl-delay`) e virou Route
+> Handler alimentado por `renderRobotsTxt`
+> ([`apps/web/src/lib/robots-txt.ts`](../../apps/web/src/lib/robots-txt.ts)),
+> ainda `force-dynamic` e ainda com `buildRobots` como fonte das regras. A saída
+> oficial ganhou `Content-Signal: search=yes, ai-input=yes, ai-train=no` no grupo
+> `*` e um grupo `Disallow: /` para os oito tokens de treino da D7. Os nove
+> tokens de busca/resposta ao vivo **não** ganharam grupo próprio de propósito:
+> um grupo só para eles os tiraria do `*` e, com isso, do `Disallow: /api/`,
+> `/dev/` e `/admin/` — o crawler obedece a um grupo só.
+>
+> Fora da produção oficial nada disso é emitido: aquele ramo já responde
+> `Disallow: /` para `*`, que vale para todo crawler. Provas em
+> `tests/web/robots-txt-render.test.ts` (com controle negativo para a linha em
+> branco que encerraria o grupo de treino) e nas guardas de
+> `tests/governance/no-raw-robots-metadata.test.ts` e
+> `legal-docs-indexing.test.ts`.
+
 ### 10.2 A D3 não barrava ninguém — e o conserto
 
 **MEDIDO.** O sitemap publicado tem 94.415 fichas (58.169 filmes e 36.246
