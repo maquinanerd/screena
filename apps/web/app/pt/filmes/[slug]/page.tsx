@@ -4,7 +4,9 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import {
   buildMetaDescription,
   buildSameAs,
+  composeCatalogDescriptionSource,
   describeMovieFactually,
+  movieDescriptionLead,
   schemaPeople,
   serializeJsonLd,
   toIsoDuration,
@@ -21,6 +23,7 @@ import { TrailerModal } from '../../../_components/trailer-modal'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
@@ -151,11 +154,24 @@ export async function generateMetadata({
   const { view, seo, canonicalUrl, genres, cast, directors } = data
   const title =
     view.metaTitle ?? `${view.title}${view.year !== null ? ` (${view.year})` : ''} — Filme`
-  // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
-  // que a ficha ja mostra. Antes a tag simplesmente nao saia: 3 de 5 filmes
-  // amostrados pela auditoria de SEO (achado M4).
+  // A descricao COMPOSTA (22/09/2026): a descricao editorial propria, ou uma
+  // abertura com os fatos da ficha seguida da sinopse — antes era a sinopse do
+  // TMDB cortada, o mesmo snippet de todo site que reusa o TMDB. Sem sinopse no
+  // idioma publicado, a descricao e montada so com os FATOS que a ficha mostra
+  // (auditoria de SEO, achado M4: antes a tag nem saia).
   const description =
-    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      composeCatalogDescriptionSource({
+        editorial: view.editorialMetaDescription,
+        lead: movieDescriptionLead({
+          year: view.year,
+          genres,
+          directors: directors.map((person) => person.name),
+          cast: cast.map((member) => member.name),
+        }),
+        synopsis: view.metaDescription,
+      }),
+    ) ??
     buildMetaDescription(
       describeMovieFactually({
         title: view.title,
@@ -198,7 +214,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
 
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, directors, releaseDateIso } =
     data
-  const isUnderReview = seo.decision !== 'index'
+  // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
+  // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
+  const isUnderReview = isEditorialReviewPending(seo)
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')

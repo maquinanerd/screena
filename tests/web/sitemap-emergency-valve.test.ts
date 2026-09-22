@@ -38,9 +38,13 @@ import path from "node:path";
 
 /**
  * Tipos publicados hoje, derivados do que `parseShardId` aceita. Galerias sairam
- * em 2026-09-11 por decisao do dono (D1) — ver o caso (4b).
+ * em 2026-09-11 por decisao do dono (D1) — ver o caso (4b). Temporada e episodio
+ * VOLTARAM em 2026-09-22, pelo portao de conteudo: a valvula esvaziou.
  */
-const PUBLISHED = ["movies", "series", "people", "news", "static"] as const;
+const PUBLISHED = ["movies", "series", "people", "news", "static", "seasons", "episodes"] as const;
+
+/** A valvula como ela era — para exercitar o MECANISMO, que continua ligado. */
+const VALVULA_DE_2026_08_27 = ["season", "episode"] as const;
 
 /** `PageSeoResolution` minima — so o que a valvula le e reescreve. */
 function resolution(overrides: Record<string, unknown> = {}) {
@@ -80,16 +84,21 @@ describe("valvula de emergencia do sitemap — o PAR", () => {
     expect(doShard).toEqual(daPagina);
   });
 
-  it("(2) temporada e episodio estao suspensos — sao 96,36% do volume medido", () => {
-    expect([...SUSPENDED_SITEMAP_TYPES].sort()).toEqual(["episodes", "seasons"]);
+  it("(2) a valvula esta VAZIA desde 22/09/2026: temporada e episodio saem por dado", () => {
+    // Era ["episodes","seasons"] — 96,36% do volume medido em 27/08. A saida
+    // registrada pela propria valvula ("quando a Fase 3 estiver aplicada, esta
+    // lista volta a ser vazia") foi pedida pelo dono em 22/09/2026. O portao de
+    // conteudo e `evaluateSeasonQualityGate`/`evaluateEpisodeQualityGate`.
+    expect([...SUSPENDED_SITEMAP_TYPES]).toEqual([]);
+    expect([...SUSPENDED_PAGE_TYPES]).toEqual([]);
   });
 });
 
 describe("valvula — o shard suspenso responde 404", () => {
-  it("(3) `parseShardId` recusa todo shard de tipo suspenso", () => {
-    for (const type of SUSPENDED_SITEMAP_TYPES) {
-      expect(parseShardId(`sitemap-pt-BR-${type}-1.xml`)).toBeNull();
-      expect(parseShardId(`sitemap-pt-BR-${type}-42.xml`)).toBeNull();
+  it("(3) os shards de temporada e episodio voltam a ser aceitos", () => {
+    // Nomes LITERAIS: iterar a lista vazia passaria sem provar nada.
+    for (const type of ["seasons", "episodes"]) {
+      expect(parseShardId(`sitemap-pt-BR-${type}-1.xml`)).not.toBeNull();
     }
   });
 
@@ -112,8 +121,10 @@ describe("valvula — o shard suspenso responde 404", () => {
 
 describe("valvula — a meta tag, que e o que de fato desindexa", () => {
   it("(5) tipo suspenso vira noindex, FORA do sitemap, e `follow` continua ligado", () => {
-    for (const type of SUSPENDED_PAGE_TYPES) {
-      const out = applyPageSuspension(type, resolution());
+    // O MECANISMO continua ligado as paginas: religar a valvula e acrescentar o
+    // tipo as duas listas. Aqui ele e exercitado com a lista de 27/08.
+    for (const type of VALVULA_DE_2026_08_27) {
+      const out = applyPageSuspension(type, resolution(), VALVULA_DE_2026_08_27);
       expect(out.decision).toBe("noindex");
       expect(out.robots).toEqual({ index: false, follow: true });
       expect(out.includeInSitemap).toBe(false);
@@ -122,14 +133,23 @@ describe("valvula — a meta tag, que e o que de fato desindexa", () => {
   });
 
   it("(6) `follow` e deliberado: com nofollow o Google pararia de seguir os links que sustentam serie e temporada", () => {
-    const out = applyPageSuspension("episode", resolution());
+    const out = applyPageSuspension("episode", resolution(), VALVULA_DE_2026_08_27);
     expect(out.robots.follow).toBe(true);
+  });
+
+  it("(6b) com a valvula VAZIA, a pagina de temporada e episodio passa intacta", () => {
+    // E o estado de producao desde 22/09/2026: quem decide e o portao de
+    // conteudo, na resolucao que chega aqui.
+    for (const type of ["season", "episode"] as const) {
+      const antes = resolution();
+      expect(applyPageSuspension(type, antes)).toBe(antes);
+    }
   });
 
   it("(7) filme, serie e pessoa passam INTACTOS — a valvula nunca os toca", () => {
     for (const type of ["movie", "tv", "person"] as const) {
       const antes = resolution();
-      expect(applyPageSuspension(type, antes)).toBe(antes);
+      expect(applyPageSuspension(type, antes, VALVULA_DE_2026_08_27)).toBe(antes);
     }
   });
 
@@ -139,7 +159,7 @@ describe("valvula — a meta tag, que e o que de fato desindexa", () => {
     // indice — e fazendo `noindex` deixar de discriminar quem decidiu.
     for (const decision of ["blocked", "draft", "noindex"] as const) {
       const antes = resolution({ decision, reason: "motivo de quem decidiu antes" });
-      const out = applyPageSuspension("episode", antes);
+      const out = applyPageSuspension("episode", antes, VALVULA_DE_2026_08_27);
       expect(out.decision).toBe(decision);
       expect(out.reason).toBe("motivo de quem decidiu antes");
       expect(out).toBe(antes);
@@ -159,8 +179,8 @@ describe("teto declarado do sitemap", () => {
     const erro = vi.spyOn(console, "error").mockImplementation(() => {});
     const aviso = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      // Toda contagem = 100.000. Filme, serie e pessoa tem teto de 150.000 (67%);
-      // noticia tem 50.000 — so noticia estoura.
+      // Toda contagem = 100.000. Filme tem teto de 500.000, serie e pessoa de
+      // 150.000 — todos acima; noticia tem 50.000 — so noticia estoura.
       //
       // O MESMO conjunto, com o teto global antigo (6 tipos x 100.000 = 600.000
       // contra 300.000), produzia um index VAZIO. E essa a diferenca sob teste.
@@ -187,6 +207,17 @@ describe("teto declarado do sitemap", () => {
     expect(SITEMAP_TYPE_URL_CEILING.movies).toBeGreaterThan(34_799);
     expect(SITEMAP_TYPE_URL_CEILING.series).toBeGreaterThan(32_392);
     expect(SITEMAP_TYPE_URL_CEILING.imagens).toBeGreaterThan(43_155);
+    // Medido em 22/09/2026, com os arquivos de 10.000 URLs: 59.612 filmes e 32.328
+    // series. O teto de filme precisa de folga de MESES sobre o ritmo de ~1.800 por
+    // dia: o alerta de 80% nao pode estar a semanas do volume de hoje.
+    expect(SITEMAP_TYPE_URL_CEILING.movies * 0.8).toBeGreaterThan(59_612 + 1_800 * 120);
+    expect(SITEMAP_TYPE_URL_CEILING.series).toBeGreaterThan(32_328);
+    // Temporada e episodio voltaram em 2026-09-22 pelo portao de conteudo. O
+    // teto fica acima do DOBRO da estimativa ponderada daquele dia (amostra de
+    // 219 series: ~109 mil episodios, ~6,6 mil temporadas) — a cauda pesada de
+    // series longas nao cabe numa amostra.
+    expect(SITEMAP_TYPE_URL_CEILING.episodes).toBeGreaterThan(109_089 * 2);
+    expect(SITEMAP_TYPE_URL_CEILING.seasons).toBeGreaterThan(6_643 * 2);
   });
 });
 
@@ -195,16 +226,21 @@ describe("gate de pessoa no SQL — biografia exibivel e foto", () => {
     path.join(REPO_ROOT, "apps", "web", "src", "server", "seo", "sitemap-index.ts"),
   );
 
-  it("(12) as DUAS consultas de pessoa (contagem e pagina) exigem biografia e foto", () => {
+  it("(12) as DUAS consultas de pessoa (contagem e pagina) exigem foto e escolhem o piso pela biografia", () => {
     // Duas copias do WHERE: se so uma ganhar o gate, o index anuncia N shards
-    // que a pagina nao consegue preencher.
+    // que a pagina nao consegue preencher. Desde 22/09/2026 (D2) a biografia nao
+    // e mais um AND: ela so baixa o piso de obras no indice para 1 — sem ela, a
+    // filmografia sustenta a pagina a partir de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY.
     for (const predicado of [
-      "AND BTRIM(COALESCE(p.biography, '')) <> ''",
-      "AND p.biography_source_status::text IN ('official','licensed','third_party')",
       "AND BTRIM(COALESCE(p.profile_path, '')) <> ''",
+      "WHEN BTRIM(COALESCE(p.biography, '')) <> ''",
+      "AND p.biography_source_status::text IN ('official','licensed','third_party')",
+      "ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}",
     ]) {
-      expect(fonte.split(predicado).length - 1).toBe(2);
+      expect(fonte.split(predicado).length - 1, predicado).toBe(2);
     }
+    // A biografia como AND solto seria a regra antiga — que barrava todo mundo.
+    expect(fonte).not.toContain("\n        AND BTRIM(COALESCE(p.biography, '')) <> ''");
   });
 
   it("(13) a licenca da bio nao pode ser esquecida: texto sem status liberado nao conta (invariante 6)", () => {

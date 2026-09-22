@@ -59,7 +59,9 @@ export async function generateMetadata({
   const title = metaTitleOf(author)
   const description = buildMetaDescription(describeAuthorProfile(author))
   return {
-    title,
+    // `absolute`: o título já traz a marca ("…: matérias na Cinerie"). Pelo
+    // template do layout (`%s | Cinerie`) a aba saía "… na Cinerie | Cinerie".
+    title: { absolute: title },
     description,
     robots: publicRobots(true),
     alternates: { canonical: canonicalUrl },

@@ -7,6 +7,7 @@ import {
   resolveLocale,
   rootRedirectPath,
 } from "./src/lib/root-locale";
+import { needsTrailingSlash } from "./src/lib/trailing-slash";
 
 /**
  * Middleware de locale + REDIRECTS PERSISTIDOS do app publico @screena/web.
@@ -202,6 +203,21 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   if (persisted !== null) {
     const destination = new URL(persisted.location, request.nextUrl.origin);
     return withSecurityHeaders(NextResponse.redirect(destination, persisted.statusCode));
+  }
+
+  // A barra final passa a ser resolvida AQUI, depois do redirect persistido
+  // (para nao mudar a ordem de consulta que ja existia) e antes do `next()`.
+  // Ver `needsTrailingSlash`: o 308 do roteador saia sem cabecalho de seguranca
+  // nenhum, porque ele descarta a resposta do middleware.
+  if (needsTrailingSlash(request.nextUrl.pathname)) {
+    // `URL` padrao, NAO `request.nextUrl.clone()`. Com
+    // `skipTrailingSlashRedirect`, o `NextURL` reformata o caminho na hora de
+    // serializar e DEVOLVE a barra que acabamos de acrescentar: o `Location`
+    // saia identico a URL pedida, e o navegador entrava em laco infinito.
+    // Medido num servidor real antes de existir este comentario.
+    const url = new URL(request.url);
+    url.pathname = `${url.pathname}/`;
+    return withSecurityHeaders(NextResponse.redirect(url, 308));
   }
 
   const locale = resolveLocale(request.nextUrl.pathname);

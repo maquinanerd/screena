@@ -51,10 +51,14 @@ import {
   describeSitemapCeilingVerdict,
   evaluateSitemapCeilings,
   evaluateSitemapTypeCeiling,
+  MIN_SEASON_EPISODES_WITH_SYNOPSIS,
+  MIN_SYNOPSIS_CHARS,
   renderSitemapIndex,
   renderUrlset,
   SITEMAP_CONTENT_TYPE,
   SITEMAP_URL_LIMIT,
+  MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY,
+  SYNOPSIS_TRIM_CHARS,
   TMDB_FALLBACK_SLUG_SQL_PATTERN,
   type SitemapCeilingReport,
   type SitemapIndexXmlEntry,
@@ -190,15 +194,22 @@ const SUPPORTED_ENTITY_TYPES: readonly EntitySitemapType[] = [
  * pelo DADO (episodio COM sinopse indexa; sem sinopse nao) e esta lista volta a
  * ser vazia. `sitemap-emergency-valve.test.ts` documenta a saida.
  *
+ * MORREU EM 22/09/2026, a pedido do dono. Temporada e episodio voltam ao
+ * sitemap pelo portao de CONTEUDO (`evaluateSeasonQualityGate` e
+ * `evaluateEpisodeQualityGate`, em `@screena/seo`), com o mesmo texto nas
+ * consultas abaixo. Medido em producao no mesmo dia: de 112 episodios
+ * sorteados, 18 tinham sinopse de verdade (todos com imagem propria); das 40
+ * temporadas, uma tinha sinopse propria. Estimativa ponderada pelo tamanho de
+ * cada serie: ~109 mil episodios e ~6,6 mil temporadas passam — contra os
+ * 3.921.542 que a valvula tirou. A lista fica, vazia, como ferramenta de
+ * emergencia: o par da pagina (`suspended-pages.ts`) continua ligado a ela.
+ *
  * O par obrigatorio: sair do sitemap NAO desindexa o que o Google ja pegou.
  * Estes mesmos tipos passam a emitir `noindex, follow` na propria pagina — ver
  * `apps/web/src/server/seo/suspended-pages.ts`. As duas coisas, ou nenhuma
  * resolve.
  */
-export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [
-  "seasons",
-  "episodes",
-];
+export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [];
 
 /**
  * FORA DO SITEMAP POR DECISAO DO DONO — D1, 2026-09-11
@@ -305,10 +316,19 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * tipo acima do teto NAO e cortado nas primeiras N URLs: publicar um recorte que
  * ninguem escolheu seria pior do que nao publicar o tipo.
  *
- * Filme e serie ficam em ~4x o volume medido em 2026-08-27 (34.799 e 32.392) — a
+ * Filme e serie ficaram em ~4x o volume medido em 2026-08-27 (34.799 e 32.392) — a
  * mesma ordem de folga do teto global, agora sem que o crescimento de um tipo
- * consuma a folga do outro. Pessoa tem o teto de filme de proposito: o portao de
- * pessoa (decisao do dono D2) vai abrir, e o 0 medido nao e um volume.
+ * consuma a folga do outro. Pessoa tem o teto de 150.000 de proposito: o portao
+ * de pessoa (decisao do dono D2) vai abrir, e o 0 medido nao e um volume.
+ *
+ * FILME SUBIU PARA 500.000 EM 22/09/2026, por crescimento LEGITIMO medido. O
+ * sitemap de filmes foi de 34.799 (27/08) para 57.834 (21/09) e 59.612 (22/09):
+ * +1.778 URLs num dia, com o catalogo sendo ingerido e a D3 ja aplicada. Nesse
+ * ritmo, os 150.000 chegariam em menos de dois meses, e o corte fail-closed
+ * tiraria TODOS os filmes do sitemap de uma vez — o tipo mais valioso do site. A
+ * 500.000, o alerta de 80% (400.000) fica a meses de distancia e o teto continua
+ * detector de anomalia: um salto ate ele seria ~8x o volume de hoje. Serie ficou
+ * em 150.000 porque cresce ~180 URLs por dia (32.145 -> 32.328 no mesmo dia).
  *
  * Tipos suspensos (temporada, episodio) e tipos fora do sitemap por decisao do
  * dono tambem tem teto declarado: se voltarem a publicar, voltam com o detector
@@ -319,12 +339,16 @@ const ALL_TYPES: readonly string[] = [...ENTITY_TYPES, "static"];
  * crescimento e a politica por DADO de cada tipo, nao um numero maior aqui.
  */
 export const SITEMAP_TYPE_URL_CEILING: Readonly<Record<EntitySitemapType, number>> = Object.freeze({
-  movies: 150_000,
+  movies: 500_000,
   series: 150_000,
   people: 150_000,
   news: 50_000,
   seasons: 150_000,
-  episodes: 150_000,
+  // Episodio: ~109 mil estimados em 22/09/2026 (amostra ponderada de 219
+  // series), com cauda pesada — serie de milhares de episodios quase nunca cai
+  // numa amostra. 400 mil cobre ate ~3,7x a estimativa e ainda reprova o evento
+  // de 2026-08-27 (3.793.672) por 9,5x.
+  episodes: 400_000,
   imagens: 150_000,
   videos: 150_000,
 });
@@ -536,38 +560,57 @@ async function aggregateEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
-        -- VALVULA 2026-08-27 (ver SUSPENDED_SITEMAP_TYPES): pessoa sem
-        -- biografia EXIBIVEL ou sem foto rende uma ficha de ~52 palavras dentro
-        -- de <main> — nome, papel e uma lista de links. Medido em 2026-08-27:
-        -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS
-        -- predicados que o produtor da Fase 3 usa para decidir no_biography /
-        -- no_image (services/ingestion/src/persistence/indexability-writer.ts),
-        -- escritos aqui para nao dependerem de o produtor ja ter rodado.
-        -- Texto E licenca: a coluna de governanca nasce unknown, e bio ingerida
-        -- sem liberacao nao aparece na tela (invariante 6).
+        -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
+        -- foto E conteudo proprio suficiente. Biografia EXIBIVEL com ao menos uma
+        -- obra no indice, OU uma filmografia de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY
+        -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
+        -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
+        -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
+        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
+        -- titulo original, portao de localizacao D3 e decisao efetiva index.
+        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
+        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
-        AND BTRIM(COALESCE(p.biography, '')) <> ''
-        AND p.biography_source_status::text IN ('official','licensed','third_party')
         AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-        AND EXISTS (
-          SELECT 1 FROM cast_members cm
-          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE cm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-          UNION ALL
-          SELECT 1 FROM crew_members rm
-          JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE rm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-        )
+        AND (
+          SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM (
+              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
+              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+              UNION
+              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
+              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            ) obra
+            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
+              AND ws.language_code = ${language} AND ws.is_canonical = true
+            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
+            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
+            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+              AND NOT (
+                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+                AND NOT EXISTS (
+                  SELECT 1 FROM entity_translations et
+                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
+                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                      OR BTRIM(COALESCE(et.summary, '')) <> ''
+                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+                )
+              )
+              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
+                  AND wd.language_code = ${language} AND wd.is_current = true
+                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+          ) obras_no_indice
+        ) >= CASE
+          WHEN BTRIM(COALESCE(p.biography, '')) <> ''
+            AND p.biography_source_status::text IN ('official','licensed','third_party')
+          THEN 1
+          ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+        END
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -596,6 +639,43 @@ async function aggregateEntity(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DA TEMPORADA (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse propria, OU um guia de ao menos
+        -- MIN_SEASON_EPISODES_WITH_SYNOPSIS episodios com sinopse de verdade. E o
+        -- portao da pagina (evaluateSeasonQualityGate). Especiais (temporada 0)
+        -- nao tem rota publica.
+        AND se.season_number >= 1
+        AND (
+          char_length(BTRIM(COALESCE(se.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+          OR (
+            SELECT COUNT(*) FROM (
+              SELECT 1 FROM episodes ep
+              WHERE ep.season_id = se.id
+                AND char_length(BTRIM(COALESCE(ep.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+              LIMIT ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+            ) guia
+          ) >= ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'season' AND d.entity_id = se.id
             AND d.language_code = ${language} AND d.is_current = true
@@ -609,6 +689,32 @@ async function aggregateEntity(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DO EPISODIO (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse de verdade E imagem propria. E o portao
+        -- da pagina (evaluateEpisodeQualityGate).
+        AND se.season_number >= 1 AND e.episode_number >= 1
+        AND char_length(BTRIM(COALESCE(e.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+        AND BTRIM(COALESCE(e.still_path, '')) <> ''
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'episode' AND d.entity_id = e.id
             AND d.language_code = ${language} AND d.is_current = true
@@ -865,38 +971,57 @@ async function pageEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
-        -- VALVULA 2026-08-27 (ver SUSPENDED_SITEMAP_TYPES): pessoa sem
-        -- biografia EXIBIVEL ou sem foto rende uma ficha de ~52 palavras dentro
-        -- de <main> — nome, papel e uma lista de links. Medido em 2026-08-27:
-        -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS
-        -- predicados que o produtor da Fase 3 usa para decidir no_biography /
-        -- no_image (services/ingestion/src/persistence/indexability-writer.ts),
-        -- escritos aqui para nao dependerem de o produtor ja ter rodado.
-        -- Texto E licenca: a coluna de governanca nasce unknown, e bio ingerida
-        -- sem liberacao nao aparece na tela (invariante 6).
+        -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
+        -- foto E conteudo proprio suficiente. Biografia EXIBIVEL com ao menos uma
+        -- obra no indice, OU uma filmografia de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY
+        -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
+        -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
+        -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
+        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
+        -- titulo original, portao de localizacao D3 e decisao efetiva index.
+        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
+        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
-        AND BTRIM(COALESCE(p.biography, '')) <> ''
-        AND p.biography_source_status::text IN ('official','licensed','third_party')
         AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-        AND EXISTS (
-          SELECT 1 FROM cast_members cm
-          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE cm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-          UNION ALL
-          SELECT 1 FROM crew_members rm
-          JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE rm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-        )
+        AND (
+          SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM (
+              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
+              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+              UNION
+              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
+              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            ) obra
+            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
+              AND ws.language_code = ${language} AND ws.is_canonical = true
+            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
+            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
+            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+              AND NOT (
+                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+                AND NOT EXISTS (
+                  SELECT 1 FROM entity_translations et
+                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
+                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                      OR BTRIM(COALESCE(et.summary, '')) <> ''
+                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+                )
+              )
+              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
+                  AND wd.language_code = ${language} AND wd.is_current = true
+                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+          ) obras_no_indice
+        ) >= CASE
+          WHEN BTRIM(COALESCE(p.biography, '')) <> ''
+            AND p.biography_source_status::text IN ('official','licensed','third_party')
+          THEN 1
+          ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+        END
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -1011,6 +1136,7 @@ async function pageSeasonEpisode(
   offset: number,
   coverage: DecisionCoverage,
 ): Promise<SitemapXmlUrl[]> {
+  const absentTv = absentDecisionFor(coverage, "tv");
   const absentSeason = absentDecisionFor(coverage, "season");
   const absentEpisode = absentDecisionFor(coverage, "episode");
   if (type === "seasons") {
@@ -1023,6 +1149,43 @@ async function pageSeasonEpisode(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DA TEMPORADA (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse propria, OU um guia de ao menos
+        -- MIN_SEASON_EPISODES_WITH_SYNOPSIS episodios com sinopse de verdade. E o
+        -- portao da pagina (evaluateSeasonQualityGate). Especiais (temporada 0)
+        -- nao tem rota publica.
+        AND se.season_number >= 1
+        AND (
+          char_length(BTRIM(COALESCE(se.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+          OR (
+            SELECT COUNT(*) FROM (
+              SELECT 1 FROM episodes ep
+              WHERE ep.season_id = se.id
+                AND char_length(BTRIM(COALESCE(ep.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+              LIMIT ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+            ) guia
+          ) >= ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'season' AND d.entity_id = se.id
             AND d.language_code = ${language} AND d.is_current = true
@@ -1042,19 +1205,45 @@ async function pageSeasonEpisode(
       lastmod: Date | null;
     }[]
   >`
-    SELECT s.slug AS series_slug, se.season_number AS season_number,
-           e.episode_number AS episode_number, e.updated_at AS lastmod
-    FROM episodes e
-    JOIN seasons se ON se.id = e.season_id
-    JOIN tv_shows t ON t.id = e.tv_show_id
-    JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
-      AND s.language_code = ${language} AND s.is_canonical = true
-    WHERE BTRIM(t.name_original) <> ''
-      AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
-        WHERE d.entity_type = 'episode' AND d.entity_id = e.id
-          AND d.language_code = ${language} AND d.is_current = true
-        LIMIT 1), ${absentEpisode}) = 'index'
-    ORDER BY e.id ASC LIMIT ${limit} OFFSET ${offset}`;
+      SELECT s.slug AS series_slug, se.season_number AS season_number,
+             e.episode_number AS episode_number, e.updated_at AS lastmod
+      FROM episodes e
+      JOIN seasons se ON se.id = e.season_id
+      JOIN tv_shows t ON t.id = e.tv_show_id
+      JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+        AND s.language_code = ${language} AND s.is_canonical = true
+      WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DO EPISODIO (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse de verdade E imagem propria. E o portao
+        -- da pagina (evaluateEpisodeQualityGate).
+        AND se.season_number >= 1 AND e.episode_number >= 1
+        AND char_length(BTRIM(COALESCE(e.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+        AND BTRIM(COALESCE(e.still_path, '')) <> ''
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
+          WHERE d.entity_type = 'episode' AND d.entity_id = e.id
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentEpisode}) = 'index'
+      ORDER BY e.id ASC LIMIT ${limit} OFFSET ${offset}`;
   return rows
     .map((row) =>
       seasonEpisodeUrl(

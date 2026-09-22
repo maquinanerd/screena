@@ -5,9 +5,11 @@ import type { ReactNode } from 'react'
 import {
   buildMetaDescription,
   buildSameAs,
+  composeCatalogDescriptionSource,
   describeSeriesFactually,
   schemaPeople,
   serializeJsonLd,
+  seriesDescriptionLead,
 } from '@screena/seo'
 
 import { EntityActions } from '../../../_components/entity-actions'
@@ -19,6 +21,7 @@ import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
@@ -192,8 +195,20 @@ export async function generateMetadata({
     `${view.title}${view.periodLabel !== null ? ` (${view.periodLabel})` : ''} — Série`
   // Sem sinopse propria no idioma publicado, a descricao e montada com os FATOS
   // que a ficha ja mostra — antes a tag nao saia (auditoria de SEO, achado M4).
+  // A descricao COMPOSTA (22/09/2026) — ver a nota gemea na ficha de filme.
   const description =
-    buildMetaDescription(view.metaDescription) ??
+    buildMetaDescription(
+      composeCatalogDescriptionSource({
+        editorial: view.editorialMetaDescription,
+        lead: seriesDescriptionLead({
+          periodLabel: view.periodLabel,
+          genres,
+          seasonsCount: view.seasonsCount,
+          cast: cast.map((member) => member.name),
+        }),
+        synopsis: view.metaDescription,
+      }),
+    ) ??
     buildMetaDescription(
       describeSeriesFactually({
         title: view.title,
@@ -242,7 +257,9 @@ export default async function SeriesPage({
 
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, firstAirDateIso, lastAirDateIso, ended } =
     data
-  const isUnderReview = seo.decision !== 'index'
+  // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
+  // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
+  const isUnderReview = isEditorialReviewPending(seo)
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')

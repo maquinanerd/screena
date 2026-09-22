@@ -15,6 +15,7 @@ import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { Filmography } from '../../../_components/filmography'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import {
   formatHiddenCreditsNotice,
@@ -206,7 +207,9 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
   const { view, entityId, seo, canonicalUrl, relatedNews, externalIds, gallery } = data
-  const isUnderReview = seo.decision !== 'index'
+  // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
+  // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
+  const isUnderReview = isEditorialReviewPending(seo)
   const personalDetails = collectPersonalDetails(view)
   const biography = [
     view.metaDescription,

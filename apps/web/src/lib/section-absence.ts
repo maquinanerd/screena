@@ -47,6 +47,8 @@ export type SectionKey =
   | "imagens-do-episodio"
   /** Trailer de uma TEMPORADA — `tmdb_videos` com `entity_type='season'`. */
   | "trailer-da-temporada"
+  /** Trailer de um EPISÓDIO — `tmdb_videos` com `entity_type='episode'`. */
+  | "trailer-do-episodio"
   | "noticias"
   /** Biografia da pessoa (tela 09) — o parágrafo de 68ch do cabeçalho. */
   | "biografia"
@@ -108,6 +110,14 @@ export type SectionAbsenceReason =
    * temporada coleta, `catalog promote:media` acende. Nenhum é deploy.
    */
   | "no_season_trailer"
+  /**
+   * Nenhum `Trailer`/`Teaser` do EPISÓDIO passou no gate.
+   *
+   * NÃO acionável: a maioria dos episódios não tem trailer na fonte. Diferente
+   * da temporada, a ausência aqui é o caso comum — um alarme por episódio sem
+   * trailer seria ruído em milhões de páginas.
+   */
+  | "no_episode_trailer"
   /** Nenhuma nota sobreviveu ao gate de licenca/credito/frescor. */
   | "no_authorized_rating"
   /**

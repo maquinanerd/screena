@@ -279,8 +279,12 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(home).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
   })
 
-  it('preserva Organization e WebSite em JSON-LD', () => {
-    expect(home).toMatch(/['"]@type['"]:\s*['"]Organization['"]/)
+  it('preserva a organização e o WebSite em JSON-LD', () => {
+    // `NewsMediaOrganization` (22/09/2026) e SUBTIPO de `Organization`: o no de
+    // identidade continua sendo um so, e ganhou as propriedades de transparencia
+    // de publicador. A forma do grafo e travada em
+    // `tests/governance/home-seo-identity.test.ts`.
+    expect(home).toMatch(/['"]@type['"]:\s*['"](?:News(?:Media)?)?Organization['"]/)
     expect(home).toMatch(/['"]@type['"]:\s*['"]WebSite['"]/)
     expect(home.match(/application\/ld\+json/g)).toHaveLength(2)
     expect(home).not.toMatch(/SearchAction|AggregateRating/)

@@ -62,33 +62,62 @@ export interface CrewGroupView {
 /**
  * Rótulos em pt-BR das funções que a página de episódio nomeia.
  *
- * Deliberadamente CURTO. Traduzir as ~400 funções do TMDB seria um dicionário
- * que envelhece sozinho; as que importam numa ficha de episódio são poucas, e
- * o resto aparece com o nome original — que é informação verdadeira, só não
- * traduzida.
+ * Continua CURTO de propósito: traduzir as ~400 funções do TMDB seria um
+ * dicionário que envelhece sozinho, e função sem tradução segue aparecendo com o
+ * nome original — informação verdadeira, só não traduzida. O que mudou em
+ * 22/09/2026 é QUAIS entram aqui: as funções CRIATIVAS que uma ficha técnica
+ * nomeia (autoria, produção, fotografia, montagem, música, elenco, arte,
+ * figurino). Medido em produção no 1x1 de "Terra da Máfia": com 74 pessoas na
+ * equipe, os oito grupos da ficha eram `"A" Camera Operator`, `Additional
+ * Photography`, `Assistant Production Coordinator`, `Boom Operator`,
+ * `Casting`… — em inglês, e escolhidos pela ordem alfabética do rótulo.
  */
 const JOB_LABELS: Readonly<Record<string, string>> = {
   Director: "Direção",
   Writer: "Roteiro",
   Screenplay: "Roteiro",
+  Teleplay: "Roteiro para TV",
   Story: "Argumento",
+  Novel: "Romance original",
+  Characters: "Personagens",
   "Executive Producer": "Produção executiva",
+  "Co-Executive Producer": "Coprodução executiva",
   Producer: "Produção",
+  "Co-Producer": "Coprodução",
+  "Associate Producer": "Produção associada",
+  "Supervising Producer": "Supervisão de produção",
+  "Consulting Producer": "Consultoria de produção",
+  "Line Producer": "Produção de linha",
   "Director of Photography": "Direção de fotografia",
   Editor: "Montagem",
   "Original Music Composer": "Trilha sonora",
+  Music: "Música",
+  "Music Supervisor": "Supervisão musical",
+  Casting: "Seleção de elenco",
+  "Casting Director": "Direção de elenco",
+  "Production Design": "Design de produção",
+  "Art Direction": "Direção de arte",
+  "Set Decoration": "Decoração de cenário",
+  "Costume Design": "Figurino",
+  "Makeup Artist": "Maquiagem",
+  "Visual Effects Supervisor": "Supervisão de efeitos visuais",
+  "Sound Designer": "Desenho de som",
+  "Stunt Coordinator": "Coordenação de dublês",
+  "Script Supervisor": "Continuidade",
+  "First Assistant Director": "Assistência de direção",
   "Series Composition": "Composição da série",
-  Teleplay: "Teleplay",
-  "Co-Executive Producer": "Coprodução executiva",
+  "Animation Director": "Direção de animação",
 };
 
 /**
  * Ordem de exibição das funções.
  *
- * Direção e roteiro primeiro porque são a autoria do episódio — é o que muda
- * de um episódio para o outro e o que o leitor veio conferir. O resto segue em
- * ordem alfabética do rótulo, que é estável e não exige manter uma lista
- * completa.
+ * Direção e roteiro primeiro porque são a autoria do episódio — é o que muda de
+ * um episódio para o outro e o que o leitor veio conferir. Depois, as outras
+ * funções CRIATIVAS, na ordem de uma ficha técnica: produção, fotografia,
+ * montagem, música, elenco, arte, figurino. É esta lista que decide quem cabe
+ * no teto de grupos da página; fora dela, a ordem é a alfabética do rótulo,
+ * estável, e o teto corta dali.
  */
 const JOB_ORDER: readonly string[] = [
   "Director",
@@ -96,6 +125,21 @@ const JOB_ORDER: readonly string[] = [
   "Screenplay",
   "Teleplay",
   "Story",
+  "Novel",
+  "Series Composition",
+  "Executive Producer",
+  "Co-Executive Producer",
+  "Producer",
+  "Director of Photography",
+  "Editor",
+  "Original Music Composer",
+  "Music",
+  "Casting",
+  "Casting Director",
+  "Production Design",
+  "Art Direction",
+  "Costume Design",
+  "Animation Director",
 ];
 
 function trimToNull(value: string | null | undefined): string | null {

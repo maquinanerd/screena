@@ -42,7 +42,13 @@
       "@screena/news-ingestion": ["services/news-ingestion/src/index.ts"],
       "@screena/tmdb-client": ["api-clients/tmdb/src/index.ts"],
       "@screena/rapidapi-core": ["api-clients/rapidapi-core/src/index.ts"],
-      "@screena/omdb-client": ["api-clients/omdb/src/index.ts"]
+      "@screena/omdb-client": ["api-clients/omdb/src/index.ts"],
+      // `next` so esta instalado em `apps/web`: um teste em `tests/` procura o
+      // pacote no node_modules da RAIZ e nao acha. Sem esta linha nenhum teste
+      // consegue EXECUTAR o middleware — e foi executando que se achou o laco de
+      // redirect que arquivo, tipo e build deixaram passar. Espelha o alias de
+      // `vitest.config.ts`: os dois andam juntos (CLAUDE.md §8).
+      "next/server": ["apps/web/node_modules/next/server.d.ts"]
     }
   }
 }

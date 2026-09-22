@@ -26,12 +26,17 @@
 
 | Estado | Itens |
 |---|---|
-| RESOLVIDO | **44** |
+| RESOLVIDO | **45** |
 | VALIDADO | 1 |
 | NÃO APLICÁVEL | 3 |
-| DEPENDÊNCIA EXTERNA DOCUMENTADA | 10 |
+| DEPENDÊNCIA EXTERNA DOCUMENTADA | 9 |
 | PENDENTE | 0 |
 | **Total** | **58** |
+
+> Atualizado em 22/09/2026: o **B2** saiu de "dependência externa (I7)" para
+> RESOLVIDO. Ele estava atribuído à borda por uma premissa errada — "o HSTS não
+> vem do app". Vinha: o que faltava era o 308 de barra final **passar pelo
+> middleware**, que já escreve os cabeçalhos. Ver §10.1.
 
 Não sobrou PENDENTE. O último era o P10 (§7.7: dois chunks de JS com 62–67% sem
 executar). Medido em produção em 21/09/2026, os dois chunks são o **React DOM** e o
@@ -78,7 +83,7 @@ da ficha de série (P9) também saíram: ver as linhas P6 e P9.
 | M10 | Cobertura editorial desigual entre títulos populares | Produção de `content_blocks` é offline, com revisão humana; um agente não gera nem publica bloco para cumprir auditoria (invariantes 12 e 13) | — | — | DEPENDÊNCIA EXTERNA DOCUMENTADA (produção editorial) |
 | M11 | "Onde assistir" vazio em 6/6 títulos correntes | A ficha diz a verdade quando a oferta está retida, e o lote de promoção passou a avançar sobre o pendente. A COBERTURA depende da ingestão licenciada | `src/server/entity-watch.ts`, `services/streaming/src/persistence/watch-review-store.ts` | `watch-absence-reason.test.ts` | DEPENDÊNCIA EXTERNA DOCUMENTADA (cobertura de dados) — código: `f0622d1`, `7799113` |
 | M12 | FAQ ausente em 100% da amostra | Não há bloco `faq` com prompt, payload e revisão ativos, e FAQ genérico escrito para a auditoria é proibido. `FAQPage` só com FAQ visível | — | — | DEPENDÊNCIA EXTERNA DOCUMENTADA (produção editorial) |
-| M13 | `/pt/pessoas/` abria com perfis sem biografia | D2: perfis aptos (biografia exibível + foto) primeiro, depois o nome | `src/server/entity-indexes.ts` | `validate:entity-indexes` (18, 21: controle) | RESOLVIDO (`e665405`) |
+| M13 | `/pt/pessoas/` abria com perfis sem biografia | D2: perfis aptos (biografia exibível + foto) primeiro, depois o nome. **Reaberto em 22/09/2026 (§10.6):** nenhum perfil era apto, e a página abria com nomes em hangul; agora abre com os aptos do elenco principal dos títulos populares | `src/server/entity-indexes.ts` | `validate:entity-indexes` (18, 21), `validate:person-eligibility` (20–22) | RESOLVIDO (`e665405`; §10.6) |
 | M14 | Notícia sem `dateModified` visível e sem `about`/`mentions` | "Atualizada em" visível em dia posterior; `mentions` das entidades citadas; `about` NÃO emitido (o banco não marca o assunto) | `news-presenter.ts`, `app/pt/noticias/[slug]/page.tsx`, `article-technical-seo.ts` | `news-presenter.test.ts`, `article-jsonld-attribution.test.ts` | RESOLVIDO (`be6c6d1`) |
 
 ## 4. Achados baixos (auditoria §5)
@@ -86,7 +91,7 @@ da ficha de série (P9) também saíram: ver as linhas P6 e P9.
 | ID | Achado | Ação | Arquivos | Teste | Estado |
 |---|---|---|---|---|---|
 | B1 | Raiz com 307 | 308 (destino fixo enquanto só `pt` publica) | `apps/web/middleware.ts` | `root-locale-redirect.test.ts`, `seo:audit` local (raiz) | RESOLVIDO (`3d870f7`) |
-| B2 | 308 de barra final sem HSTS | O HSTS não vem do app; ligar na borda cobre os redirects | — | conferência pós-deploy (I7) | DEPENDÊNCIA EXTERNA DOCUMENTADA (I7) |
+| B2 | 308 de barra final sem HSTS | **Era do APP, não da borda** (medido em 22/09/2026): aquele 308 vinha do roteador, DEPOIS do middleware, e saía sem cabeçalho nenhum — nem HSTS, nem CSP, nem `X-Frame-Options`. `skipTrailingSlashRedirect` + normalização no middleware, que já os escreve | `apps/web/src/lib/trailing-slash.ts`, `middleware.ts`, `next.config.ts` | `trailing-slash.test.ts`, `middleware-trailing-slash-runtime.test.ts` + matriz de 20 caminhos em servidor real | RESOLVIDO (§10.1) |
 | B3 | Dois grupos `User-agent: *` | O app emite UM (MEDIDO pelo `seo:audit` local); o segundo é o bloco gerenciado da Cloudflare — opções em I3 | — | `seo:audit` (`robots-grupo-duplicado`) | DEPENDÊNCIA EXTERNA DOCUMENTADA (I3) |
 | B4 | `lastmod` do índice por tipo, não por shard | Mantido: o índice lê só contagens e `MAX(updated_at)` por tipo; `lastmod` por shard exigiria agregar página a página a cada leitura — o custo que M2 condena | — | — | NÃO APLICÁVEL |
 | B5 | `static-1` sem `lastmod` e incompleto | `lastmod` real por hub; hubs, autores e páginas institucionais no shard | `sitemap-index.ts` | `sitemap-static-hubs.test.ts` (7 casos) | RESOLVIDO (`47a3b23`, `be6c6d1`, `5bcc5e0`) |
@@ -267,11 +272,65 @@ ainda responde 200, sem redirect), **I2** (a borda responde `cf-cache-status: DY
 sem Cache Rule), **I5** (`cinerie.com` não tem registro MX, e `/pt/privacidade/`
 já publica `privacidade@` e `contato@`) e **I7**.
 
+> **Reconferido em 22/09/2026 — I1, I2 e I5 saíram; o I7 era do APP.** Medido em
+> produção: `https://www.cinerie.com/pt/` responde **301** para o apex; o índice
+> de sitemaps volta da borda em vez de `DYNAMIC`; e `cinerie.com` tem MX
+> (`route1/2/3.mx.cloudflare.net`), com `contato@` e `privacidade@` entregando.
+>
+> O **I7** não era só uma chave de borda desligada. O `curl` era bloqueado nesta
+> máquina e o navegador não expõe cabeçalho de redirect — por isso ninguém tinha
+> visto o que um `fetch` com `redirect: "manual"` mostra:
+>
+> | Requisição | Status | HSTS | CSP | Quem respondeu |
+> |---|---|---|---|---|
+> | `https://cinerie.com/` | 308 → `/pt/` | sim | sim | middleware |
+> | `https://cinerie.com/pt/filmes` | 308 → `/pt/filmes/` | **não** | **não** | roteador do Next |
+>
+> O 308 de barra final vinha de `trailingSlash: true`, resolvido pelo roteador
+> **depois** do middleware: ele descarta a resposta do `next()` — e com ela todos
+> os cabeçalhos —, e os `headers()` do `next.config.ts` também não alcançam um
+> redirect interno. Não faltava só o HSTS: faltavam CSP, `X-Frame-Options`,
+> `X-Content-Type-Options` e `Referrer-Policy`, em **toda** página alcançada por
+> link sem barra.
+>
+> Conserto: `skipTrailingSlashRedirect: true` e a normalização passa ao
+> middleware ([`apps/web/src/lib/trailing-slash.ts`](../../apps/web/src/lib/trailing-slash.ts)),
+> que já escreve os cabeçalhos. Conferido com uma matriz de 20 caminhos num
+> servidor real, antes e depois: mesmo status e mesmo `Location` em todos, agora
+> com HSTS e CSP. A única diferença estrutural é `/api/seo/redirect`, que deixa
+> de ser redirecionado e passa a ser servido direto — um salto a menos no
+> subrequest interno do próprio middleware.
+
 **Achado de borda, para o dono decidir (D7).** O `robots.txt` de produção traz
 **um** grupo `User-agent: *`, sem `Content-Signal` e sem `Disallow` para crawler
 de treino: o bloco gerenciado da Cloudflare não está mais sendo servido. A D7
 manda mantê-lo. Se a duplicidade do I3 foi resolvida desligando o bloco, o
 bloqueio de treino saiu junto.
+
+> **RESOLVIDO em 22/09/2026 — e a decisão saiu do painel.** Reconferido em
+> produção: 161 B, um grupo só, sem `Content-Signal` e sem bloqueio de treino. A
+> Cloudflare continua bloqueando os crawlers de treino **na borda** (pelas chaves
+> individuais do "Controle de rastreamento de IA"), mas o *Bot Preference Sync*
+> ligado **não acrescenta nada ao arquivo** — medido com o cache limpo. Ou seja:
+> a aplicação existia, a **declaração** não.
+>
+> O app passou a emiti-la. `/robots.txt` deixou de ser rota de metadados do Next
+> (que só serializa `User-Agent`/`Allow`/`Disallow`/`Crawl-delay`) e virou Route
+> Handler alimentado por `renderRobotsTxt`
+> ([`apps/web/src/lib/robots-txt.ts`](../../apps/web/src/lib/robots-txt.ts)),
+> ainda `force-dynamic` e ainda com `buildRobots` como fonte das regras. A saída
+> oficial ganhou `Content-Signal: search=yes, ai-input=yes, ai-train=no` no grupo
+> `*` e um grupo `Disallow: /` para os oito tokens de treino da D7. Os nove
+> tokens de busca/resposta ao vivo **não** ganharam grupo próprio de propósito:
+> um grupo só para eles os tiraria do `*` e, com isso, do `Disallow: /api/`,
+> `/dev/` e `/admin/` — o crawler obedece a um grupo só.
+>
+> Fora da produção oficial nada disso é emitido: aquele ramo já responde
+> `Disallow: /` para `*`, que vale para todo crawler. Provas em
+> `tests/web/robots-txt-render.test.ts` (com controle negativo para a linha em
+> branco que encerraria o grupo de treino) e nas guardas de
+> `tests/governance/no-raw-robots-metadata.test.ts` e
+> `legal-docs-indexing.test.ts`.
 
 ### 10.2 A D3 não barrava ninguém — e o conserto
 
@@ -440,3 +499,128 @@ filmes 1 a 6, séries 1 a 4, notícias e estáticas.
   cache do I2 é o que tiraria esses dois da origem.
 - Filmes passaram de 57.834 para 59.612 URLs em um dia (+1.778). Esse ritmo
   confirma o risco do teto por tipo descrito acima.
+
+**O teto de filme subiu para 500.000 (22/09/2026, com autorização do dono).** No
+ritmo medido, os 150.000 chegariam em menos de dois meses, e o corte fail-closed
+tiraria todos os filmes do sitemap de uma vez. A 500.000, o alerta de 80%
+(400.000) fica a meses de distância, e o teto continua detectando anomalia: um
+salto até ele seria ~8x o volume de hoje. Série ficou em 150.000, porque cresce
+~180 URLs por dia. Um teste novo trava a folga: o alerta de 80% tem de ficar a
+mais de 120 dias do volume medido, no ritmo de 1.800 por dia.
+
+**Borda, 22/09/2026 (feito pelo agente, com autorização do dono):**
+
+| Item | Estado |
+|---|---|
+| I1 · `www` → apex | Redirect Rule 301, preservando caminho e query string. Medido: `https://www.cinerie.com/pt/filmes/a-origem/?teste=redirect` chega em `https://cinerie.com/pt/filmes/a-origem/?teste=redirect` |
+| I2 · cache do sitemap | Cache Rule `sitemaps-cacheaveis` para `/sitemap.xml`, `/news-sitemap.xml` e `/sitemaps/*`, respeitando o `Cache-Control` da origem. Medido: índice 3.969 ms (MISS) → 74 ms (HIT); `static-1` 3.523 → 43 ms; `news-1` 1.168 → 55 ms |
+| I5 · e-mail | Email Routing: MX `route1/2/3.mx.cloudflare.net`, DKIM `cf2024-1._domainkey` e SPF `v=spf1 include:_spf.mx.cloudflare.net ~all`, conferidos no DNS público. `contato@` e `privacidade@` encaminham para a caixa do dono; o catch-all segue desligado |
+| D7 · `robots.txt` | Política de bots de IA: busca e agentes liberados, treino `Disallow`, Bot Preference Sync ligado. Os crawlers de treino já eram bloqueados na borda. O bloco gerenciado ainda não aparecia no `robots.txt` publicado ao fim desta rodada |
+| I7 · HSTS nos redirects | não aplicado: o modo automático do agente recusa mudança de certificado/HSTS; fica com o dono |
+### 10.6 Pessoas: o portão da D2 barrava todas (medido em 22/09/2026)
+
+A D2 foi implementada como "biografia licenciada obrigatória". A coluna
+`biography_source_status` nasce `unknown`, e nada no repositório a altera: liberar
+a biografia do TMDB é decisão de licença, humana. Na prática, o portão não aprovava
+ninguém.
+
+Amostra em produção: 40 fichas sorteadas do sitemap e as 50 pessoas que elas
+citam, todas lidas.
+
+| Grupo | Pessoas | Obras na página | Palavras em `<main>` | Robots |
+|---|---|---|---|---|
+| com foto | 45 | 5 a 143 | 52 a 933 | todas `noindex, follow` |
+| sem foto | 5 | 1 a 5 | 22 a 84 | todas `noindex, follow` |
+
+Entre as 45 com foto estavam Josh Brolin (60 obras), Scarlett Johansson (73), Ewan
+McGregor (69) e Steven Soderbergh (77). O sitemap tinha zero pessoa. A listagem
+`/pt/pessoas/` abria com 24 nomes coreanos de uma sílaba ("길", "던", "료"…), de slug
+`tmdb-N`, com 3 obras e 38 palavras: sem perfil apto, a ordem caía no nome, e o
+collation do banco põe hangul antes do alfabeto latino.
+
+**O que mudou.** A própria D2 pede "biografia/conteúdo licenciado suficiente" e
+"filmografia/relevância". A filmografia é conteúdo licenciado: são os créditos do
+TMDB, sob a licença que a ficha da obra já usa. O portão passa a ser:
+
+```text
+nome + slug canônico
++ foto
++ (biografia exibível com ao menos 1 obra no índice
+   OU filmografia de ao menos 5 obras no índice)
+```
+
+"Obra no índice" é o predicado que põe a obra no sitemap: slug canônico, título
+original, portão de localização (D3) e decisão efetiva `index`. A conta é de OBRA
+distinta, não de linha de crédito, e ficha `tmdb-N` sem tradução não soma: uma
+filmografia que o próprio site tira do índice não sustenta a página para o leitor
+em pt-BR. Página, sitemap (contagem e página) e listagem usam o mesmo texto de SQL,
+travado por `tests/web/sitemap-person-eligibility.test.ts`. O produtor do censo
+aplica a versão mais frouxa (obra com slug), porque a decisão persistida mais
+restritiva venceria a página. A política do censo sobe para `catalog-indexability-v3`.
+
+**Por que cinco.** Na amostra, a pessoa com foto e menos obras tinha exatamente
+cinco; abaixo disso só havia perfis sem foto. Com cinco obras a página agrega o que
+está espalhado por várias fichas, em vez de repetir o elenco de uma ou duas.
+
+**A listagem** passa a sair do elenco principal (`billing_order` < 4) dos 60 filmes
+e 40 séries mais populares, com o mesmo portão, na ordem da obra mais popular. Se
+os aptos não enchem a página, as demais pessoas completam na ordem do nome.
+
+**Provas.** `validate:person-eligibility` contra PostgreSQL real: 22 de 22, com 14
+pessoas de fixture, uma por parte da regra, incluindo página e sitemap dando o
+mesmo veredito para as 14. Dois controles negativos feitos à mão reprovam o
+validador: trocar `UNION` por `UNION ALL` (contar linha em vez de obra) derruba 3
+checks, e desligar a D3 da obra derruba outros 3.
+
+**Escala: é indexação em massa (INFERIDO).** A amostra pesa pessoas pelo número de
+obras, porque quem tem mais créditos aparece em mais fichas. Repesada por 1/obras,
+cerca de 36% das pessoas com slug passariam, ou seja, algo perto de 26 mil das
+~73,5 mil. Com 50 pessoas na amostra, a margem é larga. O número exato será a soma
+dos arquivos `sitemap-pt-BR-people-*` depois do deploy. O merge é a decisão do
+dono (CLAUDE.md §6).
+
+**Custo.** A subconsulta por pessoa para na quinta obra encontrada. Ela entra na
+contagem do índice e em cada arquivo de pessoas. Depois do deploy, medir o tempo
+de origem do índice (`/sitemap.xml?nocache=…`) e de um arquivo de pessoas.
+### 10.7 Temporadas e episódios saem da válvula por dado (22/09/2026)
+
+A válvula de 27/08/2026 suspendeu os dois tipos inteiros: eram 3.921.542 URLs,
+96,36% do sitemap. Ela mesma registrou a saída: "quando a Fase 3 estiver
+aplicada, o gate volta a perguntar pelo DADO". O dono pediu essa saída em
+22/09/2026.
+
+**Medido em produção no mesmo dia.** Sorteei séries do sitemap e, em cada uma,
+uma temporada e um episódio. Duas amostras: 70 séries e depois 219.
+
+| O quê | Medido |
+|---|---|
+| Séries do sitemap sem nenhuma temporada no banco | 104 de 219 (47%) |
+| Temporadas com sinopse própria | 1 de 40 |
+| Episódios chamados "Episódio N", sem sinopse | 33 de 38, com 23 a 56 palavras |
+| Episódios com sinopse de 60+ caracteres | 18 de 112, todos com imagem própria |
+| Episódios com direção registrada | 0 de 38 |
+
+**O portão.** A página aplica a função pura e o sitemap aplica o mesmo portão
+em SQL. Um teste trava o texto das quatro consultas.
+
+- **Temporada:** sinopse própria (60+ caracteres), OU um guia de pelo menos 3
+  episódios com sinopse.
+- **Episódio:** sinopse de 60+ caracteres E imagem própria. Crédito de equipe não
+  entra, porque nenhum dos 38 episódios tinha direção.
+- **Os dois** só indexam com a série dona no índice: slug, título, D3 e decisão
+  da série. É o mesmo predicado do sitemap de séries (`series-in-index.ts`).
+- **A medida de sinopse** é a do PostgreSQL: `char_length` depois de tirar
+  espaço, tab, CR e LF. Página e SQL contam igual.
+
+**Volume (INFERIDO).** Estimativa ponderada pelo tamanho de cada série, a partir
+da amostra de 219 séries: cerca de 109 mil episódios e 6,6 mil temporadas. Séries
+de milhares de episódios quase nunca caem numa amostra, então o total real pode
+ser maior. O teto de episódio sobe de 150 mil para 400 mil: cobre até cerca de
+3,7 vezes a estimativa e ainda reprova o evento de 27/08 (3.793.672) por 9,5
+vezes. O número exato será a soma dos arquivos `sitemap-pt-BR-episodes-*`
+depois do deploy.
+
+**Junto:** a frase "Esta página ainda está em revisão editorial." só aparece
+quando a página espera de fato uma decisão. Em produção ela aparecia em página
+tirada por portão de qualidade: a do Josh Brolin (D2) e a ficha `tmdb-1465816`
+(D3).

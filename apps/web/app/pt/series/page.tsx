@@ -71,7 +71,11 @@ const TITLE = 'Séries'
 // O <title> diz o que a pagina tem; o H1 e a trilha continuam "Séries" (ver a nota
 // gemea em /pt/filmes/).
 const META_TITLE = 'Séries: fichas, temporadas e elenco'
-const DESCRIPTION = 'Explore as séries catalogadas na Cinerie, com páginas editoriais em português.'
+// A descricao aparece no resultado da busca E abaixo do H1. Reescrita em
+// 22/09/2026: a anterior tinha menos de 100 caracteres e prometia "paginas
+// editoriais" que a ficha de catalogo nao e; esta diz o que a listagem entrega.
+const DESCRIPTION =
+  'Fichas de séries em português: sinopse, temporadas, episódios, elenco e onde assistir de forma legal no Brasil.'
 
 export async function generateMetadata(): Promise<Metadata> {
   const { indexability, canonicalUrl } = await getSeriesIndexData()

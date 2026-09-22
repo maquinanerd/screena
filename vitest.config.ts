@@ -96,6 +96,14 @@ export default defineConfig({
       '@screena/omdb-client': fileURLToPath(
         new URL('./api-clients/omdb/src/index.ts', import.meta.url),
       ),
+      // `next` so esta instalado em `apps/web`, e o Vite resolve a partir de
+      // QUEM IMPORTA: um teste em `tests/` procura o pacote no node_modules da
+      // raiz e nao acha. Sem este alias, nenhum teste consegue EXECUTAR o
+      // middleware — e foi executando que se achou o laco de redirect que
+      // arquivo, tipo e build deixaram passar (`middleware-trailing-slash-runtime`).
+      'next/server': fileURLToPath(
+        new URL('./apps/web/node_modules/next/server.js', import.meta.url),
+      ),
     },
   },
 })

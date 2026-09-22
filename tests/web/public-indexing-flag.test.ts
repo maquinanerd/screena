@@ -17,7 +17,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildRobots } from "../../apps/web/app/robots";
+import { buildRobots } from "../../apps/web/src/lib/robots-txt";
 import {
   gatePublicRobots,
   isOfficialIndexableEnvironment,

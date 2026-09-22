@@ -83,6 +83,13 @@ function prismaBin(): string {
  *   person 201  credito + bio LIBERADA + foto                            -> index
  *   person 202  sem credito nenhum                                       -> noindex
  *   person 203  credito + foto, bio com TEXTO mas status `unknown`       -> noindex
+ *   person 204  SEM bio + foto + 5 OBRAS com slug                        -> index
+ *   person 205  SEM bio + foto + 5 LINHAS de credito em 2 obras          -> noindex
+ *   movie 104/105 completos: completam as cinco obras da pessoa 204
+ *
+ * 204 e 205 sao a D2 lida em 22/09/2026: sem biografia exibivel, a filmografia
+ * sustenta a pagina a partir de cinco OBRAS. 205 e o controle de que a conta e
+ * de obra, e nao de linha de credito.
  */
 async function seed(prisma: PrismaClient): Promise<void> {
   const run = (sql: string) => prisma.$executeRawUnsafe(sql)
@@ -92,7 +99,9 @@ async function seed(prisma: PrismaClient): Promise<void> {
   await run(`INSERT INTO movies (id, tmdb_id, title_original, poster_path, updated_at) VALUES
              (101, 70101, 'Filme Publicavel', '/p101.jpg', now()),
              (102, 70102, 'Filme Sem Slug', '/p102.jpg', now()),
-             (103, 70103, 'Filme Sem Sinopse', '/p103.jpg', now())`)
+             (103, 70103, 'Filme Sem Sinopse', '/p103.jpg', now()),
+             (104, 70104, 'Filme Quatro', '/p104.jpg', now()),
+             (105, 70105, 'Filme Cinco', '/p105.jpg', now())`)
   await run(`INSERT INTO tv_shows (id, tmdb_id, name_original, poster_path, updated_at) VALUES
              (301, 70301, 'Serie Publicavel', '/p301.jpg', now())`)
   await run(`INSERT INTO seasons (id, tv_show_id, season_number, name, overview, poster_path, updated_at) VALUES
@@ -106,14 +115,20 @@ async function seed(prisma: PrismaClient): Promise<void> {
   await run(`INSERT INTO people (id, tmdb_id, name, profile_path, biography, biography_source_status, updated_at) VALUES
              (201, 70201, 'Pessoa Com Credito', '/f201.jpg', 'Biografia liberada.', 'third_party', now()),
              (202, 70202, 'Pessoa Sem Credito', '/f202.jpg', 'Biografia liberada.', 'third_party', now()),
-             (203, 70203, 'Pessoa Bio Nao Liberada', '/f203.jpg', 'Biografia ingerida.', 'unknown', now())`)
+             (203, 70203, 'Pessoa Bio Nao Liberada', '/f203.jpg', 'Biografia ingerida.', 'unknown', now()),
+             (204, 70204, 'Pessoa Filmografia', '/f204.jpg', NULL, 'unknown', now()),
+             (205, 70205, 'Pessoa Linhas', '/f205.jpg', NULL, 'unknown', now())`)
   await run(`INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES
              ('movie', 101, 'pt-BR', 'filme-publicavel', true, now()),
              ('movie', 103, 'pt-BR', 'filme-sem-sinopse', true, now()),
              ('tv', 301, 'pt-BR', 'serie-publicavel', true, now()),
              ('person', 201, 'pt-BR', 'pessoa-com-credito', true, now()),
              ('person', 202, 'pt-BR', 'pessoa-sem-credito', true, now()),
-             ('person', 203, 'pt-BR', 'pessoa-bio-nao-liberada', true, now())`)
+             ('person', 203, 'pt-BR', 'pessoa-bio-nao-liberada', true, now()),
+             ('movie', 104, 'pt-BR', 'filme-quatro', true, now()),
+             ('movie', 105, 'pt-BR', 'filme-cinco', true, now()),
+             ('person', 204, 'pt-BR', 'pessoa-filmografia', true, now()),
+             ('person', 205, 'pt-BR', 'pessoa-linhas', true, now())`)
   // `summary` e a sinopse. O filme 103 TEM traducao e NAO tem summary: e o
   // controle que separa `missing_translation` de `no_synopsis`.
   await run(`INSERT INTO entity_translations (entity_type, entity_id, language_code, title, summary, updated_at) VALUES
@@ -123,21 +138,33 @@ async function seed(prisma: PrismaClient): Promise<void> {
              ('tv', 301, 'pt-BR', 'Serie Publicavel', 'Sinopse da serie.', now()),
              ('person', 201, 'pt-BR', 'Pessoa Com Credito', NULL, now()),
              ('person', 202, 'pt-BR', 'Pessoa Sem Credito', NULL, now()),
-             ('person', 203, 'pt-BR', 'Pessoa Bio Nao Liberada', NULL, now())`)
+             ('person', 203, 'pt-BR', 'Pessoa Bio Nao Liberada', NULL, now()),
+             ('movie', 104, 'pt-BR', 'Filme Quatro', 'Sinopse do filme.', now()),
+             ('movie', 105, 'pt-BR', 'Filme Cinco', 'Sinopse do filme.', now()),
+             ('person', 204, 'pt-BR', 'Pessoa Filmografia', NULL, now()),
+             ('person', 205, 'pt-BR', 'Pessoa Linhas', NULL, now())`)
   // So as pessoas 201 e 203 tem credito numa obra COM slug canonico.
   await run(`INSERT INTO cast_members (person_id, entity_type, entity_id, updated_at) VALUES
              (201, 'movie', 101, now()),
-             (203, 'movie', 101, now())`)
+             (203, 'movie', 101, now()),
+             (204, 'movie', 101, now()), (204, 'movie', 103, now()), (204, 'tv', 301, now()),
+             (204, 'movie', 104, now()), (204, 'movie', 105, now()),
+             (205, 'movie', 101, now()), (205, 'movie', 103, now())`)
+  // 205: tres linhas de EQUIPE nas MESMAS duas obras — cinco linhas, duas obras.
+  await run(`INSERT INTO crew_members (person_id, entity_type, entity_id, job, updated_at) VALUES
+             (205, 'movie', 101, 'Director', now()),
+             (205, 'movie', 101, 'Writer', now()),
+             (205, 'movie', 103, 'Producer', now())`)
 }
 
 /** Quantas entidades o produtor avalia com estas fixtures. */
-const SEEDED = 11
+const SEEDED = 15
 
 /**
  * Tetos frouxos para os checks do PRODUTOR.
  *
  * O freio de mudanca em massa mede flips sobre o total AVALIADO. Este fixture
- * tem 11 entidades e boa parte nasce fora do sitemap — muito acima dos 5%
+ * tem 15 entidades e boa parte nasce fora do sitemap — muito acima dos 5%
  * default. Sem afrouxar, os checks de gravacao mediriam o freio em vez do
  * produtor. O freio tem checks PROPRIOS no fim do arquivo, com teto apertado de
  * proposito.
@@ -221,8 +248,11 @@ async function runChecks(url: string): Promise<void> {
     expectDecision('episodio SEM sinopse -> noindex', 'episode', 502, 'noindex', 'no_synopsis')
     expectDecision('pessoa com credito, bio liberada e foto -> index', 'person', 201, 'index', 'eligible')
     expectDecision('pessoa SEM credito -> noindex', 'person', 202, 'noindex', 'no_eligible_credit')
-    // O texto da bio existe; falta a LIBERACAO. A tela nao mostraria nada.
-    expectDecision('pessoa com bio NAO liberada -> noindex', 'person', 203, 'noindex', 'no_biography')
+    // O texto da bio existe; falta a LIBERACAO. A tela nao mostraria nada — e
+    // uma obra so nao sustenta a pagina sem biografia.
+    expectDecision('pessoa com bio NAO liberada e 1 obra -> noindex', 'person', 203, 'noindex', 'short_filmography')
+    expectDecision('pessoa SEM bio, com foto e 5 obras -> index (filmografia)', 'person', 204, 'index', 'eligible')
+    expectDecision('CONTROLE: 5 linhas de credito em 2 obras -> noindex', 'person', 205, 'noindex', 'short_filmography')
 
     // A URL registrada de temporada/episodio deriva do slug da SERIE mais os
     // numeros — a coluna e NOT NULL e serve de pista em auditoria.
@@ -321,8 +351,8 @@ async function runChecks(url: string): Promise<void> {
       dryRun: false,
       now,
       // LOOSE_BRAKE como nos demais checks. Sem ele, este era o UNICO ponto do
-      // arquivo a usar o teto default, e 1 flip num fixture de 11 entidades e
-      // 9,09% — acima dos 5% proporcionais. O freio bloqueava, `written` vinha 0
+      // arquivo a usar o teto default, e 1 flip num fixture de 15 entidades e
+      // 6,67% — acima dos 5% proporcionais. O freio bloqueava, `written` vinha 0
       // e o check reprovava o PRODUTOR por um efeito do proprio fixture. E o
       // caso que `catalog-mass-change.ts` documenta: "num banco pequeno o teto
       // proporcional dispara com pouquissimos flips". Aqui se mede a politica

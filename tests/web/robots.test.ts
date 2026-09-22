@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildRobots } from "../../apps/web/app/robots";
+import { buildRobots } from "../../apps/web/src/lib/robots-txt";
 import { OFFICIAL_SITE_URL, type SiteUrlEnv } from "../../apps/web/src/lib/site";
 
 function rulesFor(result: ReturnType<typeof buildRobots>) {

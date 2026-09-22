@@ -81,8 +81,44 @@ export const RATING_DISPLAY_USE_CASE = 'rating_display'
 /** Territorio de exibicao das notas. */
 export const RATING_DISPLAY_TERRITORY = 'BR'
 
-/** Tipos suspensos do indice. Espelha SUSPENDED_PAGE_TYPES (apps/web). */
-export const SUSPENDED_INDEX_KINDS: readonly CoverageKind[] = ['season', 'episode']
+/**
+ * Tipos suspensos do indice. Espelha SUSPENDED_PAGE_TYPES (apps/web): vazia desde
+ * 22/09/2026, quando temporada e episodio sairam da valvula por dado.
+ */
+export const SUSPENDED_INDEX_KINDS: readonly CoverageKind[] = []
+
+/**
+ * O portao de CONTEUDO de temporada e episodio, na aproximacao do painel.
+ * Espelha `MIN_SYNOPSIS_CHARS`, `SYNOPSIS_TRIM_CHARS` e
+ * `MIN_SEASON_EPISODES_WITH_SYNOPSIS` (`@screena/seo`); o teste de espelho
+ * trava os valores. Como o `indexable` de filme, serie e pessoa, e o que o
+ * DADO permite — slug da serie e nenhuma decisao restritiva —, sem o portao de
+ * localizacao da serie, que e da pagina.
+ */
+export const COVERAGE_MIN_SYNOPSIS_CHARS = 60
+export const COVERAGE_MIN_SEASON_EPISODES_WITH_SYNOPSIS = 3
+
+/** Sinopse que chega ao piso: mesma medida da pagina (`char_length` depois do trim). */
+export function realSynopsisSql(column: string): string {
+  return `(char_length(BTRIM(COALESCE(${column}, ''), E' \\t\\r\\n')) >= ${COVERAGE_MIN_SYNOPSIS_CHARS})`
+}
+
+/** A serie dona tem slug canonico no idioma da pagina. */
+function seriesSlugSql(seriesIdColumn: string): string {
+  return `EXISTS (
+      SELECT 1 FROM slugs s
+       WHERE s.entity_type = 'tv'::"EntityType" AND s.entity_id = ${seriesIdColumn}
+         AND s.language_code = '${COVERAGE_PAGE_LANGUAGE}' AND s.is_canonical = true)`
+}
+
+/** Nenhuma decisao vigente mais restritiva que `index` para a entidade. */
+function noRestrictiveDecisionSql(kind: 'season' | 'episode', idColumn: string): string {
+  return `NOT EXISTS (
+      SELECT 1 FROM page_indexability_decisions pd
+       WHERE pd.entity_type = '${kind}'::"EntityType" AND pd.entity_id = ${idColumn}
+         AND pd.language_code = '${COVERAGE_PAGE_LANGUAGE}' AND pd.is_current = true
+         AND pd.decision::text <> 'index')`
+}
 
 /** Uma linha de cobertura. `null` = nao se aplica ao tipo. */
 export interface CoverageRow {
@@ -231,7 +267,15 @@ function kindSql(kind: CoverageKind): KindSql {
         poster: nonEmpty('e.poster_path'),
         trailer: `(e.tmdb_id IS NOT NULL AND ${displayableTrailerExistsSql('season', 'e.tmdb_id')})`,
         rating: null,
-        indexable: 'false',
+        indexable: `(e.season_number >= 1
+          AND ${seriesSlugSql('e.tv_show_id')}
+          AND (${realSynopsisSql('e.overview')}
+            OR (SELECT COUNT(*) FROM (
+                 SELECT 1 FROM episodes ep
+                  WHERE ep.season_id = e.id AND ${realSynopsisSql('ep.overview')}
+                  LIMIT ${COVERAGE_MIN_SEASON_EPISODES_WITH_SYNOPSIS}) guia)
+               >= ${COVERAGE_MIN_SEASON_EPISODES_WITH_SYNOPSIS})
+          AND ${noRestrictiveDecisionSql('season', 'e.id')})`,
       }
     case 'episode':
       return {
@@ -242,7 +286,11 @@ function kindSql(kind: CoverageKind): KindSql {
         poster: nonEmpty('e.still_path'),
         trailer: null,
         rating: null,
-        indexable: 'false',
+        indexable: `(e.episode_number >= 1
+          AND ${seriesSlugSql('e.tv_show_id')}
+          AND ${realSynopsisSql('e.overview')}
+          AND ${nonEmpty('e.still_path')}
+          AND ${noRestrictiveDecisionSql('episode', 'e.id')})`,
       }
     case 'person':
       return {
@@ -266,8 +314,8 @@ function kindSql(kind: CoverageKind): KindSql {
  */
 export function coverageSql(kind: CoverageKind): string {
   const spec = kindSql(kind)
-  // Temporada e episodio contam zero indexavel: estao suspensos pela valvula, e
-  // a pagina deles emite `noindex` independentemente do dado.
+  // Tipo suspenso pela valvula conta zero indexavel: a pagina dele emite
+  // `noindex` independentemente do dado. Vazia desde 22/09/2026.
   const indexable = SUSPENDED_INDEX_KINDS.includes(kind) ? 'false' : spec.indexable
   const flag = (name: string, expression: string | null): string =>
     expression === null ? `NULL::boolean AS ${name}` : `(${expression}) AS ${name}`

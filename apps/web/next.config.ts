@@ -336,6 +336,11 @@ const nextConfig: NextConfig = {
   },
   // Rotas canonicas usam barra final (ex.: /pt/filmes/{slug}/). Alinhar o
   // trailing slash evita divergencia entre a URL servida e o <link rel="canonical">.
+  // A normalizacao de barra final sai do ROTEADOR e passa a ser feita pelo
+  // middleware (`needsTrailingSlash`). Sem isto, o 308 e emitido antes de o
+  // middleware rodar e vai sem cabecalho de seguranca nenhum — nem HSTS, nem
+  // CSP —, que e o defeito I7 da auditoria de SEO. Ver `src/lib/trailing-slash.ts`.
+  skipTrailingSlashRedirect: true,
   trailingSlash: true,
   // Pacotes do monorepo sao consumidos como FONTE TypeScript (main = src/index.ts).
   // O Next precisa transpila-los; isto NAO muda arquitetura nem invariante — so

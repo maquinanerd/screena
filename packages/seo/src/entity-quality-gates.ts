@@ -22,8 +22,9 @@
  * para acabar. O validador real de PostgreSQL prova que concordam.
  *
  * O PORTAO SE ABRE SOZINHO. Nenhum depende de um humano rodar comando: a ficha
- * que ganha titulo em pt-BR, a pessoa que ganha biografia licenciada e foto,
- * passam a indexar na revalidacao seguinte e entram no sitemap pelo mesmo motivo.
+ * que ganha titulo em pt-BR, a pessoa que ganha foto e filmografia (ou biografia
+ * liberada), passam a indexar na revalidacao seguinte e entram no sitemap pelo
+ * mesmo motivo.
  *
  * MODULO PURO: sem banco, sem rede, sem IO, sem Date.
  */
@@ -31,7 +32,7 @@
 import { evaluatePersonEligibility } from "./person-eligibility.js";
 
 /** Qual portao produziu o veredito. */
-export type QualityGateId = "gallery" | "person" | "localization";
+export type QualityGateId = "gallery" | "person" | "localization" | "season" | "episode";
 
 /** Veredito de um portao de qualidade. */
 export interface QualityGateVerdict {
@@ -180,6 +181,162 @@ export function evaluateLocalizationGate(input: LocalizationGateInput): QualityG
 }
 
 // ---------------------------------------------------------------------------
+// TEMPORADA E EPISODIO — a saida da valvula de 2026-08-27, por DADO
+// ---------------------------------------------------------------------------
+
+/**
+ * Sinopse "de verdade": pelo menos esta quantidade de caracteres, depois de
+ * tirar espaco, tabulacao e quebra de linha das pontas.
+ *
+ * POR QUE UM PISO, E NAO SO "NAO VAZIA". A pagina de temporada e a de episodio
+ * valem pelo TEXTO proprio; um "Episodio de estreia." de vinte caracteres nao
+ * sustenta uma pagina no indice. Sessenta caracteres e uma frase curta — o piso
+ * separa o texto do rotulo, sem julgar estilo.
+ */
+export const MIN_SYNOPSIS_CHARS = 60;
+
+/**
+ * Os caracteres que saem das pontas antes de medir a sinopse. O SQL passa a
+ * MESMA lista como parametro de `BTRIM` — o `BTRIM` sem segundo argumento so
+ * tira espaco, e o `trim` do JavaScript tira tudo que e branco. Com a lista
+ * explicita, pagina e sitemap medem igual.
+ */
+export const SYNOPSIS_TRIM_CHARS = " \t\r\n";
+
+/**
+ * Quantos episodios com sinopse de verdade sustentam a pagina de uma temporada
+ * que nao tem sinopse propria. Tres: a temporada vira um GUIA de episodios, e
+ * nao a lista de "Episodio 1, Episodio 2..." que o TMDB devolve quando nao ha
+ * traducao.
+ */
+export const MIN_SEASON_EPISODES_WITH_SYNOPSIS = 3;
+
+/**
+ * Tamanho da sinopse como o PostgreSQL mede (`char_length` conta pontos de
+ * codigo, e o `length` do JavaScript conta unidades UTF-16), depois de tirar
+ * `SYNOPSIS_TRIM_CHARS` das pontas.
+ */
+export function synopsisLength(text: string | null): number {
+  if (text === null) return 0;
+  let inicio = 0;
+  let fim = text.length;
+  while (inicio < fim && SYNOPSIS_TRIM_CHARS.includes(text.charAt(inicio))) inicio += 1;
+  while (fim > inicio && SYNOPSIS_TRIM_CHARS.includes(text.charAt(fim - 1))) fim -= 1;
+  return [...text.slice(inicio, fim)].length;
+}
+
+/** A sinopse chega ao piso de `MIN_SYNOPSIS_CHARS`? */
+export function hasRealSynopsis(text: string | null): boolean {
+  return synopsisLength(text) >= MIN_SYNOPSIS_CHARS;
+}
+
+/** Fatos que o portao de temporada le. */
+export interface SeasonQualityGateInput {
+  /**
+   * A SERIE dona esta no indice: slug canonico, titulo original, portao de
+   * localizacao (D3) e decisao efetiva `index` — o predicado do sitemap de
+   * series. Temporada de serie fora do indice nao se sustenta sozinha.
+   */
+  readonly seriesInIndex: boolean;
+  readonly seasonNumber: number;
+  /** `seasons.overview`, como esta no banco. */
+  readonly overview: string | null;
+  /** Episodios LISTADOS pela temporada cuja sinopse chega ao piso. */
+  readonly episodesWithSynopsis: number;
+}
+
+/**
+ * Temporada indexa quando tem conteudo proprio: sinopse da temporada, OU um guia
+ * de pelo menos `MIN_SEASON_EPISODES_WITH_SYNOPSIS` episodios com sinopse.
+ *
+ * DE ONDE VEM (22/09/2026). A valvula de 2026-08-27 suspendeu o TIPO inteiro e
+ * registrou a propria saida: "quando a Fase 3 estiver aplicada, o gate volta a
+ * perguntar pelo DADO". O dono pediu a saida em 22/09/2026 ("indexar so
+ * temporada com conteudo de verdade"). Medido em producao no mesmo dia, em 40
+ * temporadas sorteadas do catalogo: uma tinha sinopse propria; as outras valiam
+ * pela lista de episodios — de "Episodio 1..394" sem texto (1.343 palavras de
+ * rotulo) a guias completos de 54 episodios com sinopse.
+ */
+export function evaluateSeasonQualityGate(input: SeasonQualityGateInput): QualityGateVerdict {
+  if (!input.seriesInIndex) {
+    return failed(
+      "season",
+      "series_not_in_index",
+      "Temporada de serie fora do indice: a pagina herda a exclusao da serie dona.",
+    );
+  }
+  if (!Number.isInteger(input.seasonNumber) || input.seasonNumber < 1) {
+    return failed(
+      "season",
+      "invalid_season_number",
+      "Temporada sem numero valido (especiais sao a temporada 0): nao ha rota publica.",
+    );
+  }
+  if (hasRealSynopsis(input.overview)) {
+    return passed("season", "season_overview", "Temporada com sinopse propria.");
+  }
+  if (input.episodesWithSynopsis >= MIN_SEASON_EPISODES_WITH_SYNOPSIS) {
+    return passed(
+      "season",
+      "episode_guide",
+      `Temporada sem sinopse propria, com ${input.episodesWithSynopsis} episodios com sinopse: a pagina e um guia de episodios.`,
+    );
+  }
+  return failed(
+    "season",
+    "no_season_content",
+    `Temporada sem sinopse propria e com ${input.episodesWithSynopsis} episodio(s) com sinopse (minimo ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}): a pagina e so a lista de numeros de episodio. Indexa sozinha quando a traducao chegar.`,
+  );
+}
+
+/** Fatos que o portao de episodio le. */
+export interface EpisodeQualityGateInput {
+  /** Ver `SeasonQualityGateInput.seriesInIndex`. */
+  readonly seriesInIndex: boolean;
+  /** `episodes.overview`, como esta no banco. */
+  readonly overview: string | null;
+  /** `episodes.still_path`: a imagem PROPRIA do episodio. */
+  readonly stillPath: string | null;
+}
+
+/**
+ * Episodio indexa quando tem sinopse de verdade E imagem propria.
+ *
+ * Medido em producao em 22/09/2026, em 38 episodios sorteados: 33 se chamavam
+ * "Episodio N", sem sinopse, com 23 a 56 palavras na pagina; os 5 com sinopse em
+ * pt-BR tinham titulo proprio e de 78 a 154 palavras. A sinopse e o que
+ * distingue a pagina de casca; a imagem e o que o dono pediu para a pagina de
+ * episodio ("imagem dos episodios") e o que o `TVEpisode` do schema carrega.
+ *
+ * Credito de equipe NAO entra: nenhum dos 38 tinha direcao registrada, e exigir
+ * isso deixaria de fora os episodios com texto e imagem de verdade.
+ */
+export function evaluateEpisodeQualityGate(input: EpisodeQualityGateInput): QualityGateVerdict {
+  if (!input.seriesInIndex) {
+    return failed(
+      "episode",
+      "series_not_in_index",
+      "Episodio de serie fora do indice: a pagina herda a exclusao da serie dona.",
+    );
+  }
+  if (!hasRealSynopsis(input.overview)) {
+    return failed(
+      "episode",
+      "no_episode_synopsis",
+      `Episodio sem sinopse de pelo menos ${MIN_SYNOPSIS_CHARS} caracteres: a pagina e titulo, numero e data. Indexa sozinho quando a sinopse chegar.`,
+    );
+  }
+  if (input.stillPath === null || input.stillPath.trim() === "") {
+    return failed(
+      "episode",
+      "no_episode_still",
+      "Episodio sem imagem propria: a pagina nao tem a cena que a ficha de episodio promete.",
+    );
+  }
+  return passed("episode", "eligible", "Episodio com sinopse e imagem proprias.");
+}
+
+// ---------------------------------------------------------------------------
 // D2 — PESSOA
 // ---------------------------------------------------------------------------
 
@@ -194,6 +351,34 @@ export const DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES = Object.freeze([
   "third_party",
 ] as const);
 
+/**
+ * Quantas OBRAS no indice sustentam, sozinhas, a pagina de uma pessoa que nao
+ * tem biografia exibivel.
+ *
+ * POR QUE EXISTE (22/09/2026). A D2 pede "biografia/conteudo licenciado
+ * suficiente" e "filmografia/relevancia". A primeira implementacao leu so
+ * "biografia" — e `biography_source_status` nasce `unknown` e nada no repositorio
+ * o altera, porque libera-lo e decisao de licenca (humana). Resultado medido em
+ * producao em 22/09/2026: o portao barrava TODAS as pessoas. As 50 pessoas
+ * alcancaveis a partir de 40 fichas sorteadas do sitemap estavam `noindex` —
+ * Josh Brolin (60 obras), Scarlett Johansson (73), Ewan McGregor (69), Steven
+ * Soderbergh (77) entre elas —, e o sitemap tinha zero URL de pessoa.
+ *
+ * A filmografia E conteudo licenciado: sao os creditos do TMDB, exibidos sob a
+ * mesma licenca que a ficha da obra usa. E e ela que responde a busca por uma
+ * pessoa ("filmes com fulano") — algo que a pagina da obra, que so lista o
+ * proprio elenco, nao responde.
+ *
+ * POR QUE CINCO. Na mesma amostra, as 45 pessoas com foto tinham de 5 a 143
+ * obras, e a pagina rendia de 52 a 933 palavras dentro de `<main>`; as 5 sem
+ * foto tinham de 1 a 5 obras e de 22 a 84 palavras. A foto e o que separa o
+ * perfil real do stub de elenco, e cinco obras e o piso em que a pagina deixa de
+ * repetir a lista de elenco de uma ou duas fichas: ela passa a AGREGAR o que so
+ * existe espalhado por varias. O corte nao descartou ninguem da amostra que
+ * tivesse foto — o menor com foto tinha exatamente cinco.
+ */
+export const MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY = 5;
+
 /** Fatos que o portao de pessoa le. */
 export interface PersonQualityGateInput {
   readonly name: string;
@@ -202,38 +387,61 @@ export interface PersonQualityGateInput {
   readonly biographySourceStatus: string | null;
   readonly profilePath: string | null;
   /**
-   * Creditos (elenco ou equipe) em FILME ou SERIE que tem slug canonico no
-   * locale e decisao efetiva `index` — a mesma definicao do `EXISTS` do sitemap.
+   * OBRAS distintas — filme ou serie — em que a pessoa tem credito (elenco ou
+   * equipe) e que estao, elas proprias, no indice: slug canonico no locale,
+   * titulo original, portao de localizacao (D3) e decisao efetiva `index`. E o
+   * predicado que poe a obra no sitemap, repetido no SQL de pessoa.
+   *
+   * Conta OBRA, nao linha de credito: quem dirige e roteiriza o mesmo filme soma
+   * uma. E so obra no indice: uma filmografia feita de fichas que o proprio site
+   * tira do indice (titulo no alfabeto original, sem traducao) nao sustenta a
+   * pagina da pessoa para o leitor em pt-BR.
    */
-  readonly indexableCreditCount: number;
+  readonly indexableWorkCount: number;
 }
 
-function isDisplayableBiography(biography: string | null, status: string | null): boolean {
+/**
+ * A biografia vai para a tela? Texto nao vazio E status que libera exibicao
+ * (invariante 6). Exportada porque a pagina e o SQL do sitemap precisam do MESMO
+ * criterio para escolher o piso de obras.
+ */
+export function isDisplayableBiography(biography: string | null, status: string | null): boolean {
   if (biography === null || biography.trim() === "") return false;
   return (DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES as readonly string[]).includes(status ?? "");
 }
 
 /**
+ * Quantas obras no indice a pessoa precisa ter: uma, quando a biografia vai para
+ * a tela (o texto e o conteudo proprio); `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY`,
+ * quando a pagina se sustenta so pela filmografia.
+ */
+export function requiredIndexableWorks(hasDisplayableBiography: boolean): number {
+  return hasDisplayableBiography ? 1 : MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY;
+}
+
+/**
  * D2: pessoa indexa so com material suficiente para sustentar a pagina.
  *
- * Os criterios sao os MESMOS que o sitemap ja exigia desde a valvula de
- * 2026-08-27 — a mudanca e que a pagina passa a exigi-los tambem. Ordem, do mais
- * tecnico ao mais editorial:
+ * A forma declarada pelo dono e "foto valida + identificacao confiavel +
+ * biografia/conteudo licenciado suficiente + filmografia/relevancia + dados
+ * minimos de entidade". Traduzida, na ordem do mais tecnico ao mais editorial:
  *
- *  1. nome e slug canonico (a regra de elegibilidade que ja existia);
- *  2. biografia com texto E com status que libera exibicao;
- *  3. foto;
- *  4. ao menos um credito em obra indexavel (a regra de elegibilidade).
+ *  1. nome e slug canonico (identificacao e dados minimos);
+ *  2. foto;
+ *  3. ao menos uma obra no indice (a regra de elegibilidade que ja existia);
+ *  4. conteudo proprio suficiente: biografia exibivel, OU uma filmografia de
+ *     `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY` obras no indice.
  *
- * Nao sao criterios inventados para a ocasiao: sem biografia exibivel e sem foto
- * a ficha rende ~52 palavras dentro de `<main>` — nome, papel e uma lista de
- * links — medido em 2026-08-27.
+ * O SQL do sitemap aplica o mesmo portao (`sitemap-index.ts`), e o produtor do
+ * censo aplica uma versao que nunca e mais restritiva que esta
+ * (`catalog-indexability.ts`) — a decisao persistida mais restritiva venceria a
+ * pagina.
  */
 export function evaluatePersonQualityGate(input: PersonQualityGateInput): QualityGateVerdict {
   const elegibilidade = evaluatePersonEligibility({
     name: input.name,
     hasCanonicalSlug: input.hasCanonicalSlug,
-    publishableCreditCount: input.indexableCreditCount,
+    publishableCreditCount: input.indexableWorkCount,
   });
   // Nome e slug primeiro: sem eles nao ha pagina para avaliar.
   if (
@@ -241,13 +449,6 @@ export function evaluatePersonQualityGate(input: PersonQualityGateInput): Qualit
     (elegibilidade.reason === "name_missing" || elegibilidade.reason === "slug_missing")
   ) {
     return failed("person", elegibilidade.reason, elegibilidade.explanation);
-  }
-  if (!isDisplayableBiography(input.biography, input.biographySourceStatus)) {
-    return failed(
-      "person",
-      "no_displayable_biography",
-      "Pessoa sem biografia exibivel (texto com status que libera exibicao): a ficha nao sustenta pagina propria no indice (decisao do dono D2, 2026-09-11).",
-    );
   }
   if (input.profilePath === null || input.profilePath.trim() === "") {
     return failed(
@@ -259,9 +460,20 @@ export function evaluatePersonQualityGate(input: PersonQualityGateInput): Qualit
   if (!elegibilidade.eligible) {
     return failed("person", elegibilidade.reason ?? "no_publishable_credit", elegibilidade.explanation);
   }
+  const comBiografia = isDisplayableBiography(input.biography, input.biographySourceStatus);
+  const piso = requiredIndexableWorks(comBiografia);
+  if (input.indexableWorkCount < piso) {
+    return failed(
+      "person",
+      "short_filmography",
+      `Pessoa sem biografia exibivel e com ${input.indexableWorkCount} obra(s) no indice, abaixo do minimo de ${piso}: a ficha repete o elenco de poucas obras e nao sustenta pagina propria no indice (decisao do dono D2, 2026-09-11). Indexa sozinha quando a filmografia chegar ao minimo ou a biografia for liberada.`,
+    );
+  }
   return passed(
     "person",
     "eligible",
-    `Pessoa com biografia exibivel, foto e ${input.indexableCreditCount} credito(s) em obra indexavel.`,
+    comBiografia
+      ? `Pessoa com foto, biografia exibivel e ${input.indexableWorkCount} obra(s) no indice.`
+      : `Pessoa com foto e filmografia de ${input.indexableWorkCount} obras no indice (minimo ${piso} sem biografia).`,
   );
 }

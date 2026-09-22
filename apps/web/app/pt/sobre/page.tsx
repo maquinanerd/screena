@@ -40,7 +40,9 @@ const TRAIL: readonly TrailStep[] = [{ label: 'Sobre', href: null }]
 export function generateMetadata(): Metadata {
   const canonicalUrl = canonicalPublicUrl(ABOUT_PATH)
   return {
-    title: TITLE,
+    // `absolute`: o título já traz a marca. Pelo template do layout
+    // (`%s | Cinerie`) a aba saía "Sobre a Cinerie | Cinerie".
+    title: { absolute: TITLE },
     description: DESCRIPTION,
     robots: publicRobots(true),
     alternates: { canonical: canonicalUrl },
