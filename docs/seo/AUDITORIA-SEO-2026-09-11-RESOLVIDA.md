@@ -267,6 +267,35 @@ ainda responde 200, sem redirect), **I2** (a borda responde `cf-cache-status: DY
 sem Cache Rule), **I5** (`cinerie.com` não tem registro MX, e `/pt/privacidade/`
 já publica `privacidade@` e `contato@`) e **I7**.
 
+> **Reconferido em 22/09/2026 — I1, I2 e I5 saíram; o I7 era do APP.** Medido em
+> produção: `https://www.cinerie.com/pt/` responde **301** para o apex; o índice
+> de sitemaps volta da borda em vez de `DYNAMIC`; e `cinerie.com` tem MX
+> (`route1/2/3.mx.cloudflare.net`), com `contato@` e `privacidade@` entregando.
+>
+> O **I7** não era só uma chave de borda desligada. O `curl` era bloqueado nesta
+> máquina e o navegador não expõe cabeçalho de redirect — por isso ninguém tinha
+> visto o que um `fetch` com `redirect: "manual"` mostra:
+>
+> | Requisição | Status | HSTS | CSP | Quem respondeu |
+> |---|---|---|---|---|
+> | `https://cinerie.com/` | 308 → `/pt/` | sim | sim | middleware |
+> | `https://cinerie.com/pt/filmes` | 308 → `/pt/filmes/` | **não** | **não** | roteador do Next |
+>
+> O 308 de barra final vinha de `trailingSlash: true`, resolvido pelo roteador
+> **depois** do middleware: ele descarta a resposta do `next()` — e com ela todos
+> os cabeçalhos —, e os `headers()` do `next.config.ts` também não alcançam um
+> redirect interno. Não faltava só o HSTS: faltavam CSP, `X-Frame-Options`,
+> `X-Content-Type-Options` e `Referrer-Policy`, em **toda** página alcançada por
+> link sem barra.
+>
+> Conserto: `skipTrailingSlashRedirect: true` e a normalização passa ao
+> middleware ([`apps/web/src/lib/trailing-slash.ts`](../../apps/web/src/lib/trailing-slash.ts)),
+> que já escreve os cabeçalhos. Conferido com uma matriz de 20 caminhos num
+> servidor real, antes e depois: mesmo status e mesmo `Location` em todos, agora
+> com HSTS e CSP. A única diferença estrutural é `/api/seo/redirect`, que deixa
+> de ser redirecionado e passa a ser servido direto — um salto a menos no
+> subrequest interno do próprio middleware.
+
 **Achado de borda, para o dono decidir (D7).** O `robots.txt` de produção traz
 **um** grupo `User-agent: *`, sem `Content-Signal` e sem `Disallow` para crawler
 de treino: o bloco gerenciado da Cloudflare não está mais sendo servido. A D7
