@@ -155,10 +155,13 @@ GARANTIAS:
     a recomecar do zero;
   - grava log em \`api_sync_logs\` (invariante 10).
 
-O QUE ELE NAO CONSEGUE FAZER SOZINHO: preencher \`people.biography\` NAO tira a
-pessoa de \`no_biography\`. A politica exige texto E licenca, e
+O QUE ELE NAO CONSEGUE FAZER SOZINHO: preencher \`people.biography\` NAO muda a
+decisao da pessoa. A biografia so conta com texto E licenca, e
 \`biography_source_status\` nasce \`unknown\` — liberar e decisao HUMANA de licenca.
-Por isso o relatorio separa "biografia preenchida" de "biografia exibivel".
+Desde a politica v3 (22/09/2026) a pessoa com foto indexa pela filmografia a
+partir de 5 obras (\`short_filmography\` abaixo disso); a biografia liberada
+baixaria o piso para uma obra. Por isso o relatorio separa "biografia
+preenchida" de "biografia exibivel".
 
 COMO CONFERIR SEM SE ENGANAR: desde 28/08 as fichas sao cacheadas (1 h no edge
 da Cloudflare, 4 h no navegador). Recarregar a pagina logo apos o backfill mostra

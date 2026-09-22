@@ -523,10 +523,13 @@ async function runChecks(url: string): Promise<void> {
     // ---- (G) A BIOGRAFIA NAO BASTA: a licenca continua sendo o gate -------
     // Isto NAO e um defeito deste backfill — e o limite dele, e precisa estar
     // provado para ninguem contar 32.087 paginas recuperadas que nao mudaram.
+    // Desde 22/09/2026 (D2) a pessoa sem biografia exibivel indexa pela
+    // filmografia a partir de cinco obras; esta tem UMA, entao a razao e
+    // `short_filmography` — e a biografia preenchida continua sem mudar nada.
     const pessoaDepois = await veredito(prisma, 'person', 201)
     record(
-      'PESSOA: bio preenchida e MESMO ASSIM `no_biography` — a licenca e o gate',
-      pessoaDepois?.decision === 'noindex' && pessoaDepois.reason === 'no_biography',
+      'PESSOA: bio preenchida e MESMO ASSIM `short_filmography` — a licenca e o gate',
+      pessoaDepois?.decision === 'noindex' && pessoaDepois.reason === 'short_filmography',
       `person#201 -> ${pessoaDepois?.decision}/${pessoaDepois?.reason} (biography_source_status segue 'unknown')`,
     )
     record(

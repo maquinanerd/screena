@@ -14,26 +14,38 @@
  * Aqui montamos fixtures CONTROLADAS e chamamos o runtime REAL
  * (`getSitemapShardXml`), conferindo exatamente quais pessoas entram.
  *
- * Cenarios cobertos (todas as pessoas TEM slug canonico e nome — o que varia e
- * so o credito):
+ * Cenarios cobertos (todas as pessoas TEM slug canonico e nome):
  *
- *   A. credito de ELENCO em filme publicavel      -> ENTRA
- *   B. credito de EQUIPE em serie publicavel      -> ENTRA
- *   C. credito apenas em EPISODIO                 -> FICA DE FORA
- *   D. nenhum credito                             -> FICA DE FORA
- *   E. credito em filme SEM slug canonico         -> FICA DE FORA
- *   F. credito em filme com decisao != index      -> FICA DE FORA
- *   G. credito bom, bio SEM licenca liberada      -> FICA DE FORA
- *   H. credito bom, bio liberada, SEM foto        -> FICA DE FORA
+ *   A. bio liberada + foto + ELENCO em 1 filme publicavel     -> ENTRA
+ *   B. bio liberada + foto + EQUIPE em 1 serie publicavel     -> ENTRA
+ *   C. credito apenas em EPISODIO                             -> FICA DE FORA
+ *   D. nenhum credito                                         -> FICA DE FORA
+ *   E. credito so em filme SEM slug canonico                  -> FICA DE FORA
+ *   F. credito so em filme com decisao != index               -> FICA DE FORA
+ *   G. bio SEM licenca + foto + 1 obra                        -> FICA DE FORA
+ *   H. bio liberada + SEM foto + 1 obra                       -> FICA DE FORA
+ *   I. SEM bio exibivel + foto + 5 obras no indice            -> ENTRA
+ *   J. SEM bio + foto + 4 obras no indice + 1 obra bloqueada  -> FICA DE FORA
+ *   K. SEM bio + foto + 5 LINHAS de credito em 2 obras        -> FICA DE FORA
+ *   L. SEM bio + foto + 4 obras + 1 ficha tmdb-N sem traducao -> FICA DE FORA
+ *   M. SEM bio + foto + 4 obras + 1 ficha tmdb-N LOCALIZADA   -> ENTRA
+ *   N. SEM bio + SEM foto + 5 obras no indice                 -> FICA DE FORA
  *
- * G e H sao a valvula de 2026-08-27: credito deixou de bastar. Em producao,
- * 0 de 300 pessoas do sitemap exibiam biografia, e a pagina rendia 52 palavras.
- * G prova que TEXTO nao basta sem licenca (invariante 6) — a coluna de
- * governanca nasce `unknown` e bio ingerida sem liberacao nao vai a tela.
+ * G e H sao a valvula de 2026-08-27. I a N sao a leitura da D2 de 22/09/2026:
+ * sem biografia exibivel, a FILMOGRAFIA sustenta a pagina a partir de cinco
+ * obras NO INDICE. Cada controle isola uma parte da conta: J prova que obra
+ * bloqueada nao soma; K, que a conta e de OBRA e nao de linha de credito; L e M,
+ * que a ficha tmdb-N so soma quando o portao de localizacao (D3) a aceita — L
+ * sozinho passaria com um portao que descartasse todo tmdb-N; N, que a foto
+ * continua obrigatoria.
  *
  * C e o caso sutil: episodio pertence a uma serie, e quem sustenta a relevancia
  * editorial da pessoa e a SERIE. E e o caso que prova que a obra tambem precisa
  * ser publicavel — nao basta existir.
+ *
+ * Alem do sitemap, o validador confere que a PAGINA (`getPersonPageData`) da o
+ * mesmo veredito para cada pessoa, e que a LISTAGEM (`getPersonIndexData`) abre
+ * so com as aptas.
  *
  * FERRAMENTA DE DESENVOLVIMENTO DESCARTAVEL: nao roda em render, build ou
  * producao. ZERO rede, ZERO TMDB, ZERO Gemini.
@@ -108,41 +120,61 @@ async function seedFixtures(prisma: RawClient): Promise<void> {
              VALUES ('pt-BR','Portugues (Brasil)','Portuguese (Brazil)', true, true)
              ON CONFLICT (code) DO NOTHING`);
 
-  // Obras: 1 filme publicavel, 1 serie publicavel, 1 filme SEM slug, 1 filme
-  // com decisao vigente != index.
-  await run(`INSERT INTO movies (id, tmdb_id, title_original, updated_at) VALUES
-             (101, 90101, 'Filme Publicavel', now()),
-             (102, 90102, 'Filme Sem Slug', now()),
-             (103, 90103, 'Filme Bloqueado', now())`);
+  // Obras. 101-105 publicaveis e populares (a listagem sai do elenco delas);
+  // 106 sem slug; 107 com decisao vigente != index; 108 e 109 com slug de
+  // fallback tmdb-N e titulo no alfabeto original — 108 sem traducao (o portao
+  // D3 a tira do indice), 109 com titulo pt-BR proprio (volta ao indice).
+  await run(`INSERT INTO movies (id, tmdb_id, title_original, popularity, updated_at) VALUES
+             (101, 90101, 'Filme Um',       90, now()),
+             (102, 90102, 'Filme Dois',     80, now()),
+             (103, 90103, 'Filme Tres',     70, now()),
+             (104, 90104, 'Filme Quatro',   60, now()),
+             (105, 90105, 'Filme Cinco',    50, now()),
+             (106, 90106, 'Filme Sem Slug', NULL, now()),
+             (107, 90107, 'Filme Bloqueado', NULL, now()),
+             (108, 90108, '길', NULL, now()),
+             (109, 90109, '길', NULL, now())`);
   await run(`INSERT INTO tv_shows (id, tmdb_id, name_original, updated_at) VALUES
              (201, 90201, 'Serie Publicavel', now())`);
   await run(`INSERT INTO seasons (id, tv_show_id, season_number, updated_at) VALUES (301, 201, 1, now())`);
   await run(`INSERT INTO episodes (id, season_id, tv_show_id, episode_number, name, updated_at)
              VALUES (401, 301, 201, 1, 'Episodio 1', now())`);
 
-  // Slugs canonicos das obras (menos o filme 102, de proposito).
   await run(`INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES
-             ('movie', 101, 'pt-BR', 'filme-publicavel', true, now()),
-             ('movie', 103, 'pt-BR', 'filme-bloqueado', true, now()),
+             ('movie', 101, 'pt-BR', 'filme-um', true, now()),
+             ('movie', 102, 'pt-BR', 'filme-dois', true, now()),
+             ('movie', 103, 'pt-BR', 'filme-tres', true, now()),
+             ('movie', 104, 'pt-BR', 'filme-quatro', true, now()),
+             ('movie', 105, 'pt-BR', 'filme-cinco', true, now()),
+             ('movie', 107, 'pt-BR', 'filme-bloqueado', true, now()),
+             ('movie', 108, 'pt-BR', 'tmdb-90108', true, now()),
+             ('movie', 109, 'pt-BR', 'tmdb-90109', true, now()),
              ('tv',    201, 'pt-BR', 'serie-publicavel', true, now())`);
+  // 109 localizada: titulo pt-BR PROPRIO (diferente do original). 108 fica sem
+  // linha nenhuma.
+  await run(`INSERT INTO entity_translations (entity_type, entity_id, language_code, title, updated_at) VALUES
+             ('movie', 109, 'pt-BR', 'O Caminho', now())`);
 
-  // O filme 103 tem decisao vigente != index: nao e obra publicavel.
+  // O filme 107 tem decisao vigente != index: nao e obra no indice.
   await run(`INSERT INTO page_indexability_decisions
                (entity_type, entity_id, language_code, url, decision, is_current)
-             VALUES ('movie', 103, 'pt-BR', '/pt/filmes/filme-bloqueado/', 'noindex', true)`);
+             VALUES ('movie', 107, 'pt-BR', '/pt/filmes/filme-bloqueado/', 'noindex', true)`);
 
-  // Pessoas: TODAS com nome e slug canonico. So o credito varia.
-  // A e B tem a ficha COMPLETA (bio liberada + foto); G e H isolam cada metade
-  // do gate novo. Sem bio/foto, nem A nem B entrariam — que e o ponto.
   await run(`INSERT INTO people (id, tmdb_id, name, biography, biography_source_status, profile_path, updated_at) VALUES
-             (501, 95501, 'A Elenco Em Filme', 'Bio liberada de A.',  'licensed', '/a.jpg', now()),
-             (502, 95502, 'B Equipe Em Serie', 'Bio liberada de B.',  'official', '/b.jpg', now()),
-             (503, 95503, 'C So Episodio',     'Bio liberada de C.',  'licensed', '/c.jpg', now()),
-             (504, 95504, 'D Sem Credito',     'Bio liberada de D.',  'licensed', '/d.jpg', now()),
-             (505, 95505, 'E Filme Sem Slug',  'Bio liberada de E.',  'licensed', '/e.jpg', now()),
-             (506, 95506, 'F Filme Bloqueado', 'Bio liberada de F.',  'licensed', '/f.jpg', now()),
-             (507, 95507, 'G Bio Sem Licenca', 'Texto existe, licenca nao.', 'unknown', '/g.jpg', now()),
-             (508, 95508, 'H Sem Foto',        'Bio liberada de H.',  'licensed', NULL,     now())`);
+             (501, 95501, 'A Elenco Em Filme',  'Bio liberada de A.', 'licensed', '/a.jpg', now()),
+             (502, 95502, 'B Equipe Em Serie',  'Bio liberada de B.', 'official', '/b.jpg', now()),
+             (503, 95503, 'C So Episodio',      'Bio liberada de C.', 'licensed', '/c.jpg', now()),
+             (504, 95504, 'D Sem Credito',      'Bio liberada de D.', 'licensed', '/d.jpg', now()),
+             (505, 95505, 'E Filme Sem Slug',   'Bio liberada de E.', 'licensed', '/e.jpg', now()),
+             (506, 95506, 'F Filme Bloqueado',  'Bio liberada de F.', 'licensed', '/f.jpg', now()),
+             (507, 95507, 'G Bio Sem Licenca',  'Texto existe, licenca nao.', 'unknown', '/g.jpg', now()),
+             (508, 95508, 'H Sem Foto',         'Bio liberada de H.', 'licensed', NULL, now()),
+             (509, 95509, 'I Filmografia',      'Texto existe, licenca nao.', 'unknown', '/i.jpg', now()),
+             (510, 95510, 'J Quatro E Bloqueada', NULL, 'unknown', '/j.jpg', now()),
+             (511, 95511, 'K Linhas Nao Obras', NULL, 'unknown', '/k.jpg', now()),
+             (512, 95512, 'L Ficha Sem Traducao', NULL, 'unknown', '/l.jpg', now()),
+             (513, 95513, 'M Ficha Localizada', NULL, 'unknown', '/m.jpg', now()),
+             (514, 95514, 'N Filmografia Sem Foto', NULL, 'unknown', NULL, now())`);
   await run(`INSERT INTO slugs (entity_type, entity_id, language_code, slug, is_canonical, updated_at) VALUES
              ('person', 501, 'pt-BR', 'a-elenco-em-filme', true, now()),
              ('person', 502, 'pt-BR', 'b-equipe-em-serie', true, now()),
@@ -151,28 +183,55 @@ async function seedFixtures(prisma: RawClient): Promise<void> {
              ('person', 505, 'pt-BR', 'e-filme-sem-slug',  true, now()),
              ('person', 506, 'pt-BR', 'f-filme-bloqueado', true, now()),
              ('person', 507, 'pt-BR', 'g-bio-sem-licenca', true, now()),
-             ('person', 508, 'pt-BR', 'h-sem-foto',        true, now())`);
+             ('person', 508, 'pt-BR', 'h-sem-foto',        true, now()),
+             ('person', 509, 'pt-BR', 'i-filmografia',     true, now()),
+             ('person', 510, 'pt-BR', 'j-quatro-e-bloqueada', true, now()),
+             ('person', 511, 'pt-BR', 'k-linhas-nao-obras', true, now()),
+             ('person', 512, 'pt-BR', 'l-ficha-sem-traducao', true, now()),
+             ('person', 513, 'pt-BR', 'm-ficha-localizada', true, now()),
+             ('person', 514, 'pt-BR', 'n-filmografia-sem-foto', true, now())`);
 
-  await run(`INSERT INTO cast_members (person_id, entity_type, entity_id, updated_at) VALUES
-             (501, 'movie', 101, now()),
-             (503, 'episode', 401, now()),
-             (505, 'movie', 102, now()),
-             (506, 'movie', 103, now()),
-             (507, 'movie', 101, now()),
-             (508, 'movie', 101, now())`);
+  // billing_order < 4 = elenco principal (candidato da listagem).
+  await run(`INSERT INTO cast_members (person_id, entity_type, entity_id, billing_order, updated_at) VALUES
+             (501, 'movie', 101, 0, now()),
+             (503, 'episode', 401, 0, now()),
+             (505, 'movie', 106, 0, now()),
+             (506, 'movie', 107, 0, now()),
+             (507, 'movie', 101, 1, now()),
+             (508, 'movie', 101, 2, now()),
+             (509, 'movie', 101, 3, now()), (509, 'movie', 102, 0, now()), (509, 'movie', 103, 0, now()),
+             (509, 'movie', 104, 0, now()), (509, 'movie', 105, 0, now()),
+             (510, 'movie', 101, 9, now()), (510, 'movie', 102, 1, now()), (510, 'movie', 103, 1, now()),
+             (510, 'movie', 104, 1, now()), (510, 'movie', 107, 1, now()),
+             (511, 'movie', 101, 8, now()), (511, 'movie', 102, 2, now()),
+             (512, 'movie', 101, 7, now()), (512, 'movie', 102, 3, now()), (512, 'movie', 103, 2, now()),
+             (512, 'movie', 104, 2, now()), (512, 'movie', 108, 0, now()),
+             (513, 'movie', 101, 6, now()), (513, 'movie', 102, 4, now()), (513, 'movie', 103, 3, now()),
+             (513, 'movie', 104, 3, now()), (513, 'movie', 109, 0, now()),
+             (514, 'movie', 101, 5, now()), (514, 'movie', 102, 5, now()), (514, 'movie', 103, 4, now()),
+             (514, 'movie', 104, 4, now()), (514, 'movie', 105, 1, now())`);
+  // K: tres linhas de EQUIPE nas MESMAS duas obras — cinco linhas, duas obras.
   await run(`INSERT INTO crew_members (person_id, entity_type, entity_id, job, updated_at) VALUES
-             (502, 'tv', 201, 'Director', now())`);
+             (502, 'tv', 201, 'Director', now()),
+             (511, 'movie', 101, 'Director', now()),
+             (511, 'movie', 101, 'Writer', now()),
+             (511, 'movie', 102, 'Producer', now())`);
 }
 
-const ELIGIBLE = ["a-elenco-em-filme", "b-equipe-em-serie"];
+const ELIGIBLE = ["a-elenco-em-filme", "b-equipe-em-serie", "i-filmografia", "m-ficha-localizada"];
 const INELIGIBLE = [
   "c-so-episodio",
   "d-sem-credito",
   "e-filme-sem-slug",
   "f-filme-bloqueado",
-  // Valvula 2026-08-27: credito bom nao basta mais.
+  // Valvula 2026-08-27: credito bom nao basta.
   "g-bio-sem-licenca",
   "h-sem-foto",
+  // D2, leitura de 22/09/2026: a filmografia precisa de cinco obras NO INDICE.
+  "j-quatro-e-bloqueada",
+  "k-linhas-nao-obras",
+  "l-ficha-sem-traducao",
+  "n-filmografia-sem-foto",
 ];
 
 async function runChecks(url: string): Promise<void> {
@@ -186,50 +245,6 @@ async function runChecks(url: string): Promise<void> {
   const prisma = dbServer.getPrismaClient();
   await seedFixtures(prisma);
 
-  // Diagnostico: quantas pessoas cada estagio ve (ajuda a localizar divergencia
-  // entre fixtures, gate e runtime quando algo falha).
-  const diag = prisma as unknown as {
-    $queryRawUnsafe<T>(sql: string): Promise<T[]>;
-  };
-  const rawPeople = await diag.$queryRawUnsafe<{ n: number }>(
-    `SELECT COUNT(*)::int AS n FROM slugs s JOIN people p ON p.id = s.entity_id
-     WHERE s.entity_type = 'person' AND s.language_code = 'pt-BR' AND s.is_canonical = true
-       AND BTRIM(p.name) <> ''`,
-  );
-  const gatedPeople = await diag.$queryRawUnsafe<{ n: number }>(
-    `SELECT COUNT(*)::int AS n FROM slugs s JOIN people p ON p.id = s.entity_id
-     WHERE s.entity_type = 'person' AND s.language_code = 'pt-BR' AND s.is_canonical = true
-       AND BTRIM(p.name) <> ''
-       AND BTRIM(COALESCE(p.biography, '')) <> ''
-       AND p.biography_source_status::text IN ('official','licensed','third_party')
-       AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-       AND EXISTS (
-         SELECT 1 FROM cast_members cm
-         JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
-           AND ws.language_code = 'pt-BR' AND ws.is_canonical = true
-         WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-           AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
-             WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-               AND wd.language_code = 'pt-BR' AND wd.is_current = true AND wd.decision <> 'index')
-         UNION ALL
-         SELECT 1 FROM crew_members rm
-         JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
-           AND ws.language_code = 'pt-BR' AND ws.is_canonical = true
-         WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-           AND NOT EXISTS (SELECT 1 FROM page_indexability_decisions wd
-             WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-               AND wd.language_code = 'pt-BR' AND wd.is_current = true AND wd.decision <> 'index')
-       )`,
-  );
-  console.log(
-    `[diag] pessoas com slug=${rawPeople[0]?.n ?? "?"} | aprovadas pelo gate=${gatedPeople[0]?.n ?? "?"}`,
-  );
-  record(
-    "gate SQL discrimina: 8 pessoas com slug, 2 aprovadas",
-    (rawPeople[0]?.n ?? 0) === 8 && (gatedPeople[0]?.n ?? 0) === 2,
-    `com slug=${rawPeople[0]?.n}, aprovadas=${gatedPeople[0]?.n}`,
-  );
-
   const sitemap = await import("../src/server/seo/sitemap-index.js");
   // O id do shard EXIGE o sufixo `.xml` (`parseShardId` recusa sem ele).
   const shard = await sitemap.getSitemapShardXml("sitemap-pt-BR-people-1.xml");
@@ -242,18 +257,10 @@ async function runChecks(url: string): Promise<void> {
   );
 
   for (const slug of ELIGIBLE) {
-    record(
-      `ENTRA no sitemap: ${slug}`,
-      xml.includes(`/${slug}/`),
-      "credito em obra publicavel",
-    );
+    record(`ENTRA no sitemap: ${slug}`, xml.includes(`/${slug}/`), "portao D2 aprovado");
   }
   for (const slug of INELIGIBLE) {
-    record(
-      `FICA DE FORA do sitemap: ${slug}`,
-      !xml.includes(`/${slug}/`),
-      "sem credito em obra publicavel, ou sem biografia exibivel/foto",
-    );
+    record(`FICA DE FORA do sitemap: ${slug}`, !xml.includes(`/${slug}/`), "portao D2 reprovado");
   }
 
   // Contagem e pagina precisam concordar: o index deriva o numero de shards da
@@ -269,9 +276,56 @@ async function runChecks(url: string): Promise<void> {
 
   const urlCount = (xml.match(/<loc>/g) ?? []).length;
   record(
-    "shard contem SO as 2 pessoas elegiveis",
+    "shard contem SO as pessoas aptas",
     urlCount === ELIGIBLE.length,
     `${urlCount} URL(s), esperado ${ELIGIBLE.length}`,
+  );
+
+  // A PAGINA precisa dar o MESMO veredito que o sitemap, pessoa por pessoa: e a
+  // divergencia (a) da auditoria que a D2 fechou, e cada copia nova da regra
+  // pode reabri-la.
+  const personPage = (await import("../src/server/person-page.js")) as unknown as {
+    getPersonPageData: (slug: string) => Promise<{
+      seo: { robots: { index: boolean; follow: boolean } };
+    } | null>;
+  };
+  const divergentes: string[] = [];
+  for (const slug of [...ELIGIBLE, ...INELIGIBLE]) {
+    const data = await personPage.getPersonPageData(slug);
+    const noSitemap = xml.includes(`/${slug}/`);
+    if (data === null || data.seo.robots.index !== noSitemap || data.seo.robots.follow !== true) {
+      divergentes.push(`${slug}: pagina=${data === null ? "null" : data.seo.robots.index} sitemap=${noSitemap}`);
+    }
+  }
+  record(
+    "PAGINA e SITEMAP dao o mesmo veredito para as 14 pessoas (e barrada fica com follow)",
+    divergentes.length === 0,
+    divergentes.length === 0 ? "14/14" : divergentes.join(" | "),
+  );
+
+  // A LISTAGEM abre com as aptas do elenco principal das obras populares, da
+  // obra mais popular para a menos (empate: id). B e apta mas e EQUIPE, e o
+  // recorte e o elenco — entra pelo complemento, com as demais.
+  const indexes = (await import("../src/server/entity-indexes.js")) as unknown as {
+    getPersonIndexData: () => Promise<{ view: { cards: ReadonlyArray<{ href: string }> } }>;
+  };
+  const cards = (await indexes.getPersonIndexData()).view.cards.map((card) => card.href);
+  const abertura = cards.slice(0, 3);
+  const esperada = ["/pt/pessoas/a-elenco-em-filme/", "/pt/pessoas/i-filmografia/", "/pt/pessoas/m-ficha-localizada/"];
+  record(
+    "LISTAGEM abre com as aptas do elenco principal, na ordem da obra mais popular",
+    JSON.stringify(abertura) === JSON.stringify(esperada),
+    `abertura=[${abertura.join(", ")}]`,
+  );
+  record(
+    "LISTAGEM: CONTROLE — nenhuma pessoa barrada pelo portao aparece antes das aptas",
+    abertura.every((href) => ELIGIBLE.some((slug) => href === `/pt/pessoas/${slug}/`)),
+    `abertura=[${abertura.join(", ")}]`,
+  );
+  record(
+    "LISTAGEM: o complemento traz as demais pessoas depois das aptas (nada some)",
+    cards.length === ELIGIBLE.length + INELIGIBLE.length,
+    `${cards.length} card(s)`,
   );
 
   await dbServer.disconnectPrisma();

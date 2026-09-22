@@ -20,8 +20,9 @@
  *   temporada   : herda a serie + conteudo proprio suficiente (sinopse OU
  *                 pelo menos um episodio listado)
  *   episodio    : herda a serie + SINOPSE propria
- *   pessoa      : credito em obra publicavel (`person-eligibility`) +
- *                 BIOGRAFIA EXIBIVEL + IMAGEM
+ *   pessoa      : credito em obra publicavel (`person-eligibility`) + IMAGEM
+ *                 + (BIOGRAFIA EXIBIVEL ou FILMOGRAFIA de
+ *                 `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY` obras)
  *
  * A REGRA E DIRIGIDA A DADO, NUNCA A TIPO
  * ---------------------------------------
@@ -52,6 +53,7 @@
  * MODULO PURO: sem banco, sem rede, sem relogio.
  */
 
+import { requiredIndexableWorks } from "./entity-quality-gates.js";
 import { evaluatePersonEligibility } from "./person-eligibility.js";
 import { resolvePageSeo, type DisplayedRating } from "./resolver.js";
 
@@ -66,8 +68,14 @@ import { resolvePageSeo, type DisplayedRating } from "./resolver.js";
  * cada tipo de pagina promete — sinopse para filme/serie/temporada/episodio,
  * biografia exibivel e imagem para pessoa. Toda decisao v1 persistida precisa
  * ser reemitida sob v2, mesmo quando o veredito nao muda.
+ *
+ * v2 -> v3 (2026-09-22): pessoa sem biografia exibivel deixa de ser barrada so
+ * por isso (`no_biography`). Com foto, a filmografia sustenta a pagina a partir
+ * de `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY` obras (`short_filmography` abaixo
+ * disso) — a leitura de "biografia/conteudo licenciado suficiente" da D2 que a
+ * pagina e o sitemap passam a aplicar.
  */
-export const CATALOG_POLICY_VERSION = "catalog-indexability-v2";
+export const CATALOG_POLICY_VERSION = "catalog-indexability-v3";
 
 /** Origem gravada em `decision_origin`. */
 export const CATALOG_DECISION_ORIGIN = "catalog_policy_engine";
@@ -107,7 +115,7 @@ export type CatalogDecisionReason =
   | "missing_translation"
   | "no_eligible_credit"
   | "no_synopsis"
-  | "no_biography"
+  | "short_filmography"
   | "no_image"
   | "parent_not_publishable"
   | "language_not_published"
@@ -139,6 +147,13 @@ export interface CatalogEntityFacts {
    * `person-eligibility.ts` para a regra e o porque.
    */
   readonly publishableCreditCount?: number;
+  /**
+   * OBRAS distintas (filme ou serie) com slug canonico no idioma em que a pessoa
+   * tem credito. So consultado para `person`: e a filmografia que sustenta a
+   * pagina sem biografia exibivel (D2). Conta obra, nao linha de credito — quem
+   * dirige e roteiriza o mesmo filme soma uma. Ausente vale zero (fail-closed).
+   */
+  readonly publishableWorkCount?: number;
   /** Para temporada/episodio: a SERIE dona e publicavel? */
   readonly parentPublishable?: boolean;
   /** Ratings exibidos, com flag de licenca (invariante 6). */
@@ -347,18 +362,27 @@ export function decideCatalogIndexability(
     if (!eligibility.eligible) {
       return decided("noindex", "no_eligible_credit", eligibility.explanation);
     }
-    if (facts.hasDisplayableBiography !== true) {
-      return decided(
-        "noindex",
-        "no_biography",
-        "pessoa sem biografia exibivel (texto ausente ou fonte nao liberada): pagina de ficha sem texto proprio.",
-      );
-    }
     if (facts.hasImage !== true) {
       return decided(
         "noindex",
         "no_image",
         "pessoa sem foto de perfil persistida: pagina sem a imagem que a ficha promete.",
+      );
+    }
+    // O MESMO piso do portao da pagina (`evaluatePersonQualityGate`, D2): sem
+    // biografia exibivel, a filmografia sustenta a pagina a partir de
+    // `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY` obras. Aqui a obra conta com slug
+    // canonico — um criterio MAIS FROUXO que o da pagina, que tambem exige a
+    // obra no indice. Frouxo de proposito: a decisao persistida mais restritiva
+    // vence a pagina, e um censo mais severo que ela tiraria do indice quem a
+    // pagina aprova.
+    const works = facts.publishableWorkCount ?? 0;
+    const minimum = requiredIndexableWorks(facts.hasDisplayableBiography === true);
+    if (works < minimum) {
+      return decided(
+        "noindex",
+        "short_filmography",
+        `pessoa sem biografia exibivel e com ${works} obra(s) publicavel(is), abaixo do minimo de ${minimum}: a pagina repete o elenco de poucas obras.`,
       );
     }
   }

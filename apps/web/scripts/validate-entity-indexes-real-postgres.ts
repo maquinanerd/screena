@@ -249,9 +249,11 @@ async function runChecks(
   record(14, "Series: meta e o periodo (2021 / 2021-2023)", series.view.cards[0]?.meta === "2021" && series.view.cards[1]?.meta === "2021-2023", `metas=[${series.view.cards.map((c) => c.meta).join(", ")}]`);
 
   // --- Pessoas: 5 validas (suficiente -> index) ---
-  // Zeca e o perfil APTO (biografia liberada + foto) e abre a listagem (decisao do
-  // dono D2). Yara e o CONTROLE: tem texto e foto, mas a biografia nao esta
-  // liberada para exibicao — fica na ordem do nome, como quem nao tem biografia.
+  // NENHUMA e apta pelo portao D2: ninguem tem credito em obra no indice. A
+  // listagem cai inteira no complemento, na ordem do nome — e e isso que se
+  // prova aqui. Zeca (biografia liberada + foto) e o CONTROLE: sem obra, a
+  // biografia sozinha nao a poe na frente. A abertura pelos perfis aptos, com
+  // credito e obra popular, e provada em validate-person-eligibility.
   await seedPerson(prisma, { tmdbId: 66200001, name: "Zora", canonicalSlug: "pessoa-zora", profilePath: "/raw.jpg" });
   await seedPerson(prisma, { tmdbId: 66200002, name: "Ana", knownForDepartment: "Acting", profilePath: "/media/people/ana.webp", canonicalSlug: "pessoa-ana" });
   await seedPerson(prisma, { tmdbId: 66200003, name: "Bruno", canonicalSlug: "pessoa-bruno" });
@@ -263,10 +265,10 @@ async function runChecks(
   record(15, "Pessoas: canonicalUrl /pt/pessoas/", people.canonicalUrl === "https://cinerie.com/pt/pessoas/", `canonicalUrl=${people.canonicalUrl}`);
   record(16, "Pessoas: totalCount=5", people.view.totalCount === 5, `totalCount=${people.view.totalCount}`);
   record(17, "Pessoas: 5 itens (suficiente) -> index", people.indexability.decision === "index", `decision=${people.indexability.decision}`);
-  record(18, "Pessoas: perfil APTO primeiro, depois nome asc (Zeca; Ana, Bruno, Yara, Zora)", JSON.stringify(ordemPessoas) === JSON.stringify(["Zeca", "Ana", "Bruno", "Yara", "Zora"]), `ordem=[${ordemPessoas.join(", ")}]`);
-  record(19, "Pessoas: meta e a funcao traduzida (Ana -> Atuação)", people.view.cards[1]?.meta === "Atuação", `metaAna=${people.view.cards[1]?.meta ?? "null"}`);
-  record(20, "Pessoas: perfil local (Ana) e perfil REMOTO do file_path cru (Zora)", people.view.cards[1]?.href === "/pt/pessoas/pessoa-ana/" && people.view.cards[1]?.image?.src === "/media/people/ana.webp" && (people.view.cards[4]?.image?.src?.startsWith("https://") ?? false), `hrefAna=${people.view.cards[1]?.href}`);
-  record(21, "Pessoas: CONTROLE — biografia SEM liberacao nao prioriza (Yara fica na ordem do nome)", ordemPessoas.indexOf("Yara") === 3, `posicaoYara=${ordemPessoas.indexOf("Yara")}`);
+  record(18, "Pessoas: sem perfil apto, o complemento vem na ordem do nome (Ana, Bruno, Yara, Zeca, Zora)", JSON.stringify(ordemPessoas) === JSON.stringify(["Ana", "Bruno", "Yara", "Zeca", "Zora"]), `ordem=[${ordemPessoas.join(", ")}]`);
+  record(19, "Pessoas: meta e a funcao traduzida (Ana -> Atuação)", people.view.cards[0]?.meta === "Atuação", `metaAna=${people.view.cards[0]?.meta ?? "null"}`);
+  record(20, "Pessoas: perfil local (Ana) e perfil REMOTO do file_path cru (Zora)", people.view.cards[0]?.href === "/pt/pessoas/pessoa-ana/" && people.view.cards[0]?.image?.src === "/media/people/ana.webp" && (people.view.cards[4]?.image?.src?.startsWith("https://") ?? false), `hrefAna=${people.view.cards[0]?.href}`);
+  record(21, "Pessoas: CONTROLE — biografia liberada SEM obra no indice nao prioriza (Zeca fica na ordem do nome)", ordemPessoas.indexOf("Zeca") === 3, `posicaoZeca=${ordemPessoas.indexOf("Zeca")}`);
 }
 
 async function main(): Promise<void> {

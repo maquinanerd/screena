@@ -171,6 +171,13 @@ uma leva propria: nao reprocesse junto do backfill.
 
 ## 4. `no_biography`: por que preencher nao basta
 
+> **Atualizado em 22/09/2026.** A politica v3 do censo trocou `no_biography` por
+> `short_filmography`: sem biografia exibivel, a pessoa com foto indexa pela
+> filmografia a partir de 5 obras (D2; ver a secao 10.6 de
+> `docs/seo/AUDITORIA-SEO-2026-09-11-RESOLVIDA.md`). O que esta secao mede
+> continua valendo: preencher `people.biography` sozinho nao muda nada — so a
+> decisao de licenca baixaria o piso para uma obra.
+
 ```sql
 -- Das pessoas em `no_biography`, quantas ja tem TEXTO e estao presas so na licenca.
 SELECT

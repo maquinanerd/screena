@@ -9,13 +9,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   DISPLAYABLE_BIOGRAPHY_SOURCE_STATUSES,
+  MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY,
   QUALITY_GATE_ROBOTS,
   TMDB_FALLBACK_SLUG_PATTERN,
   TMDB_FALLBACK_SLUG_SQL_PATTERN,
   evaluateGalleryGate,
   evaluateLocalizationGate,
   evaluatePersonQualityGate,
+  isDisplayableBiography,
   isLocalizedTitle,
+  requiredIndexableWorks,
   type PersonQualityGateInput,
 } from "./entity-quality-gates.js";
 
@@ -163,49 +166,86 @@ describe("D3 — ficha com slug de fallback", () => {
 });
 
 describe("D2 — pessoa", () => {
-  const completa: PersonQualityGateInput = {
+  /** O estado de PRODUCAO: biografia com texto e status `unknown` (nada o altera). */
+  const semBiografiaExibivel: PersonQualityGateInput = {
+    name: "Josh Brolin",
+    hasCanonicalSlug: true,
+    biography: "Ator norte-americano.",
+    biographySourceStatus: "unknown",
+    profilePath: "/j.jpg",
+    indexableWorkCount: 60,
+  };
+  const comBiografia: PersonQualityGateInput = {
     name: "Fernanda Montenegro",
     hasCanonicalSlug: true,
     biography: "Atriz brasileira.",
     biographySourceStatus: "licensed",
     profilePath: "/f.jpg",
-    indexableCreditCount: 3,
+    indexableWorkCount: 3,
   };
 
-  it("(10) com biografia exibivel, foto e credito indexavel => passa", () => {
-    const v = evaluatePersonQualityGate(completa);
+  it("(10) foto + filmografia no indice, SEM biografia exibivel => passa (o caso que o portao antigo barrava)", () => {
+    // Medido em producao em 22/09/2026: Josh Brolin, 60 obras, noindex.
+    const v = evaluatePersonQualityGate(semBiografiaExibivel);
     expect(v.passed).toBe(true);
     expect(v.code).toBe("eligible");
+    expect(v.reason).toContain("filmografia de 60 obras");
   });
 
-  it("(11) biografia com texto mas status `unknown` NAO conta (invariante 6)", () => {
-    // E o estado de producao hoje: a coluna nasce unknown e nada a altera.
-    const v = evaluatePersonQualityGate({ ...completa, biographySourceStatus: "unknown" });
+  it("(11) o piso e exatamente MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY: no piso passa, um abaixo nao", () => {
+    const piso = MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY;
+    expect(piso).toBe(5);
+    expect(evaluatePersonQualityGate({ ...semBiografiaExibivel, indexableWorkCount: piso }).passed).toBe(true);
+    const abaixo = evaluatePersonQualityGate({ ...semBiografiaExibivel, indexableWorkCount: piso - 1 });
+    expect(abaixo.passed).toBe(false);
+    expect(abaixo.code).toBe("short_filmography");
+  });
+
+  it("(12) CONTROLE: biografia com texto mas status `unknown` NAO baixa o piso (invariante 6)", () => {
+    // Se a biografia nao liberada contasse, o piso cairia para 1 e 3 obras bastariam.
+    const v = evaluatePersonQualityGate({ ...semBiografiaExibivel, indexableWorkCount: 3 });
     expect(v.passed).toBe(false);
-    expect(v.code).toBe("no_displayable_biography");
+    expect(v.code).toBe("short_filmography");
+    // Status liberado mas texto vazio tambem nao e biografia exibivel.
+    expect(
+      evaluatePersonQualityGate({ ...comBiografia, biography: "   " }).code,
+    ).toBe("short_filmography");
   });
 
-  it("(12) status liberado mas biografia vazia tambem nao conta", () => {
-    expect(evaluatePersonQualityGate({ ...completa, biography: "   " }).code).toBe(
-      "no_displayable_biography",
+  it("(13) com biografia EXIBIVEL, uma obra no indice basta", () => {
+    expect(evaluatePersonQualityGate({ ...comBiografia, indexableWorkCount: 1 }).passed).toBe(true);
+    expect(evaluatePersonQualityGate(comBiografia).reason).toContain("biografia exibivel");
+  });
+
+  it("(14) sem foto => barrada, mesmo com filmografia enorme e com biografia", () => {
+    expect(
+      evaluatePersonQualityGate({ ...semBiografiaExibivel, profilePath: null }).code,
+    ).toBe("no_profile_photo");
+    expect(evaluatePersonQualityGate({ ...comBiografia, profilePath: "  " }).code).toBe(
+      "no_profile_photo",
     );
   });
 
-  it("(13) sem foto => barrada", () => {
-    expect(evaluatePersonQualityGate({ ...completa, profilePath: null }).code).toBe("no_profile_photo");
-  });
-
-  it("(14) sem credito em obra indexavel => barrada, pela regra de elegibilidade que ja existia", () => {
-    expect(evaluatePersonQualityGate({ ...completa, indexableCreditCount: 0 }).code).toBe(
+  it("(15) sem obra no indice => barrada pela regra de elegibilidade que ja existia", () => {
+    expect(evaluatePersonQualityGate({ ...comBiografia, indexableWorkCount: 0 }).code).toBe(
       "no_publishable_credit",
     );
   });
 
-  it("(15) nome e slug vem ANTES: sem eles nao ha pagina para avaliar", () => {
-    expect(evaluatePersonQualityGate({ ...completa, name: "" }).code).toBe("name_missing");
+  it("(15b) nome e slug vem ANTES: sem eles nao ha pagina para avaliar", () => {
+    expect(evaluatePersonQualityGate({ ...comBiografia, name: "" }).code).toBe("name_missing");
     expect(
-      evaluatePersonQualityGate({ ...completa, hasCanonicalSlug: false, biography: null }).code,
+      evaluatePersonQualityGate({ ...comBiografia, hasCanonicalSlug: false, profilePath: null }).code,
     ).toBe("slug_missing");
+  });
+
+  it("(15c) requiredIndexableWorks e isDisplayableBiography: as pecas que o SQL repete", () => {
+    expect(requiredIndexableWorks(true)).toBe(1);
+    expect(requiredIndexableWorks(false)).toBe(MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY);
+    expect(isDisplayableBiography("Texto.", "third_party")).toBe(true);
+    expect(isDisplayableBiography("Texto.", "unknown")).toBe(false);
+    expect(isDisplayableBiography("Texto.", "blocked")).toBe(false);
+    expect(isDisplayableBiography(null, "licensed")).toBe(false);
   });
 
   it("(16) os status que liberam a biografia sao exatamente os que o SQL do sitemap usa", () => {

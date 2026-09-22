@@ -55,6 +55,7 @@ import {
   renderUrlset,
   SITEMAP_CONTENT_TYPE,
   SITEMAP_URL_LIMIT,
+  MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY,
   TMDB_FALLBACK_SLUG_SQL_PATTERN,
   type SitemapCeilingReport,
   type SitemapIndexXmlEntry,
@@ -545,38 +546,57 @@ async function aggregateEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
-        -- VALVULA 2026-08-27 (ver SUSPENDED_SITEMAP_TYPES): pessoa sem
-        -- biografia EXIBIVEL ou sem foto rende uma ficha de ~52 palavras dentro
-        -- de <main> — nome, papel e uma lista de links. Medido em 2026-08-27:
-        -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS
-        -- predicados que o produtor da Fase 3 usa para decidir no_biography /
-        -- no_image (services/ingestion/src/persistence/indexability-writer.ts),
-        -- escritos aqui para nao dependerem de o produtor ja ter rodado.
-        -- Texto E licenca: a coluna de governanca nasce unknown, e bio ingerida
-        -- sem liberacao nao aparece na tela (invariante 6).
+        -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
+        -- foto E conteudo proprio suficiente. Biografia EXIBIVEL com ao menos uma
+        -- obra no indice, OU uma filmografia de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY
+        -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
+        -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
+        -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
+        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
+        -- titulo original, portao de localizacao D3 e decisao efetiva index.
+        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
+        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
-        AND BTRIM(COALESCE(p.biography, '')) <> ''
-        AND p.biography_source_status::text IN ('official','licensed','third_party')
         AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-        AND EXISTS (
-          SELECT 1 FROM cast_members cm
-          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE cm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-          UNION ALL
-          SELECT 1 FROM crew_members rm
-          JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE rm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-        )
+        AND (
+          SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM (
+              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
+              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+              UNION
+              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
+              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            ) obra
+            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
+              AND ws.language_code = ${language} AND ws.is_canonical = true
+            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
+            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
+            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+              AND NOT (
+                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+                AND NOT EXISTS (
+                  SELECT 1 FROM entity_translations et
+                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
+                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                      OR BTRIM(COALESCE(et.summary, '')) <> ''
+                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+                )
+              )
+              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
+                  AND wd.language_code = ${language} AND wd.is_current = true
+                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+          ) obras_no_indice
+        ) >= CASE
+          WHEN BTRIM(COALESCE(p.biography, '')) <> ''
+            AND p.biography_source_status::text IN ('official','licensed','third_party')
+          THEN 1
+          ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+        END
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -874,38 +894,57 @@ async function pageEntity(
       FROM slugs s JOIN people p ON p.id = s.entity_id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
-        -- VALVULA 2026-08-27 (ver SUSPENDED_SITEMAP_TYPES): pessoa sem
-        -- biografia EXIBIVEL ou sem foto rende uma ficha de ~52 palavras dentro
-        -- de <main> — nome, papel e uma lista de links. Medido em 2026-08-27:
-        -- 0 de 300 pessoas do sitemap exibiam biografia. Sao os MESMOS
-        -- predicados que o produtor da Fase 3 usa para decidir no_biography /
-        -- no_image (services/ingestion/src/persistence/indexability-writer.ts),
-        -- escritos aqui para nao dependerem de o produtor ja ter rodado.
-        -- Texto E licenca: a coluna de governanca nasce unknown, e bio ingerida
-        -- sem liberacao nao aparece na tela (invariante 6).
+        -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
+        -- foto E conteudo proprio suficiente. Biografia EXIBIVEL com ao menos uma
+        -- obra no indice, OU uma filmografia de MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY
+        -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
+        -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
+        -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
+        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
+        -- titulo original, portao de localizacao D3 e decisao efetiva index.
+        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
+        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
-        AND BTRIM(COALESCE(p.biography, '')) <> ''
-        AND p.biography_source_status::text IN ('official','licensed','third_party')
         AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-        AND EXISTS (
-          SELECT 1 FROM cast_members cm
-          JOIN slugs ws ON ws.entity_type = cm.entity_type AND ws.entity_id = cm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = cm.entity_type AND wd.entity_id = cm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE cm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-          UNION ALL
-          SELECT 1 FROM crew_members rm
-          JOIN slugs ws ON ws.entity_type = rm.entity_type AND ws.entity_id = rm.entity_id
-            AND ws.language_code = ${language} AND ws.is_canonical = true
-          WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-              WHERE wd.entity_type = rm.entity_type AND wd.entity_id = rm.entity_id
-                AND wd.language_code = ${language} AND wd.is_current = true
-              LIMIT 1), CASE rm.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-        )
+        AND (
+          SELECT COUNT(*) FROM (
+            SELECT 1
+            FROM (
+              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
+              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
+              UNION
+              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
+              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
+            ) obra
+            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
+              AND ws.language_code = ${language} AND ws.is_canonical = true
+            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
+            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
+            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+              AND NOT (
+                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+                AND NOT EXISTS (
+                  SELECT 1 FROM entity_translations et
+                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
+                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                      OR BTRIM(COALESCE(et.summary, '')) <> ''
+                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+                )
+              )
+              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
+                  AND wd.language_code = ${language} AND wd.is_current = true
+                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+          ) obras_no_indice
+        ) >= CASE
+          WHEN BTRIM(COALESCE(p.biography, '')) <> ''
+            AND p.biography_source_status::text IN ('official','licensed','third_party')
+          THEN 1
+          ELSE ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
+        END
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'person' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true

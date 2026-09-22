@@ -58,10 +58,13 @@ import { absentDecisionFor, readDecisionCoverageForPage } from "./seo/decision-c
 import { getRelatedNewsForEntity } from "./related-news";
 import type { NewsCardView } from "../lib/news-presenter";
 import {
+  evaluateLocalizationGate,
   evaluatePersonQualityGate,
+  TMDB_FALLBACK_SLUG_PATTERN,
   type IndexabilityResult,
   type PageSeoResolution,
 } from "@screena/seo";
+import { PUBLISHED_LOCALES } from "../lib/synopsis-language";
 
 const LANGUAGE_CODE = "pt-BR";
 const ENTITY_TYPE = "person";
@@ -114,6 +117,12 @@ interface ResolvedTarget {
   slug: string | null;
   year: number | null;
   posterPath: string | null;
+  /**
+   * A obra passa nos portoes de CONTEUDO que a poem no sitemap: titulo original
+   * nao vazio e localizacao (D3). A decisao efetiva e somada em
+   * `countIndexableWorks`, porque depende da cobertura.
+   */
+  indexableContent: boolean;
 }
 
 function targetKey(entityType: string, entityId: bigint): string {
@@ -251,17 +260,16 @@ export const getPersonPageData = cache(
     const canonicalUrl = personCanonicalUrl(canonicalSlug);
 
     // PORTAO DE PESSOA (decisao do dono D2, 2026-09-11). Os MESMOS criterios que
-    // o SQL do sitemap exige desde 2026-08-27 — nome, slug canonico, biografia
-    // com status que libera exibicao, foto e ao menos um credito em obra
-    // indexavel — agora tambem na pagina. Ate aqui a pagina dizia `index` e o
-    // sitemap listava 0 pessoas: a divergencia (a) da auditoria.
+    // o SQL do sitemap exige — nome, slug canonico, foto e conteudo proprio
+    // suficiente: biografia exibivel com ao menos uma obra no indice, ou uma
+    // filmografia de `MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY` obras no indice.
     const qualityGate = evaluatePersonQualityGate({
       name: person.name,
       hasCanonicalSlug: canonicalSlugRow !== null,
       biography: person.biography,
       biographySourceStatus: person.biographySourceStatus,
       profilePath: person.profilePath,
-      indexableCreditCount: await countIndexableCredits(prisma, targets),
+      indexableWorkCount: await countIndexableWorks(prisma, targets),
     });
 
     // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida. Falha de
@@ -351,22 +359,25 @@ async function resolveCredits(
 }
 
 /**
- * Quantas obras creditadas (filme ou serie) tem slug canonico no locale E
- * decisao EFETIVA `index` — a MESMA definicao do `EXISTS` de pessoa no SQL do
- * sitemap: `COALESCE(decisao vigente, ausente) = 'index'`, com o "ausente" vindo
- * da cobertura do tipo da OBRA. Se esta conta usasse outra regra, a pagina e o
- * sitemap voltariam a discordar sobre a mesma pessoa.
+ * Quantas OBRAS creditadas (filme ou serie) estao, elas proprias, no indice:
+ * slug canonico no locale, portoes de conteudo da obra (`indexableContent`:
+ * titulo original e localizacao D3) e decisao EFETIVA `index` —
+ * `COALESCE(decisao vigente, ausente) = 'index'`, com o "ausente" vindo da
+ * cobertura do tipo da OBRA. E a MESMA conta que o SQL de pessoa do sitemap faz;
+ * se esta usasse outra regra, a pagina e o sitemap voltariam a discordar sobre a
+ * mesma pessoa.
  *
+ * Conta OBRA: `targets` ja tem uma entrada por obra, nao por linha de credito.
  * Uma consulta para todas as obras, nao uma por credito.
  */
-async function countIndexableCredits(
+async function countIndexableWorks(
   prisma: PrismaClient,
   targets: Map<string, ResolvedTarget>,
 ): Promise<number> {
   const movieIds: bigint[] = [];
   const tvIds: bigint[] = [];
   for (const [key, target] of targets) {
-    if (target.slug === null) continue;
+    if (target.slug === null || !target.indexableContent) continue;
     const [type, id] = key.split(":");
     if (id === undefined) continue;
     if (type === "movie") movieIds.push(BigInt(id));
@@ -467,6 +478,7 @@ async function resolveTargets(
   for (const row of slugs) {
     canonicalSlug.set(row.entityId.toString(), row.slug);
   }
+  const localizationRows = await readFallbackSlugTranslations(prisma, entityType, slugs);
 
   if (entityType === "movie") {
     const movies = await prisma.movie.findMany({
@@ -475,11 +487,17 @@ async function resolveTargets(
     });
     for (const movie of movies) {
       const key = movie.id.toString();
+      const slug = canonicalSlug.get(key) ?? null;
       out.set(targetKey("movie", movie.id), {
         title: translatedTitle.get(key) ?? movie.titleOriginal,
-        slug: canonicalSlug.get(key) ?? null,
+        slug,
         year: yearFromDate(movie.releaseDate),
         posterPath: movie.posterPath,
+        indexableContent: hasIndexableWorkContent(
+          slug,
+          movie.titleOriginal,
+          localizationRows.get(key) ?? [],
+        ),
       });
     }
   } else {
@@ -489,14 +507,83 @@ async function resolveTargets(
     });
     for (const show of shows) {
       const key = show.id.toString();
+      const slug = canonicalSlug.get(key) ?? null;
       out.set(targetKey("tv", show.id), {
         title: translatedTitle.get(key) ?? show.nameOriginal,
-        slug: canonicalSlug.get(key) ?? null,
+        slug,
         year: yearFromDate(show.firstAirDate),
         posterPath: show.posterPath,
+        indexableContent: hasIndexableWorkContent(
+          slug,
+          show.nameOriginal,
+          localizationRows.get(key) ?? [],
+        ),
       });
     }
   }
+}
+
+/** Linha de traducao que o portao de localizacao (D3) le. */
+interface LocalizationRow {
+  title: string | null;
+  summary: string | null;
+  metaDescription: string | null;
+}
+
+/**
+ * As linhas de traducao, em QUALQUER locale publicado, das obras cujo slug
+ * canonico e o fallback `tmdb-{id}` — as unicas em que o portao de localizacao
+ * se aplica. Obra com slug derivado do titulo nao paga a consulta; a pessoa sem
+ * nenhuma obra assim nao faz consulta nenhuma.
+ *
+ * Qualquer locale publicado, como o `EXISTS` do SQL do sitemap
+ * (`et.language_code = ANY(PUBLISHED_LOCALE_CODES)`): a conta da pagina e a do
+ * sitemap precisam ler as mesmas linhas.
+ */
+async function readFallbackSlugTranslations(
+  prisma: PrismaClient,
+  entityType: PersonCreditEntityType,
+  slugs: ReadonlyArray<{ entityId: bigint; slug: string }>,
+): Promise<Map<string, LocalizationRow[]>> {
+  const ids = slugs
+    .filter((row) => TMDB_FALLBACK_SLUG_PATTERN.test(row.slug.trim()))
+    .map((row) => row.entityId);
+  const byEntity = new Map<string, LocalizationRow[]>();
+  if (ids.length === 0) return byEntity;
+  const rows = await prisma.entityTranslation.findMany({
+    where: { entityType, entityId: { in: ids }, languageCode: { in: [...PUBLISHED_LOCALES] } },
+    select: { entityId: true, title: true, summary: true, metaDescription: true },
+  });
+  for (const row of rows) {
+    const key = row.entityId.toString();
+    const list = byEntity.get(key) ?? [];
+    list.push({ title: row.title, summary: row.summary, metaDescription: row.metaDescription });
+    byEntity.set(key, list);
+  }
+  return byEntity;
+}
+
+/**
+ * A obra passa nos portoes de conteudo que a poem no sitemap: titulo original
+ * nao vazio (`BTRIM(title_original) <> ''`) e o portao de localizacao D3, aberto
+ * por QUALQUER linha publicada — o `NOT EXISTS` do sitemap reprova a obra so
+ * quando nenhuma linha passa.
+ */
+function hasIndexableWorkContent(
+  slug: string | null,
+  originalTitle: string | null,
+  rows: readonly LocalizationRow[],
+): boolean {
+  if (slug === null || (originalTitle ?? "").trim() === "") return false;
+  const verdict = (row: LocalizationRow | null): boolean =>
+    evaluateLocalizationGate({
+      canonicalSlug: slug,
+      localizedTitle: row?.title ?? null,
+      originalTitle,
+      hasLocalizedDescription:
+        (row?.summary ?? "").trim() !== "" || (row?.metaDescription ?? "").trim() !== "",
+    }).passed;
+  return rows.length === 0 ? verdict(null) : rows.some(verdict);
 }
 
 /*

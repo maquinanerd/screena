@@ -165,14 +165,16 @@ class FakeDb {
   private eligible(kind: string, values: readonly unknown[]): Entity[] {
     const defaults = absentParams(values);
     if (kind === "people") {
-      // [movie, tv, movie, tv, person] na regra nova; vazio no legado.
-      if (defaults.length !== 5 && defaults.length !== 0) {
+      // [movie, tv, person] desde 22/09/2026: a obra (filme OU serie) entra numa
+      // unica subconsulta, com um CASE para o default do tipo dela; o ultimo e o
+      // da propria pessoa. Vazio no legado.
+      if (defaults.length !== 3 && defaults.length !== 0) {
         throw new Error(
           `consulta de pessoa com ${defaults.length} defaults de decisao — forma nao reconhecida`,
         );
       }
-      const daObra = defaults.length === 5 ? (defaults[0] ?? null) : null;
-      const propria = defaults.length === 5 ? (defaults[4] ?? null) : null;
+      const daObra = defaults.length === 3 ? (defaults[0] ?? null) : null;
+      const propria = defaults.length === 3 ? (defaults[2] ?? null) : null;
       this.seen.push(`people:${propria ?? "legado"}`);
       return this.data.people.filter(
         (p) => passes(p.creditDecision ?? null, daObra) && passes(p.decision, propria),

@@ -65,6 +65,19 @@ lados discordam, e a exceção vive só num comentário de código.
 
 **Escala:** até 73.574 URLs. É indexação em massa.
 
+> **Nota de implementação (22/09/2026).** A primeira implementação leu
+> "biografia/conteúdo licenciado suficiente" como *biografia obrigatória*. Como a
+> biografia do TMDB só vai para a tela com `biography_source_status` liberado, e
+> liberar é decisão de licença ainda não tomada, **nenhuma pessoa passava**. As 50
+> amostradas em produção estavam `noindex`, inclusive nomes como Josh Brolin e
+> Scarlett Johansson, e o sitemap tinha zero pessoa. A leitura corrigida vale para
+> página, sitemap, listagem e censo: **foto + (biografia exibível com ao menos 1
+> obra no índice OU filmografia de ao menos 5 obras no índice)**. Os números e
+> as provas estão na §10.6 da
+> [auditoria resolvida](AUDITORIA-SEO-2026-09-11-RESOLVIDA.md). Liberar a
+> biografia continua sendo a decisão de licença em aberto: ela baixaria o piso
+> para uma obra.
+
 ---
 
 ## D3 · Ficha sem localização não indexa até ser enriquecida
