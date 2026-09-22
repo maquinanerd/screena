@@ -21,6 +21,7 @@ import { TrailerModal } from '../../../_components/trailer-modal'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
@@ -198,7 +199,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
 
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, directors, releaseDateIso } =
     data
-  const isUnderReview = seo.decision !== 'index'
+  // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
+  // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
+  const isUnderReview = isEditorialReviewPending(seo)
   const metaText = [view.year !== null ? String(view.year) : null, view.runtimeLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')

@@ -10,9 +10,12 @@
  *
  * Cobre: temporada valida/invalida/de outra serie, episodios ordenados,
  * anterior/proximo, primeiro/ultimo, data/duracao, midia ausente, decisao
- * persistida index/noindex, canonical; sitemap paginado NO BANCO de
- * temporadas/episodios (multiplos shards com LIMIT=2, exclusao antes da
- * paginacao, 404 estrito, prova instrumentada de LIMIT); e JSON-LD HTML-safe.
+ * persistida index/noindex, canonical; o PORTAO DE CONTEUDO que tirou os dois
+ * tipos da valvula de 2026-08-27 (22/09/2026): sinopse propria ou guia de 3
+ * episodios na temporada, sinopse e imagem no episodio, heranca da serie fora do
+ * indice (D3 e decisao); sitemap paginado NO BANCO dos dois tipos (shards com
+ * LIMIT=2, contagem == pagina, pagina e sitemap concordando item a item, 404
+ * estrito, prova instrumentada de LIMIT); e JSON-LD HTML-safe.
  *
  * Motor: `embedded-postgres` (PostgreSQL 16 real, EFEMERO). Zero rede/Gemini/TMDB.
  * Uso: pnpm --filter @screena/web validate:season-episode-routes
@@ -26,8 +29,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 import { runChild } from "@screena/db/async-child-process";
-
-import { SUSPENSION_REASON } from "../src/server/seo/suspended-pages";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -93,9 +94,25 @@ type PrismaLike = {
   pageIndexabilityDecision: { create: (args: unknown) => Promise<unknown> };
 };
 
+/**
+ * Sinopse que chega ao piso do portao (`MIN_SYNOPSIS_CHARS` = 60) e uma que nao
+ * chega. As duas sao LITERAIS de proposito: derivar do piso faria o fixture
+ * acompanhar um piso errado.
+ */
+const SINOPSE_LONGA =
+  "Uma familia descobre, na mesma noite, o segredo que o pai guardou por vinte anos.";
+const SINOPSE_CURTA = "Episodio de estreia.";
+
 async function seedSeries(
   prisma: PrismaLike,
-  opts: { tmdbId: number; slug: string; title: string; posterPath?: string | null },
+  opts: {
+    tmdbId: number;
+    slug: string;
+    title: string;
+    posterPath?: string | null;
+    /** Titulo da linha pt-BR; ausente = o proprio `title`. */
+    translationTitle?: string;
+  },
 ): Promise<bigint> {
   const tv = await prisma.tvShow.create({
     data: { tmdbId: opts.tmdbId, nameOriginal: opts.title, posterPath: opts.posterPath ?? null },
@@ -105,21 +122,27 @@ async function seedSeries(
     data: { entityType: "tv", entityId: tv.id, languageCode: LANGUAGE, slug: opts.slug, isCanonical: true },
   });
   await prisma.entityTranslation.create({
-    data: { entityType: "tv", entityId: tv.id, languageCode: LANGUAGE, title: opts.title },
+    data: { entityType: "tv", entityId: tv.id, languageCode: LANGUAGE, title: opts.translationTitle ?? opts.title },
   });
   return tv.id;
 }
 
 async function seedSeason(
   prisma: PrismaLike,
-  opts: { tvShowId: bigint; seasonNumber: number; name?: string | null; episodeCount?: number | null },
+  opts: {
+    tvShowId: bigint;
+    seasonNumber: number;
+    name?: string | null;
+    episodeCount?: number | null;
+    overview?: string | null;
+  },
 ): Promise<bigint> {
   const season = await prisma.season.create({
     data: {
       tvShowId: opts.tvShowId,
       seasonNumber: opts.seasonNumber,
       name: opts.name ?? null,
-      overview: `Overview da temporada ${opts.seasonNumber}.`,
+      overview: opts.overview ?? null,
       airDate: new Date(`20${10 + opts.seasonNumber}-01-01`),
       episodeCount: opts.episodeCount ?? null,
       posterPath: null,
@@ -136,6 +159,7 @@ async function seedEpisode(
     tvShowId: bigint;
     episodeNumber: number;
     still?: string | null;
+    overview?: string | null;
   },
 ): Promise<bigint> {
   const episode = await prisma.episode.create({
@@ -144,10 +168,10 @@ async function seedEpisode(
       tvShowId: opts.tvShowId,
       episodeNumber: opts.episodeNumber,
       name: `Episodio ${opts.episodeNumber}`,
-      overview: `Sinopse do episodio ${opts.episodeNumber}.`,
+      overview: opts.overview === undefined ? SINOPSE_LONGA : opts.overview,
       airDate: new Date("2020-02-10"),
       runtimeMinutes: 48,
-      stillPath: opts.still ?? null,
+      stillPath: opts.still === undefined ? "/media/still.jpg" : opts.still,
     },
     select: { id: true },
   });
@@ -156,7 +180,7 @@ async function seedEpisode(
 
 async function seedNoindex(
   prisma: PrismaLike,
-  entityType: "season" | "episode",
+  entityType: "tv" | "season" | "episode",
   entityId: bigint,
 ): Promise<void> {
   await prisma.pageIndexabilityDecision.create({
@@ -173,6 +197,14 @@ async function seedNoindex(
   });
 }
 
+interface SeoView {
+  decision: string;
+  reason: string;
+  decisionSource: string;
+  robots: { index: boolean; follow: boolean };
+  includeInSitemap: boolean;
+}
+
 interface Seams {
   getSeasonPageData: (slug: string, season: number) => Promise<{
     view: {
@@ -182,7 +214,7 @@ interface Seams {
       prevSeason: { seasonNumber: number } | null;
       nextSeason: { seasonNumber: number } | null;
     };
-    seo: { decision: string };
+    seo: SeoView;
     canonicalUrl: string;
   } | null>;
   getEpisodePageData: (slug: string, season: number, episode: number) => Promise<{
@@ -195,7 +227,7 @@ interface Seams {
       prevEpisode: { episodeNumber: number } | null;
       nextEpisode: { episodeNumber: number } | null;
     };
-    seo: { decision: string };
+    seo: SeoView;
     canonicalUrl: string;
   } | null>;
   getSitemapIndexXml: (opts?: { limit?: number }) => Promise<{ xml: string; contentType: string }>;
@@ -207,38 +239,70 @@ interface Seams {
   serializeJsonLd: (value: unknown) => string;
 }
 
+/** As URLs de TODOS os shards anunciados de um tipo, lidas shard a shard. */
+async function urlsDoTipo(
+  seams: Seams,
+  anunciados: readonly string[],
+  tipo: "seasons" | "episodes",
+): Promise<{ shards: number; urls: string[] }> {
+  const ids = anunciados
+    .map((u) => u.split("/").pop() ?? "")
+    .filter((id) => new RegExp(`^sitemap-pt-BR-${tipo}-\\d+\\.xml$`).test(id));
+  const urls: string[] = [];
+  for (const id of ids) {
+    const shard = await seams.getSitemapShardXml(id, { limit: LIMIT });
+    if (shard !== null) urls.push(...locsInXml(shard.xml));
+  }
+  return { shards: ids.length, urls };
+}
+
 async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   // ---- Seed ---------------------------------------------------------------
+  //
+  // O portao de CONTEUDO (saida da valvula de 2026-08-27, 22/09/2026):
+  //   temporada: serie no indice + (sinopse propria OU 3 episodios com sinopse)
+  //   episodio:  serie no indice + sinopse de verdade + imagem propria
+  // Cada linha abaixo isola uma parte da regra.
   const idA = await seedSeries(prisma, { tmdbId: 97000001, slug: "serie-a", title: "Serie A", posterPath: "/media/serie-a.webp" });
   const idB = await seedSeries(prisma, { tmdbId: 97000002, slug: "serie-b", title: "Serie B" });
+  // C: slug de fallback e titulo pt-BR COPIADO do original — o portao D3 tira a
+  // serie do indice, e ela leva temporada e episodio junto.
+  const idC = await seedSeries(prisma, { tmdbId: 97000003, slug: "tmdb-97000003", title: "길" });
+  // D: decisao persistida noindex na SERIE.
+  const idD = await seedSeries(prisma, { tmdbId: 97000004, slug: "serie-d", title: "Serie D" });
+  await seedNoindex(prisma, "tv", idD);
 
-  const a1 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 1, episodeCount: 3 });
-  const a2 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 2, episodeCount: 2 });
-  const a3 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 3, episodeCount: 1 });
-  const a4 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 4, episodeCount: 1 });
-  const b1 = await seedSeason(prisma, { tvShowId: idB, seasonNumber: 1, episodeCount: 1 });
+  const a1 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 1, episodeCount: 4, overview: SINOPSE_LONGA });
+  const a2 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 2, episodeCount: 3 });
+  const a3 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 3, episodeCount: 2 });
+  const a4 = await seedSeason(prisma, { tvShowId: idA, seasonNumber: 4, episodeCount: 1, overview: SINOPSE_LONGA });
+  const b1 = await seedSeason(prisma, { tvShowId: idB, seasonNumber: 1, episodeCount: 1, overview: SINOPSE_LONGA });
+  const c1 = await seedSeason(prisma, { tvShowId: idC, seasonNumber: 1, episodeCount: 1, overview: SINOPSE_LONGA });
+  const d1 = await seedSeason(prisma, { tvShowId: idD, seasonNumber: 1, episodeCount: 1, overview: SINOPSE_LONGA });
 
-  const a1e1 = await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 1, still: "/media/still.jpg" });
-  await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 2 });
-  const a1e3 = await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 3 });
-  await seedEpisode(prisma, { seasonId: a2, tvShowId: idA, episodeNumber: 1 });
-  await seedEpisode(prisma, { seasonId: a2, tvShowId: idA, episodeNumber: 2 });
-  await seedEpisode(prisma, { seasonId: a3, tvShowId: idA, episodeNumber: 1 });
-  const a4e1 = await seedEpisode(prisma, { seasonId: a4, tvShowId: idA, episodeNumber: 1 });
-  await seedEpisode(prisma, { seasonId: b1, tvShowId: idB, episodeNumber: 1 });
+  // A1: sinopse propria. E1 completo; E2 sem imagem; E3 com sinopse curta; E4
+  // completo, com decisao persistida noindex.
+  await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 1 });
+  await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 2, still: null });
+  await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 3, overview: SINOPSE_CURTA });
+  const a1e4 = await seedEpisode(prisma, { seasonId: a1, tvShowId: idA, episodeNumber: 4 });
+  // A2: sem sinopse propria, com GUIA de 3 episodios com sinopse.
+  for (const n of [1, 2, 3]) await seedEpisode(prisma, { seasonId: a2, tvShowId: idA, episodeNumber: n });
+  // A3: sem sinopse propria e so 2 episodios com sinopse — abaixo do guia.
+  for (const n of [1, 2]) await seedEpisode(prisma, { seasonId: a3, tvShowId: idA, episodeNumber: n });
+  // A4: sinopse propria, mas decisao persistida noindex.
+  await seedEpisode(prisma, { seasonId: a4, tvShowId: idA, episodeNumber: 1, overview: SINOPSE_CURTA });
+  await seedEpisode(prisma, { seasonId: b1, tvShowId: idB, episodeNumber: 1, still: null });
+  await seedEpisode(prisma, { seasonId: c1, tvShowId: idC, episodeNumber: 1 });
+  await seedEpisode(prisma, { seasonId: d1, tvShowId: idD, episodeNumber: 1 });
 
-  void a1e1;
-  await seedNoindex(prisma, "season", a4); // temporada 4 de A -> noindex
-  await seedNoindex(prisma, "episode", a1e3); // S1E3 de A -> noindex
-  await seedNoindex(prisma, "episode", a4e1); // S4E1 de A -> noindex
+  await seedNoindex(prisma, "season", a4);
+  await seedNoindex(prisma, "episode", a1e4);
 
   // ---- Temporada ----------------------------------------------------------
   const seasonA1 = await seams.getSeasonPageData("serie-a", 1);
-  // Ate 2026-08-27 esta linha exigia `index`. A valvula suspendeu o tipo: a
-  // temporada carrega dados e recebe `noindex`. O que continua sob prova e que a
-  // ROTA responde com dados — o `noindex` e afirmado com o motivo em (26)/(27).
-  record(3, "temporada valida -> dados; seo noindex pela valvula", seasonA1 !== null && seasonA1.seo.decision === "noindex" && seasonA1.view.seasonNumber === 1, `seo=${seasonA1?.seo.decision}`);
-  record(4, "episodios ordenados com href correto", JSON.stringify(seasonA1?.view.episodes.map((e) => e.episodeNumber)) === "[1,2,3]" && seasonA1?.view.episodes[0]?.href === "/pt/series/serie-a/temporadas/1/episodios/1/", `eps=${seasonA1?.view.episodes.map((e) => e.episodeNumber).join(",")}`);
+  record(3, "temporada com sinopse propria -> dados e index", seasonA1 !== null && seasonA1.seo.decision === "index" && seasonA1.view.seasonNumber === 1, `seo=${seasonA1?.seo.decision}`);
+  record(4, "episodios ordenados com href correto", JSON.stringify(seasonA1?.view.episodes.map((e) => e.episodeNumber)) === "[1,2,3,4]" && seasonA1?.view.episodes[0]?.href === "/pt/series/serie-a/temporadas/1/episodios/1/", `eps=${seasonA1?.view.episodes.map((e) => e.episodeNumber).join(",")}`);
   record(5, "canonical da temporada correto", seasonA1?.canonicalUrl === `${SITE}/pt/series/serie-a/temporadas/1/`, `canonical=${seasonA1?.canonicalUrl}`);
 
   const seasonA2 = await seams.getSeasonPageData("serie-a", 2);
@@ -249,18 +313,18 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   record(9, "numero de temporada invalido -> null", (await seams.getSeasonPageData("serie-a", 0)) === null, "null");
 
   const seasonB1 = await seams.getSeasonPageData("serie-b", 1);
-  record(10, "temporada e escopada a serie certa (A:3 eps, B:1 ep)", seasonA1?.view.episodes.length === 3 && seasonB1?.view.episodes.length === 1, `A=${seasonA1?.view.episodes.length}, B=${seasonB1?.view.episodes.length}`);
+  record(10, "temporada e escopada a serie certa (A1:4 eps, B1:1 ep)", seasonA1?.view.episodes.length === 4 && seasonB1?.view.episodes.length === 1, `A=${seasonA1?.view.episodes.length}, B=${seasonB1?.view.episodes.length}`);
   record(11, "temporada de outra serie (serie-b nao tem T2) -> null", (await seams.getSeasonPageData("serie-b", 2)) === null, "null");
 
   const seasonA4 = await seams.getSeasonPageData("serie-a", 4);
-  record(12, "decisao persistida noindex chega a temporada", seasonA4?.seo.decision === "noindex", `seo=${seasonA4?.seo.decision}`);
+  record(12, "decisao persistida noindex chega a temporada (com o MOTIVO dela, nao o do portao)", seasonA4?.seo.decision === "noindex" && seasonA4?.seo.decisionSource === "persisted-decision", `seo=${seasonA4?.seo.decision}, fonte=${seasonA4?.seo.decisionSource}`);
 
   record(13, "poster: temporada sem poster cai para o poster da serie", seasonA1?.view.poster?.src === "/media/serie-a.webp", `poster=${seasonA1?.view.poster?.src}`);
   record(14, "midia ausente: serie sem imagem -> poster null", seasonB1?.view.poster === null, `poster=${seasonB1?.view.poster}`);
 
   // ---- Episodio -----------------------------------------------------------
   const epA1E2 = await seams.getEpisodePageData("serie-a", 1, 2);
-  record(15, "episodio valido -> dados; seo noindex pela valvula", epA1E2 !== null && epA1E2.seo.decision === "noindex" && epA1E2.view.episodeNumber === 2, `seo=${epA1E2?.seo.decision}`);
+  record(15, "episodio valido -> dados", epA1E2 !== null && epA1E2.view.episodeNumber === 2, `seo=${epA1E2?.seo.decision}`);
   record(16, "episodio 2 -> anterior=1, proximo=3", epA1E2?.view.prevEpisode?.episodeNumber === 1 && epA1E2?.view.nextEpisode?.episodeNumber === 3, `prev=${epA1E2?.view.prevEpisode?.episodeNumber}, next=${epA1E2?.view.nextEpisode?.episodeNumber}`);
 
   const epA1E1 = await seams.getEpisodePageData("serie-a", 1, 1);
@@ -269,67 +333,111 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
 
   record(19, "episodio inexistente -> null (404)", (await seams.getEpisodePageData("serie-a", 1, 99)) === null, "null");
   record(20, "temporada invalida para episodio -> null", (await seams.getEpisodePageData("serie-a", 99, 1)) === null, "null");
-  record(21, "episodio de outra temporada (S2 nao tem E3) -> null", (await seams.getEpisodePageData("serie-a", 2, 3)) === null, "null");
+  record(21, "episodio de outra temporada (S4 nao tem E3) -> null", (await seams.getEpisodePageData("serie-a", 4, 3)) === null, "null");
 
-  const epA1E3 = await seams.getEpisodePageData("serie-a", 1, 3);
-  // ATENCAO: enquanto a valvula estiver ligada, `decision === "noindex"` NAO
-  // prova mais que a decisao PERSISTIDA chegou — a valvula poe noindex em todo
-  // episodio. Um check que so olhasse `decision` passaria pelo motivo errado.
-  // O que discrimina e o MOTIVO: a decisao persistida vence a valvula porque
-  // `applyPageSuspension` roda depois e so reescreve o motivo quando ela propria
-  // decide. Aqui exigimos que o motivo NAO seja o da valvula.
-  record(22, "decisao persistida noindex chega ao episodio (motivo != valvula); ultimo nao tem proximo", epA1E3?.seo.decision === "noindex" && epA1E3?.seo.reason !== SUSPENSION_REASON && epA1E3?.view.nextEpisode === null, `seo=${epA1E3?.seo.decision}, motivoValvula=${epA1E3?.seo.reason === SUSPENSION_REASON}, next=${epA1E3?.view.nextEpisode}`);
+  const epA1E4 = await seams.getEpisodePageData("serie-a", 1, 4);
+  record(22, "decisao persistida noindex chega ao episodio COMPLETO (motivo da decisao); ultimo nao tem proximo", epA1E4?.seo.decision === "noindex" && epA1E4?.seo.decisionSource === "persisted-decision" && epA1E4?.view.nextEpisode === null, `seo=${epA1E4?.seo.decision}, fonte=${epA1E4?.seo.decisionSource}, next=${epA1E4?.view.nextEpisode}`);
   record(23, "canonical do episodio correto", epA1E1?.canonicalUrl === `${SITE}/pt/series/serie-a/temporadas/1/episodios/1/`, `canonical=${epA1E1?.canonicalUrl}`);
 
-  // ---- Sitemap: temporada e episodio SUSPENSOS (valvula de 2026-08-27) -----
-  //
-  // Ate 2026-08-27 esta secao provava a PAGINACAO de temporada/episodio no
-  // banco (multiplos shards com LIMIT=2). Os dois tipos sairam do sitemap: eram
-  // 3.921.542 das 4.069.444 URLs declaradas em producao (96,36%), a 24 palavras
-  // por pagina de episodio. Ver SUSPENDED_SITEMAP_TYPES em `sitemap-index.ts`.
-  //
-  // O contrato agora e o INVERSO, e e ele que precisa de prova: o index nao
-  // anuncia nenhum shard dos dois tipos, e o endereco antigo responde 404 —
-  // nao 200 com 50.000 URLs para quem o guardou. Quando a Fase 3 devolver a
-  // decisao por dado, esta secao volta a provar paginacao.
-  const index = await seams.getSitemapIndexXml({ limit: LIMIT });
-  // Le os enderecos ANUNCIADOS, em vez de procurar substring no XML inteiro:
-  // substring casaria com um comentario ou com um texto solto, e o que esta sob
-  // prova e a LISTA de shards que o index publica.
-  const anunciados = locsInXml(index.xml);
-  const suspensosAnunciados = anunciados.filter((u) => /sitemap-pt-BR-(seasons|episodes)-\d+\.xml$/.test(u));
-  record(24, "index NAO anuncia nenhum shard de temporada/episodio (suspensos)", suspensosAnunciados.length === 0 && anunciados.length > 0 && index.contentType.includes("application/xml"), `anunciados=${anunciados.length}, suspensos=${suspensosAnunciados.length}`);
-
-  const suspensos = await Promise.all(
-    ["seasons-1", "seasons-2", "episodes-1", "episodes-2", "episodes-3"].map((id) =>
-      seams.getSitemapShardXml(`sitemap-pt-BR-${id}.xml`, { limit: LIMIT }),
-    ),
+  // ---- Portao de CONTEUDO (a saida da valvula por dado) --------------------
+  const seasonA3 = await seams.getSeasonPageData("serie-a", 3);
+  record(
+    24,
+    "PORTAO temporada: sinopse propria (A1) e guia de 3 episodios (A2) indexam; so 2 (A3) nao, com FOLLOW",
+    seasonA1?.seo.decision === "index" &&
+      seasonA2?.seo.decision === "index" &&
+      seasonA3?.seo.decision === "noindex" &&
+      seasonA3?.seo.decisionSource === "quality-gate" &&
+      seasonA3?.seo.robots.follow === true,
+    `A1=${seasonA1?.seo.decision} A2=${seasonA2?.seo.decision} A3=${seasonA3?.seo.decision}/${seasonA3?.seo.decisionSource}`,
   );
-  record(25, "todo shard de tipo suspenso -> null (404), inclusive o que existia antes", suspensos.every((s) => s === null), `nulls=${suspensos.filter((s) => s === null).length}/5`);
+  const epA1E3 = await seams.getEpisodePageData("serie-a", 1, 3);
+  record(
+    25,
+    "PORTAO episodio: completo indexa; sem imagem (E2) e com sinopse curta (E3) nao",
+    epA1E1?.seo.decision === "index" &&
+      epA1E2?.seo.decision === "noindex" &&
+      epA1E2?.seo.decisionSource === "quality-gate" &&
+      epA1E3?.seo.decision === "noindex" &&
+      epA1E3?.seo.decisionSource === "quality-gate",
+    `E1=${epA1E1?.seo.decision} E2=${epA1E2?.seo.decision} E3=${epA1E3?.seo.decision}`,
+  );
+  const heranca = await Promise.all([
+    seams.getSeasonPageData("tmdb-97000003", 1),
+    seams.getEpisodePageData("tmdb-97000003", 1, 1),
+    seams.getSeasonPageData("serie-d", 1),
+    seams.getEpisodePageData("serie-d", 1, 1),
+  ]);
+  record(
+    26,
+    "HERANCA: serie fora do indice (D3 em C, decisao noindex em D) leva temporada e episodio COMPLETOS junto",
+    heranca.every((pagina) => pagina !== null && pagina.seo.decision === "noindex" && pagina.seo.decisionSource === "quality-gate"),
+    heranca.map((p) => `${p?.seo.decision}/${p?.seo.decisionSource}`).join(" "),
+  );
 
-  // O par da valvula: sair do sitemap nao desindexa. A pagina precisa dizer
-  // noindex, e com follow — senao o Google para de seguir os links que
-  // sustentam serie e temporada, que SEGUEM indexaveis.
-  const epValv = await seams.getEpisodePageData("serie-a", 1, 1);
-  record(26, "pagina de episodio emite noindex COM follow (a meta tag e o que desindexa)", epValv?.seo.decision === "noindex" && epValv?.seo.robots.index === false && epValv?.seo.robots.follow === true, `decision=${epValv?.seo.decision}, robots=${JSON.stringify(epValv?.seo.robots)}`);
+  // ---- Sitemap: os dois tipos VOLTARAM, pelo mesmo portao ------------------
+  const index = await seams.getSitemapIndexXml({ limit: LIMIT });
+  const anunciados = locsInXml(index.xml);
+  const temporadas = await urlsDoTipo(seams, anunciados, "seasons");
+  const episodios = await urlsDoTipo(seams, anunciados, "episodes");
+  const esperadasTemporadas = [
+    `${SITE}/pt/series/serie-a/temporadas/1/`,
+    `${SITE}/pt/series/serie-a/temporadas/2/`,
+    `${SITE}/pt/series/serie-b/temporadas/1/`,
+  ].sort();
+  const esperadosEpisodios = [
+    `${SITE}/pt/series/serie-a/temporadas/1/episodios/1/`,
+    `${SITE}/pt/series/serie-a/temporadas/2/episodios/1/`,
+    `${SITE}/pt/series/serie-a/temporadas/2/episodios/2/`,
+    `${SITE}/pt/series/serie-a/temporadas/2/episodios/3/`,
+    `${SITE}/pt/series/serie-a/temporadas/3/episodios/1/`,
+    `${SITE}/pt/series/serie-a/temporadas/3/episodios/2/`,
+  ].sort();
+  record(
+    27,
+    "SITEMAP temporadas: exatamente A1, A2 e B1, em 2 shards de LIMIT=2 (contagem == pagina)",
+    JSON.stringify([...temporadas.urls].sort()) === JSON.stringify(esperadasTemporadas) && temporadas.shards === 2,
+    `shards=${temporadas.shards} urls=[${temporadas.urls.map((u) => u.replace(`${SITE}/pt/series/`, "")).join(", ")}]`,
+  );
+  record(
+    28,
+    "SITEMAP episodios: exatamente os 6 completos, em 3 shards de LIMIT=2 (contagem == pagina)",
+    JSON.stringify([...episodios.urls].sort()) === JSON.stringify(esperadosEpisodios) && episodios.shards === 3,
+    `shards=${episodios.shards} urls=[${episodios.urls.map((u) => u.replace(`${SITE}/pt/series/`, "")).join(", ")}]`,
+  );
 
-  const seValv = await seams.getSeasonPageData("serie-a", 1);
-  record(27, "pagina de temporada idem, e fora do sitemap", seValv?.seo.decision === "noindex" && seValv?.seo.includeInSitemap === false, `decision=${seValv?.seo.decision}, sitemap=${seValv?.seo.includeInSitemap}`);
+  // PAGINA e SITEMAP concordam para TODA temporada e todo episodio do fixture.
+  const paginasTemporada: Array<[string, number]> = [
+    ["serie-a", 1], ["serie-a", 2], ["serie-a", 3], ["serie-a", 4], ["serie-b", 1], ["tmdb-97000003", 1], ["serie-d", 1],
+  ];
+  const paginasEpisodio: Array<[string, number, number]> = [
+    ["serie-a", 1, 1], ["serie-a", 1, 2], ["serie-a", 1, 3], ["serie-a", 1, 4],
+    ["serie-a", 2, 1], ["serie-a", 2, 2], ["serie-a", 2, 3], ["serie-a", 3, 1], ["serie-a", 3, 2],
+    ["serie-a", 4, 1], ["serie-b", 1, 1], ["tmdb-97000003", 1, 1], ["serie-d", 1, 1],
+  ];
+  const divergentes: string[] = [];
+  for (const [slug, t] of paginasTemporada) {
+    const pagina = await seams.getSeasonPageData(slug, t);
+    const noSitemap = temporadas.urls.includes(`${SITE}/pt/series/${slug}/temporadas/${t}/`);
+    if (pagina === null || pagina.seo.robots.index !== noSitemap) divergentes.push(`${slug} T${t}`);
+  }
+  for (const [slug, t, e] of paginasEpisodio) {
+    const pagina = await seams.getEpisodePageData(slug, t, e);
+    const noSitemap = episodios.urls.includes(`${SITE}/pt/series/${slug}/temporadas/${t}/episodios/${e}/`);
+    if (pagina === null || pagina.seo.robots.index !== noSitemap) divergentes.push(`${slug} T${t}E${e}`);
+  }
+  record(
+    29,
+    `PAGINA e SITEMAP dao o mesmo veredito para as ${paginasTemporada.length} temporadas e os ${paginasEpisodio.length} episodios`,
+    divergentes.length === 0,
+    divergentes.length === 0 ? "todos" : `divergem: ${divergentes.join(", ")}`,
+  );
 
-  // Shard acima do total continua 404 — provado agora num tipo PUBLICADO
-  // (`movies`), porque em tipo suspenso o 404 vem da suspensao e o teste
-  // passaria sem provar nada sobre paginacao.
-  record(28, "shard acima do total -> null (movies-99)", (await seams.getSitemapShardXml("sitemap-pt-BR-movies-99.xml", { limit: LIMIT })) === null, "null");
-  record(29, "shard invalido (pagina 0 / tipo desconhecido) -> null", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-0.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-temporada-1.xml", { limit: LIMIT })) === null, "null");
+  // Shard acima do total continua 404, e shard invalido tambem.
+  record(30, "shard acima do total -> null (episodes-99)", (await seams.getSitemapShardXml("sitemap-pt-BR-episodes-99.xml", { limit: LIMIT })) === null, "null");
+  record(31, "shard invalido (pagina 0 / tipo desconhecido) -> null", (await seams.getSitemapShardXml("sitemap-pt-BR-seasons-0.xml", { limit: LIMIT })) === null && (await seams.getSitemapShardXml("sitemap-pt-BR-temporada-1.xml", { limit: LIMIT })) === null, "null");
 
-  // Prova de LIMIT no banco. Migrou de `seasons` para `series` por DOIS motivos,
-  // e os dois ja reprovaram uma versao deste check:
-  //  1. shard de tipo SUSPENSO responde 404 sem tocar o banco — `captured`
-  //     vinha vazio e o check mediria a suspensao, nao a paginacao;
-  //  2. `movies` nao serve nesta fixture: ela nao tem nenhum filme com slug
-  //     canonico, entao a contagem da 0, o shard 404 antes da consulta
-  //     paginada, e so a consulta de CONTAGEM aparece (sem LIMIT).
-  // `series` tem serie-a e serie-b com slug canonico — a pagina roda de fato.
+  // Prova de LIMIT no banco, num tipo que tem dado de verdade nesta fixture.
   const prismaClientPath = dbRequire.resolve("@prisma/client");
   const prismaMod = (await import(pathToFileURL(prismaClientPath).href)) as {
     PrismaClient: new (opts: unknown) => unknown;
@@ -347,23 +455,30 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
   const noOtherTypes = !captured.some((q) =>
     /\bmovies\b|\bpeople\b|\bseasons\b|\bepisodes\b|\barticle_translations\b|\btmdb_images\b|\btmdb_videos\b/i.test(q),
   );
-  // O SQL capturado entra no detalhe: sem ele, uma falha aqui vira adivinhacao
-  // — foi exatamente o que aconteceu duas vezes antes de este check fechar.
   const sqlResumo = captured.map((q) => q.replace(/\s+/g, " ").slice(0, 90)).join(" | ");
-  record(30, "prova LIMIT no banco: shard de series aplica LIMIT e nao carrega outros tipos", shardLimitado !== null && captured.length > 0 && hasLimit && noOtherTypes, `queries=${captured.length}, limit=${hasLimit}, single=${noOtherTypes} :: ${sqlResumo}`);
+  record(32, "prova LIMIT no banco: shard de series aplica LIMIT e nao carrega outros tipos", shardLimitado !== null && captured.length > 0 && hasLimit && noOtherTypes, `queries=${captured.length}, limit=${hasLimit}, single=${noOtherTypes} :: ${sqlResumo}`);
 
   // ---- Seguranca JSON-LD --------------------------------------------------
   const js1 = seams.serializeJsonLd({ name: "</script><script>alert(1)</script>" });
-  record(31, "JSON-LD neutraliza </script> (sem < > crus)", !js1.includes("</script>") && !js1.includes("<") && !js1.includes(">") && js1.includes("\\u003c"), "ok");
+  record(33, "JSON-LD neutraliza </script> (sem < > crus)", !js1.includes("</script>") && !js1.includes("<") && !js1.includes(">") && js1.includes("\\u003c"), "ok");
   const sep = `a${String.fromCharCode(0x2028)}b${String.fromCharCode(0x2029)}c`;
   const js2 = seams.serializeJsonLd({ t: sep, amp: "x & y" });
-  record(32, "JSON-LD escapa & e U+2028/U+2029", js2.includes("\\u0026") && js2.includes("\\u2028") && js2.includes("\\u2029") && !js2.includes(String.fromCharCode(0x2028)), "ok");
+  record(34, "JSON-LD escapa & e U+2028/U+2029", js2.includes("\\u0026") && js2.includes("\\u2028") && js2.includes("\\u2029") && !js2.includes(String.fromCharCode(0x2028)), "ok");
 }
 
 async function main(): Promise<void> {
   const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), "screena-se-pg-"));
-  const pg = new EmbeddedPostgres({ databaseDir: dataDir, user: "postgres", password: "postgres", port, persistent: true });
+  const pg = new EmbeddedPostgres({
+    databaseDir: dataDir,
+    user: "postgres",
+    password: "postgres",
+    port,
+    persistent: true,
+    // UTF8 explicito: no Windows o initdb herda o locale do SO (WIN1252), e o
+    // fixture tem titulo em hangul (a serie tmdb-N do portao D3).
+    initdbFlags: ["--encoding=UTF8", "--locale=C"],
+  });
   const url = `postgresql://postgres:postgres@127.0.0.1:${port}/screena_se_validation?schema=public`;
   const maskedUrl = `postgresql://postgres:****@127.0.0.1:${port}/screena_se_validation?schema=public`;
   console.log(`\n=== Postgres efemero (embedded) :${port} | ${maskedUrl} ===\n`);

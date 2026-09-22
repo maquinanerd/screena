@@ -38,9 +38,13 @@ import path from "node:path";
 
 /**
  * Tipos publicados hoje, derivados do que `parseShardId` aceita. Galerias sairam
- * em 2026-09-11 por decisao do dono (D1) — ver o caso (4b).
+ * em 2026-09-11 por decisao do dono (D1) — ver o caso (4b). Temporada e episodio
+ * VOLTARAM em 2026-09-22, pelo portao de conteudo: a valvula esvaziou.
  */
-const PUBLISHED = ["movies", "series", "people", "news", "static"] as const;
+const PUBLISHED = ["movies", "series", "people", "news", "static", "seasons", "episodes"] as const;
+
+/** A valvula como ela era — para exercitar o MECANISMO, que continua ligado. */
+const VALVULA_DE_2026_08_27 = ["season", "episode"] as const;
 
 /** `PageSeoResolution` minima — so o que a valvula le e reescreve. */
 function resolution(overrides: Record<string, unknown> = {}) {
@@ -80,16 +84,21 @@ describe("valvula de emergencia do sitemap — o PAR", () => {
     expect(doShard).toEqual(daPagina);
   });
 
-  it("(2) temporada e episodio estao suspensos — sao 96,36% do volume medido", () => {
-    expect([...SUSPENDED_SITEMAP_TYPES].sort()).toEqual(["episodes", "seasons"]);
+  it("(2) a valvula esta VAZIA desde 22/09/2026: temporada e episodio saem por dado", () => {
+    // Era ["episodes","seasons"] — 96,36% do volume medido em 27/08. A saida
+    // registrada pela propria valvula ("quando a Fase 3 estiver aplicada, esta
+    // lista volta a ser vazia") foi pedida pelo dono em 22/09/2026. O portao de
+    // conteudo e `evaluateSeasonQualityGate`/`evaluateEpisodeQualityGate`.
+    expect([...SUSPENDED_SITEMAP_TYPES]).toEqual([]);
+    expect([...SUSPENDED_PAGE_TYPES]).toEqual([]);
   });
 });
 
 describe("valvula — o shard suspenso responde 404", () => {
-  it("(3) `parseShardId` recusa todo shard de tipo suspenso", () => {
-    for (const type of SUSPENDED_SITEMAP_TYPES) {
-      expect(parseShardId(`sitemap-pt-BR-${type}-1.xml`)).toBeNull();
-      expect(parseShardId(`sitemap-pt-BR-${type}-42.xml`)).toBeNull();
+  it("(3) os shards de temporada e episodio voltam a ser aceitos", () => {
+    // Nomes LITERAIS: iterar a lista vazia passaria sem provar nada.
+    for (const type of ["seasons", "episodes"]) {
+      expect(parseShardId(`sitemap-pt-BR-${type}-1.xml`)).not.toBeNull();
     }
   });
 
@@ -112,8 +121,10 @@ describe("valvula — o shard suspenso responde 404", () => {
 
 describe("valvula — a meta tag, que e o que de fato desindexa", () => {
   it("(5) tipo suspenso vira noindex, FORA do sitemap, e `follow` continua ligado", () => {
-    for (const type of SUSPENDED_PAGE_TYPES) {
-      const out = applyPageSuspension(type, resolution());
+    // O MECANISMO continua ligado as paginas: religar a valvula e acrescentar o
+    // tipo as duas listas. Aqui ele e exercitado com a lista de 27/08.
+    for (const type of VALVULA_DE_2026_08_27) {
+      const out = applyPageSuspension(type, resolution(), VALVULA_DE_2026_08_27);
       expect(out.decision).toBe("noindex");
       expect(out.robots).toEqual({ index: false, follow: true });
       expect(out.includeInSitemap).toBe(false);
@@ -122,14 +133,23 @@ describe("valvula — a meta tag, que e o que de fato desindexa", () => {
   });
 
   it("(6) `follow` e deliberado: com nofollow o Google pararia de seguir os links que sustentam serie e temporada", () => {
-    const out = applyPageSuspension("episode", resolution());
+    const out = applyPageSuspension("episode", resolution(), VALVULA_DE_2026_08_27);
     expect(out.robots.follow).toBe(true);
+  });
+
+  it("(6b) com a valvula VAZIA, a pagina de temporada e episodio passa intacta", () => {
+    // E o estado de producao desde 22/09/2026: quem decide e o portao de
+    // conteudo, na resolucao que chega aqui.
+    for (const type of ["season", "episode"] as const) {
+      const antes = resolution();
+      expect(applyPageSuspension(type, antes)).toBe(antes);
+    }
   });
 
   it("(7) filme, serie e pessoa passam INTACTOS — a valvula nunca os toca", () => {
     for (const type of ["movie", "tv", "person"] as const) {
       const antes = resolution();
-      expect(applyPageSuspension(type, antes)).toBe(antes);
+      expect(applyPageSuspension(type, antes, VALVULA_DE_2026_08_27)).toBe(antes);
     }
   });
 
@@ -139,7 +159,7 @@ describe("valvula — a meta tag, que e o que de fato desindexa", () => {
     // indice — e fazendo `noindex` deixar de discriminar quem decidiu.
     for (const decision of ["blocked", "draft", "noindex"] as const) {
       const antes = resolution({ decision, reason: "motivo de quem decidiu antes" });
-      const out = applyPageSuspension("episode", antes);
+      const out = applyPageSuspension("episode", antes, VALVULA_DE_2026_08_27);
       expect(out.decision).toBe(decision);
       expect(out.reason).toBe("motivo de quem decidiu antes");
       expect(out).toBe(antes);
@@ -187,6 +207,12 @@ describe("teto declarado do sitemap", () => {
     expect(SITEMAP_TYPE_URL_CEILING.movies).toBeGreaterThan(34_799);
     expect(SITEMAP_TYPE_URL_CEILING.series).toBeGreaterThan(32_392);
     expect(SITEMAP_TYPE_URL_CEILING.imagens).toBeGreaterThan(43_155);
+    // Temporada e episodio voltaram em 2026-09-22 pelo portao de conteudo. O
+    // teto fica acima do DOBRO da estimativa ponderada daquele dia (amostra de
+    // 219 series: ~109 mil episodios, ~6,6 mil temporadas) — a cauda pesada de
+    // series longas nao cabe numa amostra.
+    expect(SITEMAP_TYPE_URL_CEILING.episodes).toBeGreaterThan(109_089 * 2);
+    expect(SITEMAP_TYPE_URL_CEILING.seasons).toBeGreaterThan(6_643 * 2);
   });
 });
 

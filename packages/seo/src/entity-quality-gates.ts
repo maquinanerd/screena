@@ -31,7 +31,7 @@
 import { evaluatePersonEligibility } from "./person-eligibility.js";
 
 /** Qual portao produziu o veredito. */
-export type QualityGateId = "gallery" | "person" | "localization";
+export type QualityGateId = "gallery" | "person" | "localization" | "season" | "episode";
 
 /** Veredito de um portao de qualidade. */
 export interface QualityGateVerdict {
@@ -177,6 +177,162 @@ export function evaluateLocalizationGate(input: LocalizationGateInput): QualityG
     "not_localized",
     "Ficha com slug de fallback tmdb-{id}, sem titulo localizado (ausente ou igual ao original) e sem descricao em pt-BR: nao indexa ate ser enriquecida (decisao do dono D3, 2026-09-11). Indexa sozinha quando ganhar titulo proprio ou descricao.",
   );
+}
+
+// ---------------------------------------------------------------------------
+// TEMPORADA E EPISODIO — a saida da valvula de 2026-08-27, por DADO
+// ---------------------------------------------------------------------------
+
+/**
+ * Sinopse "de verdade": pelo menos esta quantidade de caracteres, depois de
+ * tirar espaco, tabulacao e quebra de linha das pontas.
+ *
+ * POR QUE UM PISO, E NAO SO "NAO VAZIA". A pagina de temporada e a de episodio
+ * valem pelo TEXTO proprio; um "Episodio de estreia." de vinte caracteres nao
+ * sustenta uma pagina no indice. Sessenta caracteres e uma frase curta — o piso
+ * separa o texto do rotulo, sem julgar estilo.
+ */
+export const MIN_SYNOPSIS_CHARS = 60;
+
+/**
+ * Os caracteres que saem das pontas antes de medir a sinopse. O SQL passa a
+ * MESMA lista como parametro de `BTRIM` — o `BTRIM` sem segundo argumento so
+ * tira espaco, e o `trim` do JavaScript tira tudo que e branco. Com a lista
+ * explicita, pagina e sitemap medem igual.
+ */
+export const SYNOPSIS_TRIM_CHARS = " \t\r\n";
+
+/**
+ * Quantos episodios com sinopse de verdade sustentam a pagina de uma temporada
+ * que nao tem sinopse propria. Tres: a temporada vira um GUIA de episodios, e
+ * nao a lista de "Episodio 1, Episodio 2..." que o TMDB devolve quando nao ha
+ * traducao.
+ */
+export const MIN_SEASON_EPISODES_WITH_SYNOPSIS = 3;
+
+/**
+ * Tamanho da sinopse como o PostgreSQL mede (`char_length` conta pontos de
+ * codigo, e o `length` do JavaScript conta unidades UTF-16), depois de tirar
+ * `SYNOPSIS_TRIM_CHARS` das pontas.
+ */
+export function synopsisLength(text: string | null): number {
+  if (text === null) return 0;
+  let inicio = 0;
+  let fim = text.length;
+  while (inicio < fim && SYNOPSIS_TRIM_CHARS.includes(text.charAt(inicio))) inicio += 1;
+  while (fim > inicio && SYNOPSIS_TRIM_CHARS.includes(text.charAt(fim - 1))) fim -= 1;
+  return [...text.slice(inicio, fim)].length;
+}
+
+/** A sinopse chega ao piso de `MIN_SYNOPSIS_CHARS`? */
+export function hasRealSynopsis(text: string | null): boolean {
+  return synopsisLength(text) >= MIN_SYNOPSIS_CHARS;
+}
+
+/** Fatos que o portao de temporada le. */
+export interface SeasonQualityGateInput {
+  /**
+   * A SERIE dona esta no indice: slug canonico, titulo original, portao de
+   * localizacao (D3) e decisao efetiva `index` — o predicado do sitemap de
+   * series. Temporada de serie fora do indice nao se sustenta sozinha.
+   */
+  readonly seriesInIndex: boolean;
+  readonly seasonNumber: number;
+  /** `seasons.overview`, como esta no banco. */
+  readonly overview: string | null;
+  /** Episodios LISTADOS pela temporada cuja sinopse chega ao piso. */
+  readonly episodesWithSynopsis: number;
+}
+
+/**
+ * Temporada indexa quando tem conteudo proprio: sinopse da temporada, OU um guia
+ * de pelo menos `MIN_SEASON_EPISODES_WITH_SYNOPSIS` episodios com sinopse.
+ *
+ * DE ONDE VEM (22/09/2026). A valvula de 2026-08-27 suspendeu o TIPO inteiro e
+ * registrou a propria saida: "quando a Fase 3 estiver aplicada, o gate volta a
+ * perguntar pelo DADO". O dono pediu a saida em 22/09/2026 ("indexar so
+ * temporada com conteudo de verdade"). Medido em producao no mesmo dia, em 40
+ * temporadas sorteadas do catalogo: uma tinha sinopse propria; as outras valiam
+ * pela lista de episodios — de "Episodio 1..394" sem texto (1.343 palavras de
+ * rotulo) a guias completos de 54 episodios com sinopse.
+ */
+export function evaluateSeasonQualityGate(input: SeasonQualityGateInput): QualityGateVerdict {
+  if (!input.seriesInIndex) {
+    return failed(
+      "season",
+      "series_not_in_index",
+      "Temporada de serie fora do indice: a pagina herda a exclusao da serie dona.",
+    );
+  }
+  if (!Number.isInteger(input.seasonNumber) || input.seasonNumber < 1) {
+    return failed(
+      "season",
+      "invalid_season_number",
+      "Temporada sem numero valido (especiais sao a temporada 0): nao ha rota publica.",
+    );
+  }
+  if (hasRealSynopsis(input.overview)) {
+    return passed("season", "season_overview", "Temporada com sinopse propria.");
+  }
+  if (input.episodesWithSynopsis >= MIN_SEASON_EPISODES_WITH_SYNOPSIS) {
+    return passed(
+      "season",
+      "episode_guide",
+      `Temporada sem sinopse propria, com ${input.episodesWithSynopsis} episodios com sinopse: a pagina e um guia de episodios.`,
+    );
+  }
+  return failed(
+    "season",
+    "no_season_content",
+    `Temporada sem sinopse propria e com ${input.episodesWithSynopsis} episodio(s) com sinopse (minimo ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}): a pagina e so a lista de numeros de episodio. Indexa sozinha quando a traducao chegar.`,
+  );
+}
+
+/** Fatos que o portao de episodio le. */
+export interface EpisodeQualityGateInput {
+  /** Ver `SeasonQualityGateInput.seriesInIndex`. */
+  readonly seriesInIndex: boolean;
+  /** `episodes.overview`, como esta no banco. */
+  readonly overview: string | null;
+  /** `episodes.still_path`: a imagem PROPRIA do episodio. */
+  readonly stillPath: string | null;
+}
+
+/**
+ * Episodio indexa quando tem sinopse de verdade E imagem propria.
+ *
+ * Medido em producao em 22/09/2026, em 38 episodios sorteados: 33 se chamavam
+ * "Episodio N", sem sinopse, com 23 a 56 palavras na pagina; os 5 com sinopse em
+ * pt-BR tinham titulo proprio e de 78 a 154 palavras. A sinopse e o que
+ * distingue a pagina de casca; a imagem e o que o dono pediu para a pagina de
+ * episodio ("imagem dos episodios") e o que o `TVEpisode` do schema carrega.
+ *
+ * Credito de equipe NAO entra: nenhum dos 38 tinha direcao registrada, e exigir
+ * isso deixaria de fora os episodios com texto e imagem de verdade.
+ */
+export function evaluateEpisodeQualityGate(input: EpisodeQualityGateInput): QualityGateVerdict {
+  if (!input.seriesInIndex) {
+    return failed(
+      "episode",
+      "series_not_in_index",
+      "Episodio de serie fora do indice: a pagina herda a exclusao da serie dona.",
+    );
+  }
+  if (!hasRealSynopsis(input.overview)) {
+    return failed(
+      "episode",
+      "no_episode_synopsis",
+      `Episodio sem sinopse de pelo menos ${MIN_SYNOPSIS_CHARS} caracteres: a pagina e titulo, numero e data. Indexa sozinho quando a sinopse chegar.`,
+    );
+  }
+  if (input.stillPath === null || input.stillPath.trim() === "") {
+    return failed(
+      "episode",
+      "no_episode_still",
+      "Episodio sem imagem propria: a pagina nao tem a cena que a ficha de episodio promete.",
+    );
+  }
+  return passed("episode", "eligible", "Episodio com sinopse e imagem proprias.");
 }
 
 // ---------------------------------------------------------------------------

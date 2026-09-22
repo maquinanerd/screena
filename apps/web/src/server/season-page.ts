@@ -12,7 +12,11 @@
 
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
-import type { PageSeoResolution } from "@screena/seo";
+import {
+  evaluateSeasonQualityGate,
+  hasRealSynopsis,
+  type PageSeoResolution,
+} from "@screena/seo";
 
 import {
   buildSeasonPageView,
@@ -23,6 +27,7 @@ import { seasonCanonicalUrl, seriesCanonicalUrl } from "../lib/site";
 import { getTrailerForEntity } from "./entity-trailer";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { applyPageSuspension } from "./seo/suspended-pages";
+import { isSeriesInIndex } from "./seo/series-in-index";
 
 const LANGUAGE_CODE = "pt-BR";
 const SERIES_ENTITY_TYPE = "tv";
@@ -152,7 +157,7 @@ export const getSeasonPageData = cache(
      * temporada de novela (centenas ou milhares de linhas com `overview`) e
      * consequencia declarada dessa decisao de produto, nao um descuido.
      */
-    const [episodeRows, trailer, resolved] = await Promise.all([
+    const [episodeRows, trailer, seriesInIndex] = await Promise.all([
       prisma.episode.findMany({
         where: { seasonId: season.id },
         orderBy: { episodeNumber: "asc" },
@@ -170,17 +175,39 @@ export const getSeasonPageData = cache(
       season.tmdbId === null
         ? Promise.resolve(null)
         : getTrailerForEntity(prisma, "season", season.tmdbId),
-      resolveEntityPageSeo(
-        { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
-        {
-          language: LANGUAGE_CODE,
-          hasReliableStructuredData: true,
-          displayedRatings: [],
-          canonicalUrl,
-        },
+      isSeriesInIndex(
         prisma,
+        {
+          seriesId,
+          canonicalSlug: canonicalSlugRow?.slug ?? null,
+          nameOriginal: series.nameOriginal,
+        },
+        LANGUAGE_CODE,
       ),
     ]);
+
+    // PORTAO DE TEMPORADA — a saida da valvula de 2026-08-27 por DADO (pedido
+    // do dono em 22/09/2026). A temporada indexa com sinopse propria OU um guia
+    // de episodios com sinopse, e so se a serie dona estiver no indice. O SQL
+    // do sitemap aplica o mesmo portao, com a mesma medida de sinopse.
+    const qualityGate = evaluateSeasonQualityGate({
+      seriesInIndex,
+      seasonNumber: season.seasonNumber,
+      overview: season.overview,
+      episodesWithSynopsis: episodeRows.filter((episode) => hasRealSynopsis(episode.overview))
+        .length,
+    });
+    const resolved = await resolveEntityPageSeo(
+      { entityType: "season", entityId: season.id, languageCode: LANGUAGE_CODE },
+      {
+        language: LANGUAGE_CODE,
+        hasReliableStructuredData: true,
+        displayedRatings: [],
+        canonicalUrl,
+        qualityGate,
+      },
+      prisma,
+    );
 
     const seriesTitle = seriesTranslation?.title?.trim() || series.nameOriginal;
     const { prev, next } = prevNext(

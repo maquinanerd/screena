@@ -37,8 +37,9 @@ tecnicos** (404, erro, entidade sem slug/traducao/dados estruturados
 confiaveis). A licenca (invariante 6) continua bloqueando dado sem permissao, e
 o idioma segue o gate da secao 4 (PUBLISHED_LOCALES).
 
-**Excecoes autorizadas e registradas:** alem da suspensao temporaria de
-temporadas/episodios descrita no `CLAUDE.md`, as decisoes D1-D3 de 11/09/2026
+**Excecoes autorizadas e registradas:** alem do portao de conteudo de
+temporadas/episodios descrito no `CLAUDE.md` (que substituiu a valvula de
+2026-08-27 em 22/09/2026), as decisoes D1-D3 de 11/09/2026
 governam galerias de midia, elegibilidade de pessoas e fichas sem localizacao.
 A integracao dessas decisoes foi autorizada pelo dono em 17/09/2026. Consulte
 [`DECISOES-DO-DONO-2026-09-11.md`](../../docs/seo/DECISOES-DO-DONO-2026-09-11.md)

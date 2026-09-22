@@ -12,7 +12,7 @@
 
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
-import type { PageSeoResolution } from "@screena/seo";
+import { evaluateEpisodeQualityGate, type PageSeoResolution } from "@screena/seo";
 
 import {
   buildEpisodePageView,
@@ -29,6 +29,7 @@ import { getImagesForEntity } from "./entity-gallery";
 import { getImageDisplayAuthorization } from "./image-license";
 import { resolveEntityPageSeo } from "./seo/indexability-decision";
 import { applyPageSuspension } from "./seo/suspended-pages";
+import { isSeriesInIndex } from "./seo/series-in-index";
 
 const LANGUAGE_CODE = "pt-BR";
 const SERIES_ENTITY_TYPE = "tv";
@@ -184,7 +185,7 @@ export const getEpisodePageData = cache(
      * independentes do mesmo PostgreSQL, e encadeá-las somaria três idas ao
      * banco no tempo de resposta de uma página que já é servida com ISR.
      */
-    const [credits, imageRows, authorization] = await Promise.all([
+    const [credits, imageRows, authorization, seriesInIndex] = await Promise.all([
       getEpisodeCredits(prisma, episode.id),
       // Sem `tmdb_id` próprio não há chave de mídia: a lista sai vazia e a
       // página omite o bloco. Nunca cai para o id da série — isso mostraria as
@@ -193,8 +194,25 @@ export const getEpisodePageData = cache(
         ? Promise.resolve([] as const)
         : getImagesForEntity(prisma, "episode", episode.tmdbId),
       getImageDisplayAuthorization(prisma),
+      isSeriesInIndex(
+        prisma,
+        {
+          seriesId,
+          canonicalSlug: canonicalSlugRow?.slug ?? null,
+          nameOriginal: series.nameOriginal,
+        },
+        LANGUAGE_CODE,
+      ),
     ]);
 
+    // PORTAO DE EPISODIO — a saida da valvula de 2026-08-27 por DADO (pedido do
+    // dono em 22/09/2026): sinopse de verdade E imagem propria, e a serie dona
+    // no indice. O SQL do sitemap aplica o mesmo portao.
+    const qualityGate = evaluateEpisodeQualityGate({
+      seriesInIndex,
+      overview: episode.overview,
+      stillPath: episode.stillPath,
+    });
     const resolved = await resolveEntityPageSeo(
       { entityType: "episode", entityId: episode.id, languageCode: LANGUAGE_CODE },
       {
@@ -202,6 +220,7 @@ export const getEpisodePageData = cache(
         hasReliableStructuredData: true,
         displayedRatings: [],
         canonicalUrl,
+        qualityGate,
       },
       prisma,
     );

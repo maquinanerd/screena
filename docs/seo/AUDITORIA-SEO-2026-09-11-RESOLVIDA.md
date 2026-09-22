@@ -440,3 +440,46 @@ filmes 1 a 6, séries 1 a 4, notícias e estáticas.
   cache do I2 é o que tiraria esses dois da origem.
 - Filmes passaram de 57.834 para 59.612 URLs em um dia (+1.778). Esse ritmo
   confirma o risco do teto por tipo descrito acima.
+
+### 10.7 Temporadas e episódios saem da válvula por dado (22/09/2026)
+
+A válvula de 27/08/2026 suspendeu os dois tipos inteiros: eram 3.921.542 URLs,
+96,36% do sitemap. Ela mesma registrou a saída: "quando a Fase 3 estiver
+aplicada, o gate volta a perguntar pelo DADO". O dono pediu essa saída em
+22/09/2026.
+
+**Medido em produção no mesmo dia.** Sorteei séries do sitemap e, em cada uma,
+uma temporada e um episódio. Duas amostras: 70 séries e depois 219.
+
+| O quê | Medido |
+|---|---|
+| Séries do sitemap sem nenhuma temporada no banco | 104 de 219 (47%) |
+| Temporadas com sinopse própria | 1 de 40 |
+| Episódios chamados "Episódio N", sem sinopse | 33 de 38, com 23 a 56 palavras |
+| Episódios com sinopse de 60+ caracteres | 18 de 112, todos com imagem própria |
+| Episódios com direção registrada | 0 de 38 |
+
+**O portão.** A página aplica a função pura e o sitemap aplica o mesmo portão
+em SQL. Um teste trava o texto das quatro consultas.
+
+- **Temporada:** sinopse própria (60+ caracteres), OU um guia de pelo menos 3
+  episódios com sinopse.
+- **Episódio:** sinopse de 60+ caracteres E imagem própria. Crédito de equipe não
+  entra, porque nenhum dos 38 episódios tinha direção.
+- **Os dois** só indexam com a série dona no índice: slug, título, D3 e decisão
+  da série. É o mesmo predicado do sitemap de séries (`series-in-index.ts`).
+- **A medida de sinopse** é a do PostgreSQL: `char_length` depois de tirar
+  espaço, tab, CR e LF. Página e SQL contam igual.
+
+**Volume (INFERIDO).** Estimativa ponderada pelo tamanho de cada série, a partir
+da amostra de 219 séries: cerca de 109 mil episódios e 6,6 mil temporadas. Séries
+de milhares de episódios quase nunca caem numa amostra, então o total real pode
+ser maior. O teto de episódio sobe de 150 mil para 400 mil: cobre até cerca de
+3,7 vezes a estimativa e ainda reprova o evento de 27/08 (3.793.672) por 9,5
+vezes. O número exato será a soma dos arquivos `sitemap-pt-BR-episodes-*`
+depois do deploy.
+
+**Junto:** a frase "Esta página ainda está em revisão editorial." só aparece
+quando a página espera de fato uma decisão. Em produção ela aparecia em página
+tirada por portão de qualidade: a do Josh Brolin (D2) e a ficha `tmdb-1465816`
+(D3).
