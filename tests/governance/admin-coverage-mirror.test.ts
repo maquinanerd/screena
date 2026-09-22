@@ -23,9 +23,16 @@ import { YOUTUBE_VIDEO_ID_PATTERN } from '@screena/public-contracts'
 import { isDisplayableTrailerRow, type TrailerRow } from '../../apps/web/src/lib/trailer-presenter'
 import { PUBLISHED_LOCALES } from '../../apps/web/src/lib/synopsis-language'
 import { SUSPENDED_PAGE_TYPES } from '../../apps/web/src/server/seo/suspended-pages'
+import {
+  MIN_SEASON_EPISODES_WITH_SYNOPSIS,
+  MIN_SYNOPSIS_CHARS,
+  SYNOPSIS_TRIM_CHARS,
+} from '@screena/seo'
 import { toPublicRating, type RatingRow } from '../../apps/web/src/server/entity-ratings'
 import {
   COVERAGE_KINDS,
+  COVERAGE_MIN_SEASON_EPISODES_WITH_SYNOPSIS,
+  COVERAGE_MIN_SYNOPSIS_CHARS,
   COVERAGE_TITLE_LANGUAGES,
   coverageSql,
   DISPLAYABLE_LICENSE_STATUSES,
@@ -151,6 +158,23 @@ describe('nota exibivel: SQL x toPublicRating', () => {
 describe('indexavel e titulo', () => {
   it('os tipos suspensos sao os mesmos da valvula da pagina', () => {
     expect([...SUSPENDED_INDEX_KINDS].sort()).toEqual([...SUSPENDED_PAGE_TYPES].sort())
+  })
+
+  it('o portao de temporada e episodio do painel usa os MESMOS pisos da pagina', () => {
+    // Desde 22/09/2026 temporada e episodio decidem por dado. Se o piso de
+    // sinopse do painel andar sozinho, o painel conta indexavel quem a pagina
+    // barra — ou o contrario.
+    expect(COVERAGE_MIN_SYNOPSIS_CHARS).toBe(MIN_SYNOPSIS_CHARS)
+    expect(COVERAGE_MIN_SEASON_EPISODES_WITH_SYNOPSIS).toBe(MIN_SEASON_EPISODES_WITH_SYNOPSIS)
+    // A mesma lista de trim: espaco, tabulacao, CR e LF.
+    expect(SYNOPSIS_TRIM_CHARS).toBe(' \t\r\n')
+    for (const kind of ['season', 'episode'] as const) {
+      const sql = coverageSql(kind)
+      expect(sql, kind).toContain(`>= ${MIN_SYNOPSIS_CHARS})`)
+      expect(sql, kind).toContain("E' \\t\\r\\n'")
+      expect(sql, kind).not.toContain('(false) AS indexable')
+    }
+    expect(coverageSql('episode')).toContain("BTRIM(COALESCE(e.still_path, '')) <> ''")
   })
 
   it('o titulo traduzido conta nos MESMOS idiomas publicados', () => {

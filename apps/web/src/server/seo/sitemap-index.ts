@@ -51,11 +51,14 @@ import {
   describeSitemapCeilingVerdict,
   evaluateSitemapCeilings,
   evaluateSitemapTypeCeiling,
+  MIN_SEASON_EPISODES_WITH_SYNOPSIS,
+  MIN_SYNOPSIS_CHARS,
   renderSitemapIndex,
   renderUrlset,
   SITEMAP_CONTENT_TYPE,
   SITEMAP_URL_LIMIT,
   MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY,
+  SYNOPSIS_TRIM_CHARS,
   TMDB_FALLBACK_SLUG_SQL_PATTERN,
   type SitemapCeilingReport,
   type SitemapIndexXmlEntry,
@@ -191,15 +194,22 @@ const SUPPORTED_ENTITY_TYPES: readonly EntitySitemapType[] = [
  * pelo DADO (episodio COM sinopse indexa; sem sinopse nao) e esta lista volta a
  * ser vazia. `sitemap-emergency-valve.test.ts` documenta a saida.
  *
+ * MORREU EM 22/09/2026, a pedido do dono. Temporada e episodio voltam ao
+ * sitemap pelo portao de CONTEUDO (`evaluateSeasonQualityGate` e
+ * `evaluateEpisodeQualityGate`, em `@screena/seo`), com o mesmo texto nas
+ * consultas abaixo. Medido em producao no mesmo dia: de 112 episodios
+ * sorteados, 18 tinham sinopse de verdade (todos com imagem propria); das 40
+ * temporadas, uma tinha sinopse propria. Estimativa ponderada pelo tamanho de
+ * cada serie: ~109 mil episodios e ~6,6 mil temporadas passam — contra os
+ * 3.921.542 que a valvula tirou. A lista fica, vazia, como ferramenta de
+ * emergencia: o par da pagina (`suspended-pages.ts`) continua ligado a ela.
+ *
  * O par obrigatorio: sair do sitemap NAO desindexa o que o Google ja pegou.
  * Estes mesmos tipos passam a emitir `noindex, follow` na propria pagina — ver
  * `apps/web/src/server/seo/suspended-pages.ts`. As duas coisas, ou nenhuma
  * resolve.
  */
-export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [
-  "seasons",
-  "episodes",
-];
+export const SUSPENDED_SITEMAP_TYPES: readonly EntitySitemapType[] = [];
 
 /**
  * FORA DO SITEMAP POR DECISAO DO DONO — D1, 2026-09-11
@@ -334,7 +344,11 @@ export const SITEMAP_TYPE_URL_CEILING: Readonly<Record<EntitySitemapType, number
   people: 150_000,
   news: 50_000,
   seasons: 150_000,
-  episodes: 150_000,
+  // Episodio: ~109 mil estimados em 22/09/2026 (amostra ponderada de 219
+  // series), com cauda pesada — serie de milhares de episodios quase nunca cai
+  // numa amostra. 400 mil cobre ate ~3,7x a estimativa e ainda reprova o evento
+  // de 2026-08-27 (3.793.672) por 9,5x.
+  episodes: 400_000,
   imagens: 150_000,
   videos: 150_000,
 });
@@ -625,6 +639,43 @@ async function aggregateEntity(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DA TEMPORADA (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse propria, OU um guia de ao menos
+        -- MIN_SEASON_EPISODES_WITH_SYNOPSIS episodios com sinopse de verdade. E o
+        -- portao da pagina (evaluateSeasonQualityGate). Especiais (temporada 0)
+        -- nao tem rota publica.
+        AND se.season_number >= 1
+        AND (
+          char_length(BTRIM(COALESCE(se.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+          OR (
+            SELECT COUNT(*) FROM (
+              SELECT 1 FROM episodes ep
+              WHERE ep.season_id = se.id
+                AND char_length(BTRIM(COALESCE(ep.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+              LIMIT ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+            ) guia
+          ) >= ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'season' AND d.entity_id = se.id
             AND d.language_code = ${language} AND d.is_current = true
@@ -638,6 +689,32 @@ async function aggregateEntity(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DO EPISODIO (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse de verdade E imagem propria. E o portao
+        -- da pagina (evaluateEpisodeQualityGate).
+        AND se.season_number >= 1 AND e.episode_number >= 1
+        AND char_length(BTRIM(COALESCE(e.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+        AND BTRIM(COALESCE(e.still_path, '')) <> ''
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'episode' AND d.entity_id = e.id
             AND d.language_code = ${language} AND d.is_current = true
@@ -1059,6 +1136,7 @@ async function pageSeasonEpisode(
   offset: number,
   coverage: DecisionCoverage,
 ): Promise<SitemapXmlUrl[]> {
+  const absentTv = absentDecisionFor(coverage, "tv");
   const absentSeason = absentDecisionFor(coverage, "season");
   const absentEpisode = absentDecisionFor(coverage, "episode");
   if (type === "seasons") {
@@ -1071,6 +1149,43 @@ async function pageSeasonEpisode(
       JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
         AND s.language_code = ${language} AND s.is_canonical = true
       WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DA TEMPORADA (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse propria, OU um guia de ao menos
+        -- MIN_SEASON_EPISODES_WITH_SYNOPSIS episodios com sinopse de verdade. E o
+        -- portao da pagina (evaluateSeasonQualityGate). Especiais (temporada 0)
+        -- nao tem rota publica.
+        AND se.season_number >= 1
+        AND (
+          char_length(BTRIM(COALESCE(se.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+          OR (
+            SELECT COUNT(*) FROM (
+              SELECT 1 FROM episodes ep
+              WHERE ep.season_id = se.id
+                AND char_length(BTRIM(COALESCE(ep.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+              LIMIT ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+            ) guia
+          ) >= ${MIN_SEASON_EPISODES_WITH_SYNOPSIS}
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'season' AND d.entity_id = se.id
             AND d.language_code = ${language} AND d.is_current = true
@@ -1090,19 +1205,45 @@ async function pageSeasonEpisode(
       lastmod: Date | null;
     }[]
   >`
-    SELECT s.slug AS series_slug, se.season_number AS season_number,
-           e.episode_number AS episode_number, e.updated_at AS lastmod
-    FROM episodes e
-    JOIN seasons se ON se.id = e.season_id
-    JOIN tv_shows t ON t.id = e.tv_show_id
-    JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
-      AND s.language_code = ${language} AND s.is_canonical = true
-    WHERE BTRIM(t.name_original) <> ''
-      AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
-        WHERE d.entity_type = 'episode' AND d.entity_id = e.id
-          AND d.language_code = ${language} AND d.is_current = true
-        LIMIT 1), ${absentEpisode}) = 'index'
-    ORDER BY e.id ASC LIMIT ${limit} OFFSET ${offset}`;
+      SELECT s.slug AS series_slug, se.season_number AS season_number,
+             e.episode_number AS episode_number, e.updated_at AS lastmod
+      FROM episodes e
+      JOIN seasons se ON se.id = e.season_id
+      JOIN tv_shows t ON t.id = e.tv_show_id
+      JOIN slugs s ON s.entity_type = 'tv' AND s.entity_id = t.id
+        AND s.language_code = ${language} AND s.is_canonical = true
+      WHERE BTRIM(t.name_original) <> ''
+        -- SERIE NO INDICE: a pagina herda a exclusao da serie dona. E o MESMO
+        -- predicado do sitemap de series (portao de localizacao D3 e decisao
+        -- efetiva da serie); a pagina faz a mesma pergunta em series-in-index.ts.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND NOT (
+          s.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+          AND NOT EXISTS (
+            SELECT 1 FROM entity_translations et
+            WHERE et.entity_type = 'tv' AND et.entity_id = s.entity_id
+              AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+              AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                    AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
+                OR BTRIM(COALESCE(et.summary, '')) <> ''
+                OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
+          WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
+            AND sd.language_code = ${language} AND sd.is_current = true
+          LIMIT 1), ${absentTv}) = 'index'
+        -- CONTEUDO DO EPISODIO (saida da valvula de 2026-08-27 por dado, a pedido
+        -- do dono em 22/09/2026): sinopse de verdade E imagem propria. E o portao
+        -- da pagina (evaluateEpisodeQualityGate).
+        AND se.season_number >= 1 AND e.episode_number >= 1
+        AND char_length(BTRIM(COALESCE(e.overview, ''), ${SYNOPSIS_TRIM_CHARS})) >= ${MIN_SYNOPSIS_CHARS}
+        AND BTRIM(COALESCE(e.still_path, '')) <> ''
+        AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
+          WHERE d.entity_type = 'episode' AND d.entity_id = e.id
+            AND d.language_code = ${language} AND d.is_current = true
+          LIMIT 1), ${absentEpisode}) = 'index'
+      ORDER BY e.id ASC LIMIT ${limit} OFFSET ${offset}`;
   return rows
     .map((row) =>
       seasonEpisodeUrl(

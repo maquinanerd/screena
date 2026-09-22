@@ -19,6 +19,7 @@ import { AwardsBand } from '../../../_components/awards-band'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { RatingsPanel } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
+import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
 import {
   decideCinerieScore,
@@ -242,7 +243,9 @@ export default async function SeriesPage({
 
   const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, firstAirDateIso, lastAirDateIso, ended } =
     data
-  const isUnderReview = seo.decision !== 'index'
+  // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
+  // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
+  const isUnderReview = isEditorialReviewPending(seo)
   const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
     .filter((item): item is string => item !== null)
     .join(' · ')

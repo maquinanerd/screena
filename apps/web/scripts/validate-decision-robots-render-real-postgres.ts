@@ -48,7 +48,7 @@
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
+import { createRequire, register } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -169,11 +169,11 @@ interface Alvo {
    * `robots` esperado ANTES de qualquer decisao persistida.
    *
    * NAO e `index,follow` para todo tipo, e a diferenca foi medida aqui, nao
-   * suposta: temporada e episodio estao suspensos do indice desde 2026-08-27
-   * pela valvula de emergencia (`src/server/seo/suspended-pages.ts`, PR #234) e
-   * ja saem `noindex,follow` sem nenhuma linha na tabela. Escrever
-   * `index,follow` para os cinco faria este validador reprovar a REALIDADE e
-   * apontar para um defeito que nao existe.
+   * suposta. De 2026-08-27 a 2026-09-22 temporada e episodio sairam
+   * `noindex,follow` pela valvula de emergencia; desde entao eles decidem pelo
+   * portao de CONTEUDO, e a temporada e o episodio deste fixture tem sinopse de
+   * verdade (e o episodio, imagem): saem `index,follow` como filme e serie. A
+   * segunda pessoa continua sendo o controle de portao (D2).
    */
   readonly robotsBase: string;
 }
@@ -227,11 +227,10 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
 
   let n = 1;
 
-  // (A1) LINHA DE BASE, por tipo. Filme/serie/pessoa indexam sem decisao
-  // nenhuma — se ja saissem `noindex`, todo `noindex` medido abaixo seria vacuo
-  // (o teste estaria confirmando o ambiente). Temporada/episodio ja saem
-  // `noindex,follow` pela valvula de emergencia de 2026-08-27, e e por isso que
-  // a expectativa e por tipo.
+  // (A1) LINHA DE BASE, por tipo. Filme/serie/pessoa/temporada/episodio indexam
+  // sem decisao nenhuma — se ja saissem `noindex`, todo `noindex` medido abaixo
+  // seria vacuo (o teste estaria confirmando o ambiente). A expectativa e por
+  // tipo porque ha controles de portao que saem `noindex,follow` de proposito.
   //
   // Desde 2026-09-11 ha uma segunda pessoa, identica a primeira menos o status
   // da biografia: ela sai `noindex,follow` sem decisao nenhuma, pelo portao de
@@ -283,27 +282,10 @@ async function runChecks(prisma: PrismaLike, alvos: readonly Alvo[]): Promise<vo
     );
   }
 
-  // (A2b) O EFEITO COLATERAL QUE NAO E OBVIO: para temporada e episodio a
-  // pagina JA era `noindex` (valvula). O que a decisao persistida muda neles nao
-  // e o `noindex` — e o `follow`, que vira `nofollow`.
-  //
-  // A valvula escolheu `follow` de proposito: o episodio continua apontando para
-  // a temporada e para a serie, que SEGUEM indexaveis, e `nofollow` faria o
-  // crawler parar de seguir justamente os links que sustentam as paginas que se
-  // quer manter. Aplicar `index-decisions` sobre esses dois tipos desfaz essa
-  // escolha em silencio — quem decide isso e o dono, nao um efeito colateral.
-  for (const alvo of alvos) {
-    if (alvo.tipo !== "season" && alvo.tipo !== "episode") continue;
-    const meta = await alvo.generateMetadata({ params: Promise.resolve(alvo.params), searchParams: Promise.resolve({}) });
-    const robots = formatRobots(meta.robots);
-    const base = robotsBaseMedido.get(alvo.rotulo);
-    record(
-      n++,
-      `a decisao persistida TROCA follow por nofollow (${alvo.tipo}) — desfaz a escolha da valvula`,
-      base === "noindex,follow" && robots === "noindex,nofollow",
-      `${alvo.rotulo}: ${String(base)} -> ${robots}`,
-    );
-  }
+  // (A2b) Removido em 2026-09-22. Media o efeito colateral da valvula de
+  // emergencia: a decisao persistida trocava `follow` por `nofollow` numa
+  // temporada/episodio que JA saia `noindex`. Sem valvula, os dois tipos partem
+  // de `index,follow` como os outros, e (A2) ja mede a decisao chegando.
 
   // (A3) O CANONICAL nao se mexe. Uma decisao de indexabilidade nao pode
   // reescrever a URL canonica: canonical vem de `slugs`, indexabilidade vem de
@@ -446,7 +428,8 @@ async function main(): Promise<void> {
         tvShowId: tv.id,
         seasonNumber: 1,
         name: "Temporada 1",
-        overview: "Sinopse propria da temporada.",
+        // Sinopse de verdade (>= 60 caracteres): o portao de conteudo aprova.
+        overview: "Sinopse propria da temporada, longa o bastante para sustentar a pagina.",
         airDate: new Date("2021-01-01"),
         episodeCount: 1,
       },
@@ -458,7 +441,7 @@ async function main(): Promise<void> {
         tvShowId: tv.id,
         episodeNumber: 1,
         name: "Episodio 1",
-        overview: "Sinopse propria do episodio.",
+        overview: "Sinopse propria do episodio, longa o bastante para sustentar a pagina.",
         airDate: new Date("2021-01-08"),
         runtimeMinutes: 45,
         stillPath: "/still.jpg",
@@ -548,6 +531,20 @@ async function main(): Promise<void> {
     });
 
     // ---- As rotas de verdade --------------------------------------------
+    // As paginas importam as proprias folhas de CSS desde a divisao do CSS por
+    // rota, e o Node nao carrega CSS: sem este gancho o import da rota morria com
+    // "Unknown file extension .css" antes do primeiro check (medido em
+    // 22/09/2026). O CSS nao participa de metadata nem de robots — vira modulo
+    // vazio SO neste validador.
+    register(
+      "data:text/javascript," +
+        encodeURIComponent(
+          "export async function load(url, context, nextLoad) {" +
+            " if (url.endsWith('.css')) return { format: 'module', source: 'export default {};', shortCircuit: true };" +
+            " return nextLoad(url, context); }",
+        ),
+      import.meta.url,
+    );
     // Cast via `unknown`: o modulo da rota exporta `default`/`revalidate` alem do
     // `generateMetadata`, entao os tipos nao se sobrepoem o bastante para o cast direto.
     const movieRoute = (await import("../app/pt/filmes/[slug]/page.tsx")) as unknown as {
@@ -586,15 +583,15 @@ async function main(): Promise<void> {
         rotulo: "/pt/series/serie-alvo/temporadas/1/",
         params: { slug: "serie-alvo", season: "1", __id: String(season.id) },
         generateMetadata: seasonRoute.generateMetadata,
-        // Valvula de emergencia de 2026-08-27: o TIPO esta suspenso do indice.
-        robotsBase: "noindex,follow",
+        // Sem valvula desde 2026-09-22: sinopse de verdade indexa.
+        robotsBase: "index,follow",
       },
       {
         tipo: "episode",
         rotulo: "/pt/series/serie-alvo/temporadas/1/episodios/1/",
         params: { slug: "serie-alvo", season: "1", episode: "1", __id: String(episode.id) },
         generateMetadata: episodeRoute.generateMetadata,
-        robotsBase: "noindex,follow",
+        robotsBase: "index,follow",
       },
       {
         tipo: "person",

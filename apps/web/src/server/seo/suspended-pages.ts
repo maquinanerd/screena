@@ -26,6 +26,14 @@
  * linhas de `page_indexability_decisions` existirem, `SUSPENDED_PAGE_TYPES`
  * volta a ser vazia e este arquivo sai.
  *
+ * ESVAZIADA EM 22/09/2026, a pedido do dono. Temporada e episodio passam a
+ * decidir por DADO na propria pagina (`evaluateSeasonQualityGate` e
+ * `evaluateEpisodeQualityGate`, em `@screena/seo`), e o sitemap aplica o mesmo
+ * portao. O arquivo FICA, com a lista vazia: e a ferramenta que para uma
+ * sangria no mesmo dia, sem depender de produtor nem de migracao, e as paginas
+ * continuam passando por ela. Religar um tipo e acrescenta-lo aqui E em
+ * `SUSPENDED_SITEMAP_TYPES` — o teste da valvula trava o par.
+ *
  * MODULO PURO: sem banco, sem rede, sem relogio.
  */
 
@@ -45,7 +53,7 @@ import type { DecisionEntityType } from "./indexability-decision";
  * `SUSPENDED_SITEMAP_TYPES` usa os nomes de shard (plural). O teste da valvula
  * trava a correspondencia entre as duas listas.
  */
-export const SUSPENDED_PAGE_TYPES: readonly DecisionEntityType[] = ["season", "episode"];
+export const SUSPENDED_PAGE_TYPES: readonly DecisionEntityType[] = [];
 
 /** Motivo gravado na resolucao — aparece em log e auditoria. */
 export const SUSPENSION_REASON =
@@ -54,8 +62,11 @@ export const SUSPENSION_REASON =
   "indice. Substituida pela decisao por dado quando a Fase 3 estiver aplicada.";
 
 /** `true` quando o tipo esta suspenso do indice. */
-export function isSuspendedPageType(entityType: DecisionEntityType): boolean {
-  return SUSPENDED_PAGE_TYPES.includes(entityType);
+export function isSuspendedPageType(
+  entityType: DecisionEntityType,
+  suspended: readonly DecisionEntityType[] = SUSPENDED_PAGE_TYPES,
+): boolean {
+  return suspended.includes(entityType);
 }
 
 /**
@@ -73,8 +84,9 @@ export function isSuspendedPageType(entityType: DecisionEntityType): boolean {
 export function applyPageSuspension(
   entityType: DecisionEntityType,
   resolution: PageSeoResolution,
+  suspended: readonly DecisionEntityType[] = SUSPENDED_PAGE_TYPES,
 ): PageSeoResolution {
-  if (!isSuspendedPageType(entityType)) return resolution;
+  if (!isSuspendedPageType(entityType, suspended)) return resolution;
   // So DEMOVE de `index`. Qualquer decisao ja restritiva fica INTACTA — e nao
   // so a decisao: o MOTIVO tambem. `blocked` (licenca, invariante 6) e `draft`
   // (idioma, invariante 7) sao obvios; o caso que quase passou foi `noindex`.

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 
-import { SUSPENSION_REASON } from '../../../../../../src/server/seo/suspended-pages'
 import { notFound, permanentRedirect } from 'next/navigation'
 
 import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
@@ -9,6 +8,7 @@ import { PrevNextNav } from '../../../../../_components/prev-next-nav'
 import { SectionBoundary } from '../../../../../_components/section-boundary'
 import { SectionHead } from '../../../../../_components/section-head'
 import { TrailerModal } from '../../../../../_components/trailer-modal'
+import { isEditorialReviewPending } from '../../../../../../src/lib/editorial-review'
 import { decideSection } from '../../../../../../src/lib/section-absence'
 import { parseRouteNumber, seasonPath } from '../../../../../../src/lib/routes'
 import { SERIES_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../../../src/lib/site'
@@ -133,10 +133,11 @@ export default async function SeasonPage({ params }: { params: Promise<SeasonRou
   }
 
   const { view, trailer, seo, canonicalUrl, seriesUrl } = data
-  // A valvula de 2026-08-27 poe estas paginas em `noindex`, e isso NAO e
-  // revisao editorial pendente: a pagina esta pronta, so nao se sustenta no
-  // indice. Sem esta distincao o aviso apareceria em 3,9 milhoes de telas.
-  const isUnderReview = seo.decision !== 'index' && seo.reason !== SUSPENSION_REASON
+  // So quando a pagina ESPERA uma decisao. Nem o portao de conteudo (que tira
+  // do indice a temporada/episodio sem sinopse) nem a valvula sao revisao
+  // editorial: a pagina esta pronta, so nao se sustenta no indice (ver
+  // `isEditorialReviewPending`).
+  const isUnderReview = isEditorialReviewPending(seo)
   const seriesHref = `${SERIES_INDEX_PATH}${view.seriesSlug}/`
   const headerMeta = [view.dateLabel, view.episodeCountLabel].filter(
     (item): item is string => item !== null,

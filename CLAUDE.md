@@ -31,16 +31,18 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
 3. **Zero API externa no render** — paginas publicas indexaveis leem apenas PostgreSQL/cache local.
 4. **Zero Gemini no render** — a IA so gera content_blocks offline, salvos e validados.
 5. **Indexacao total** — toda entidade sincronizada e indexada em todos os idiomas publicados; noindex fica so para casos tecnicos (404, erro, entidade sem slug/traducao). Conteudo editorial e alavanca de ranqueamento, nao pre-requisito de indexacao. _(politica atualizada 2026-07; substitui o antigo gate anti-thin de >= 2 blocos)_
-   - **Excecao temporaria de temporadas e episodios.** `season` e `episode` estao
-     SUSPENSOS do indice pela valvula de emergencia de 2026-08-27
-     ([`suspended-pages.ts`](apps/web/src/server/seo/suspended-pages.ts)), por
-     decisao do dono e com medicao: a pagina de episodio rendia 64 palavras dentro
-     de `<main>` (mediana de 200 amostradas: 24), sem elenco, sem direcao e sem
-     imagem propria — e eram 3.793.672 URLs de episodio mais 127.870 de temporada,
-     **96,36% de um sitemap que passara de 53.054 para 4.069.444 URLs em cinco
-     dias**. A excecao fica REGISTRADA aqui (e nao so no codigo) porque uma
-     invariante com excecao nao escrita e uma invariante que ninguem sabe se esta
-     valendo. Ela sai quando a decisao por dado da Fase 3 estiver aplicada.
+   - **Temporadas e episodios: portao de CONTEUDO (desde 22/09/2026).** De
+     2026-08-27 a 2026-09-22 os dois tipos ficaram SUSPENSOS pela valvula de
+     emergencia ([`suspended-pages.ts`](apps/web/src/server/seo/suspended-pages.ts)):
+     eram 3.793.672 URLs de episodio e 127.870 de temporada, **96,36% de um
+     sitemap que passara de 53.054 para 4.069.444 URLs em cinco dias**, com a
+     pagina de episodio rendendo 24 palavras de mediana. A saida por dado, que a
+     propria valvula previa, foi pedida pelo dono em 22/09/2026: temporada indexa
+     com sinopse propria ou um guia de 3 episodios com sinopse; episodio, com
+     sinopse de verdade (60+ caracteres) e imagem propria; os dois so com a serie
+     dona no indice (`evaluateSeasonQualityGate`/`evaluateEpisodeQualityGate`,
+     em `@screena/seo`, e o mesmo portao no SQL do sitemap). A valvula fica,
+     vazia, como ferramenta de emergencia.
    - **Decisoes de SEO do dono de 11/09/2026 (D1-D3)**, cuja integracao foi
      autorizada em 17/09/2026: galerias de midia ficam `noindex, follow` e fora
      do sitemap; pessoas usam o mesmo criterio de elegibilidade na pagina e no

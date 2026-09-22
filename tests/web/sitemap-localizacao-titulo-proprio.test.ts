@@ -23,10 +23,11 @@
  * O QUE ESTE ARQUIVO TRAVA
  * ============================================================================
  * A regra pura vive em `isLocalizedTitle` e e testada em `packages/seo`. O SQL do
- * sitemap e a SEGUNDA traducao da mesma regra, escrita a mao em seis lugares:
+ * sitemap e a SEGUNDA traducao da mesma regra, escrita a mao em dez lugares:
  * contagem e pagina, para filme e para serie, e — desde 22/09/2026 — contagem e
- * pagina de PESSOA, onde a obra so soma na filmografia se passar na D3. Aqui se
- * prova que os seis comparam com o original — e, principalmente, que nenhum
+ * pagina de PESSOA (onde a obra so soma na filmografia se passar na D3) e de
+ * TEMPORADA e EPISODIO (que herdam a exclusao da serie dona). Aqui se prova que
+ * os dez comparam com o original — e, principalmente, que nenhum
  * teste de "titulo nao vazio" sobrou SEM a comparacao ao lado, que e a forma
  * exata do defeito.
  *
@@ -60,19 +61,19 @@ function ocorrencias(texto: string, literal: string): number {
 describe('D3 no SQL do sitemap — titulo proprio', () => {
   const fonte = readSourceWithoutComments(SITEMAP)
 
-  it('(1) INSTRUMENTO: o arquivo lido e o do sitemap, com os seis predicados de escopo', () => {
-    // 1 import + 4 usos nas fichas + 2 no portao de pessoa. Se este numero mudar,
-    // um predicado nasceu ou morreu, e as contagens abaixo precisam ser
-    // reconferidas em vez de ajustadas.
-    expect(ocorrencias(fonte, 'TMDB_FALLBACK_SLUG_SQL_PATTERN')).toBe(7)
+  it('(1) INSTRUMENTO: o arquivo lido e o do sitemap, com os dez predicados de escopo', () => {
+    // 1 import + 4 usos nas fichas + 2 no portao de pessoa + 4 na serie dona de
+    // temporada e episodio. Se este numero mudar, um predicado nasceu ou morreu,
+    // e as contagens abaixo precisam ser reconferidas em vez de ajustadas.
+    expect(ocorrencias(fonte, 'TMDB_FALLBACK_SLUG_SQL_PATTERN')).toBe(11)
   })
 
   it('(2) filme: contagem e pagina comparam o titulo publicado com m.title_original', () => {
     expect(ocorrencias(fonte, CONTRA_ORIGINAL_FILME)).toBe(2)
   })
 
-  it('(3) serie: contagem e pagina comparam com t.name_original', () => {
-    expect(ocorrencias(fonte, CONTRA_ORIGINAL_SERIE)).toBe(2)
+  it('(3) serie: contagem e pagina comparam com t.name_original — tambem na serie dona de temporada e episodio', () => {
+    expect(ocorrencias(fonte, CONTRA_ORIGINAL_SERIE)).toBe(6)
   })
 
   it('(3b) pessoa: contagem e pagina comparam o titulo da OBRA com o original dela', () => {
@@ -85,7 +86,7 @@ describe('D3 no SQL do sitemap — titulo proprio', () => {
       ocorrencias(fonte, CONTRA_ORIGINAL_FILME) +
       ocorrencias(fonte, CONTRA_ORIGINAL_SERIE) +
       ocorrencias(fonte, CONTRA_ORIGINAL_OBRA)
-    expect(naoVazio).toBe(6)
+    expect(naoVazio).toBe(10)
     expect(comparados).toBe(naoVazio)
   })
 

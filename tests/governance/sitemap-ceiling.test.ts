@@ -395,28 +395,26 @@ describe("sitemap: o gate por decisao — sem linha, fora do sitemap", () => {
   });
 });
 
-describe("sitemap: temporada e episodio nao saem na saida", () => {
-  it("(6) episodios = 0 e temporadas = 0, com 60.000 episodios no conjunto", async () => {
+describe("sitemap: temporada e episodio voltam pela DECISAO (valvula vazia desde 22/09/2026)", () => {
+  it("(6) so as de decisao `index` saem: 4.000 temporadas e 40.000 episodios, nenhuma sem linha", async () => {
+    // Ate 22/09/2026 este caso provava a valvula: zero temporada e zero
+    // episodio. O dono pediu a saida por dado; o portao de CONTEUDO vive no SQL
+    // (e e provado no validador real), e aqui se prova a outra metade — o gate
+    // por decisao, que continua tirando quem nao tem linha com o tipo armado.
     const dados = dataset();
-    expect(dados.episodes.length).toBeGreaterThan(50_000); // o volume esta la
     const saida = await buildSitemap(new FakeDb(dados));
-    expect(saida.byType["episodios"] ?? 0).toBe(0);
-    expect(saida.byType["temporadas"] ?? 0).toBe(0);
+    expect(saida.byType["temporadas"] ?? 0).toBe(4_000);
+    expect(saida.byType["episodios"] ?? 0).toBe(40_000);
   });
 
-  it("(7) e nenhum shard de temporada ou episodio e anunciado", async () => {
-    // Os dois nomes sao LITERAIS de proposito. Iterar `SUSPENDED_SITEMAP_TYPES`
-    // faria o teste derivar do proprio valor que ele deveria policiar: tirar
-    // `episodes` da lista tornaria a asercao vazia e ela passaria com o defeito.
-    // Medido: com a versao derivada, o controle negativo 2 deixou este caso
-    // VERDE — quem reprovou foi o (6), que olha a saida.
+  it("(7) os shards dos dois tipos voltam ao index, e a valvula esta VAZIA", async () => {
+    // Os nomes sao LITERAIS de proposito (a mesma licao de antes): derivar da
+    // propria lista faria o teste passar vazio.
     const prisma = new FakeDb(dataset()).asPrisma();
     const index = await getSitemapIndexXml({ limit: LIMIT }, prisma);
-    expect(index.xml).not.toContain("-episodes-");
-    expect(index.xml).not.toContain("-seasons-");
-    // A lista continua sendo a fonte do comportamento; aqui so se confirma que
-    // ela nao encolheu sem alguem decidir isso.
-    expect([...SUSPENDED_SITEMAP_TYPES].sort()).toEqual(["episodes", "seasons"]);
+    expect(index.xml).toContain("-episodes-");
+    expect(index.xml).toContain("-seasons-");
+    expect([...SUSPENDED_SITEMAP_TYPES]).toEqual([]);
   });
 });
 
@@ -431,6 +429,8 @@ describe("sitemap: o teto declarado", () => {
       noticias: "news",
       imagens: "imagens",
       videos: "videos",
+      temporadas: "seasons",
+      episodios: "episodes",
     };
     for (const [segmento, n] of Object.entries(saida.byType)) {
       const tipo = tipoDoSegmento[segmento];
