@@ -306,3 +306,62 @@ export function composeCatalogDescriptionSource(source: CatalogDescriptionSource
   const lead = textOrEmpty(source.lead);
   return lead !== "" ? `${lead} ${synopsis}` : synopsis;
 }
+
+/**
+ * A temporada que entra no indice SEM sinopse propria.
+ *
+ * MEDIDO em producao em 22/09/2026, logo apos o portao de conteudo por dado
+ * (`evaluateSeasonQualityGate`) trazer 11.008 temporadas ao indice: numa amostra
+ * de 25, **13 responderam sem `<meta name="description">` nenhuma** — enquanto
+ * 25 de 25 episodios tinham a sua. Nao e acaso: o portao admite a temporada por
+ * DOIS caminhos, sinopse propria OU um guia de tres episodios com sinopse, e o
+ * segundo caminho nao passa por texto proprio nenhum. `buildMetaDescription(null)`
+ * devolve `null`, e a tag some.
+ *
+ * Os fatos abaixo sao os que a PROPRIA pagina mostra: o nome da serie, o numero
+ * e o titulo da temporada, o ano de estreia e a contagem de episodios. Nenhum e
+ * inferido, e fato ausente vira frase ausente.
+ */
+export interface SeasonDescriptionFacts {
+  readonly seriesTitle: string;
+  readonly seasonNumber: number;
+  /**
+   * O titulo PROPRIO da temporada, quando ela tem um ("Livro 3: Mudança").
+   * `Temporada 3` nao conta: repetir o numero que a frase ja diz nao informa.
+   */
+  readonly seasonTitle: string | null;
+  readonly airYear: number | null;
+  readonly episodeCount: number | null;
+}
+
+export function describeSeasonFactually(facts: SeasonDescriptionFacts): string | null {
+  const series = facts.seriesTitle.trim();
+  if (series === "") return null;
+  if (!Number.isInteger(facts.seasonNumber) || facts.seasonNumber < 1) return null;
+
+  const year =
+    facts.airYear !== null && Number.isInteger(facts.airYear) && facts.airYear > 0
+      ? facts.airYear
+      : null;
+  const episodes =
+    facts.episodeCount !== null &&
+    Number.isInteger(facts.episodeCount) &&
+    facts.episodeCount > 0
+      ? facts.episodeCount
+      : null;
+
+  // So o numero da temporada e o nome da serie ja estao no titulo da pagina e no
+  // H1: sem ano e sem contagem, a frase nao acrescenta nada e a tag fica de fora.
+  if (year === null && episodes === null) return null;
+
+  const ownTitle = textOrEmpty(facts.seasonTitle);
+  const named =
+    ownTitle !== "" && ownTitle !== `Temporada ${facts.seasonNumber}` ? ownTitle : null;
+
+  const lead =
+    `${facts.seasonNumber}ª temporada de ${series}` +
+    (named !== null ? `, ${named}` : "") +
+    (episodes !== null ? `, com ${episodes} ${episodes === 1 ? "episódio" : "episódios"}` : "") +
+    (year !== null ? `, estreou em ${year}` : "");
+  return paragraph([sentence(lead)]);
+}

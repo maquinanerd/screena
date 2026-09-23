@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   describeMovieFactually,
   describePersonFactually,
+  describeSeasonFactually,
   describeSeriesFactually,
   joinWithE,
 } from "./factual-description.js";
@@ -140,6 +141,70 @@ describe("pessoa", () => {
         birthDateLabel: null,
         placeOfBirth: null,
       }),
+    ).toBeNull();
+  });
+});
+
+/**
+ * A temporada sem sinopse propria (medido em producao em 22/09/2026: 13 de 25
+ * temporadas amostradas responderam sem `description` nenhuma, logo apos o
+ * portao de conteudo trazer 11.008 delas ao indice).
+ */
+describe("descricao factual: temporada", () => {
+  const KORRA = {
+    seriesTitle: "A Lenda de Korra",
+    seasonNumber: 3,
+    seasonTitle: "Livro 3: Mudança",
+    airYear: 2014,
+    episodeCount: 13,
+  } as const;
+
+  it("(12) titulo proprio, contagem e ano entram na ordem da pagina", () => {
+    expect(describeSeasonFactually(KORRA)).toBe(
+      "3ª temporada de A Lenda de Korra, Livro 3: Mudança, com 13 episódios, estreou em 2014.",
+    );
+  });
+
+  it("(13) sem titulo proprio, a frase nao inventa um", () => {
+    expect(describeSeasonFactually({ ...KORRA, seasonTitle: null })).toBe(
+      "3ª temporada de A Lenda de Korra, com 13 episódios, estreou em 2014.",
+    );
+  });
+
+  it('(14) "Temporada N" NAO conta como titulo proprio — repetiria o numero', () => {
+    expect(describeSeasonFactually({ ...KORRA, seasonTitle: "Temporada 3" })).toBe(
+      "3ª temporada de A Lenda de Korra, com 13 episódios, estreou em 2014.",
+    );
+  });
+
+  it("(15) episodio unico vai no singular", () => {
+    expect(describeSeasonFactually({ ...KORRA, seasonTitle: null, episodeCount: 1 })).toBe(
+      "3ª temporada de A Lenda de Korra, com 1 episódio, estreou em 2014.",
+    );
+  });
+
+  it("(16) fato ausente vira frase ausente, nunca frase inventada", () => {
+    expect(describeSeasonFactually({ ...KORRA, seasonTitle: null, airYear: null })).toBe(
+      "3ª temporada de A Lenda de Korra, com 13 episódios.",
+    );
+    expect(describeSeasonFactually({ ...KORRA, seasonTitle: null, episodeCount: null })).toBe(
+      "3ª temporada de A Lenda de Korra, estreou em 2014.",
+    );
+  });
+
+  it("(17) sem ano e sem contagem devolve null — o titulo da pagina ja diz o resto", () => {
+    expect(
+      describeSeasonFactually({ ...KORRA, airYear: null, episodeCount: null }),
+    ).toBeNull();
+  });
+
+  it("(18) dado invalido nao vira texto: serie vazia, numero fora de faixa, contagem zero", () => {
+    expect(describeSeasonFactually({ ...KORRA, seriesTitle: "  " })).toBeNull();
+    expect(describeSeasonFactually({ ...KORRA, seasonNumber: 0 })).toBeNull();
+    expect(describeSeasonFactually({ ...KORRA, seasonNumber: 1.5 })).toBeNull();
+    // Contagem zero e ano ausente: nao sobra fato nenhum.
+    expect(
+      describeSeasonFactually({ ...KORRA, episodeCount: 0, airYear: null }),
     ).toBeNull();
   });
 });
