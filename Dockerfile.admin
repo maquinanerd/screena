@@ -53,7 +53,11 @@ COPY . .
 
 # `NODE_ENV` so entra depois do build: com `production` o pnpm pula as
 # devDependencies, e o `next build` depende delas.
-RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
+# Com nova tentativa: a rede da VPS derruba conexao no meio do install e ja
+# matou dois deploys e um job de CI em 22-23/09/2026. O motivo e o limite estao
+# escritos em scripts/container/pnpm-install.sh — falha de verdade continua
+# falhando.
+RUN sh scripts/container/pnpm-install.sh
 
 # O CLIENT DO PRISMA, ANTES DO BUILD.
 #

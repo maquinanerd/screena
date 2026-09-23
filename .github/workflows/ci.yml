@@ -43,7 +43,7 @@ jobs:
       - name: Validate operational shell scripts
         shell: bash
         run: |
-          expected=7
+          expected=8
           found="$(git ls-files '*.sh' | wc -l)"
           if [[ "$found" -ne "$expected" ]]; then
             echo "::error::ha $found script(s) .sh versionado(s), mas este gate cobre $expected. Adicione o novo script ao 'bash -n' abaixo e atualize 'expected'." >&2
@@ -58,6 +58,8 @@ jobs:
           bash -n scripts/backup/restore-test-selftest.sh
           # O /bin/sh das imagens de servico: quem o interpreta e o dash, nao o bash.
           dash -n scripts/container/pid1-shell.sh
+          # O install das imagens, com nova tentativa: tambem roda sob dash.
+          dash -n scripts/container/pnpm-install.sh
           awk -v tables_out=/dev/null -v rows_out=/dev/null \
             -v indexes_out=/dev/null -v constraints_out=/dev/null \
             -f scripts/backup/lib/dump-manifest.awk </dev/null

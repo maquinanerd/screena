@@ -38,7 +38,11 @@ COPY --chown=node:node . .
 # NODE_ENV so e definido depois do build: com NODE_ENV=production o pnpm pula as
 # devDependencies, e tanto o `next build` (tailwindcss, typescript) quanto o
 # `migrate deploy` (CLI prisma) dependem delas.
-RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
+# Com nova tentativa: a rede da VPS derruba conexao no meio do install e ja
+# matou dois deploys e um job de CI em 22-23/09/2026. O motivo e o limite estao
+# escritos em scripts/container/pnpm-install.sh — falha de verdade continua
+# falhando.
+RUN sh scripts/container/pnpm-install.sh
 
 # `apps/web/src/server/*` importa @screena/db/server -> @prisma/client. O client
 # so existe apos `prisma generate`; o postinstall do @prisma/client roda dentro do
