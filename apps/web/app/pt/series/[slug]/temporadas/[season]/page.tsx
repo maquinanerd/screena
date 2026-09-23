@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 
 import { notFound, permanentRedirect } from 'next/navigation'
 
-import { serializeJsonLd, buildMetaDescription } from '@screena/seo'
+import { serializeJsonLd, buildMetaDescription, describeSeasonFactually } from '@screena/seo'
 
 import { PrevNextNav } from '../../../../../_components/prev-next-nav'
 import { SectionBoundary } from '../../../../../_components/section-boundary'
@@ -96,7 +96,22 @@ export async function generateMetadata({
 
   const { view, seo, canonicalUrl } = data
   const title = `${view.seriesTitle} — ${view.seasonTitle}`
-  const description = buildMetaDescription(view.overview)
+  // A temporada entra no indice por DOIS caminhos (`evaluateSeasonQualityGate`):
+  // sinopse propria OU um guia de tres episodios com sinopse. Pelo segundo, ela
+  // nao tem texto proprio nenhum — e em 22/09/2026, medido em producao, 13 de 25
+  // temporadas amostradas responderam SEM `description`. A abertura factual e o
+  // mesmo remedio da ficha (achado M4): so fato que a pagina ja mostra.
+  const description =
+    buildMetaDescription(view.overview) ??
+    buildMetaDescription(
+      describeSeasonFactually({
+        seriesTitle: view.seriesTitle,
+        seasonNumber: view.seasonNumber,
+        seasonTitle: view.seasonTitle,
+        airYear: view.airYear,
+        episodeCount: view.episodeCount,
+      }),
+    )
   const metadata: Metadata = {
     title,
     robots: gatePublicRobots(seo.robots),
