@@ -28,7 +28,11 @@ RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 
 COPY . .
 
-RUN PNPM_CONFIG_PROD=false pnpm install --frozen-lockfile
+# Com nova tentativa: a rede da VPS derruba conexao no meio do install e ja
+# matou dois deploys e um job de CI em 22-23/09/2026. O motivo e o limite estao
+# escritos em scripts/container/pnpm-install.sh — falha de verdade continua
+# falhando.
+RUN sh scripts/container/pnpm-install.sh
 
 # O worker importa `@screena/db/server` -> `@prisma/client`. O client so existe
 # apos `prisma generate`; o postinstall do pacote roda dentro do store do pnpm e
