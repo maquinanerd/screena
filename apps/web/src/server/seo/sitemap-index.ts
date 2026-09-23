@@ -556,8 +556,66 @@ async function aggregateEntity(
           LIMIT 1), ${absentTv}) = 'index'`;
   } else if (type === "people") {
     rows = await prisma.$queryRaw<{ n: number; maxmod: Date | null }[]>`
+      WITH
+      obra_no_indice AS MATERIALIZED (
+        -- OBRA NO INDICE, computada UMA VEZ para o catalogo inteiro.
+        --
+        -- POR QUE MATERIALIZED (medido em producao em 22/09/2026): este predicado
+        -- vivia DENTRO de uma subconsulta correlacionada, refeita para cada uma das
+        -- ~73,5 mil pessoas com slug. O indice do sitemap passou de 3,9 s para
+        -- 31,7 s e o arquivo de pessoas para 30,3 s. O LIMIT limitava o trabalho
+        -- POR pessoa, nunca o numero de pessoas.
+        --
+        -- E o predicado que poe a obra no sitemap: slug canonico, titulo original,
+        -- portao de localizacao D3 e decisao efetiva index.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        SELECT ws.entity_type AS entity_type, ws.entity_id AS entity_id
+        FROM slugs ws
+        LEFT JOIN movies wm ON ws.entity_type = 'movie' AND wm.id = ws.entity_id
+        LEFT JOIN tv_shows wt ON ws.entity_type = 'tv' AND wt.id = ws.entity_id
+        WHERE ws.entity_type IN ('movie','tv')
+          AND ws.language_code = ${language} AND ws.is_canonical = true
+          AND BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+          AND NOT (
+            ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+            AND NOT EXISTS (
+              SELECT 1 FROM entity_translations et
+              WHERE et.entity_type = ws.entity_type AND et.entity_id = ws.entity_id
+                AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                      AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                  OR BTRIM(COALESCE(et.summary, '')) <> ''
+                  OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+            )
+          )
+          AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+            WHERE wd.entity_type = ws.entity_type AND wd.entity_id = ws.entity_id
+              AND wd.language_code = ${language} AND wd.is_current = true
+            LIMIT 1), CASE ws.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+      ),
+      obras_por_pessoa AS MATERIALIZED (
+        -- Conta OBRA distinta, nao linha de credito: a mesma pessoa pode estar no
+        -- elenco E na equipe do mesmo titulo. UNION ALL com COUNT(DISTINCT)
+        -- deduplica POR PESSOA, um grupo pequeno, em vez de deduplicar o universo
+        -- inteiro de creditos.
+        SELECT c.person_id AS person_id, COUNT(DISTINCT (c.entity_type, c.entity_id)) AS obras
+        FROM (
+          SELECT cm.person_id AS person_id, cm.entity_type AS entity_type, cm.entity_id AS entity_id
+          FROM cast_members cm WHERE cm.entity_type IN ('movie','tv')
+          UNION ALL
+          SELECT rm.person_id AS person_id, rm.entity_type AS entity_type, rm.entity_id AS entity_id
+          FROM crew_members rm WHERE rm.entity_type IN ('movie','tv')
+        ) c
+        -- Sem foto a pessoa nao passa no portao de qualquer jeito: contar a
+        -- filmografia dela seria trabalho jogado fora. O filtro fica AQUI, e nao
+        -- so no WHERE de fora, porque aqui ele corta ANTES da juncao de creditos.
+        JOIN people pp ON pp.id = c.person_id AND BTRIM(COALESCE(pp.profile_path, '')) <> ''
+        JOIN obra_no_indice o ON o.entity_type = c.entity_type AND o.entity_id = c.entity_id
+        GROUP BY c.person_id
+      )
       SELECT COUNT(*)::int AS n, MAX(p.updated_at) AS maxmod
       FROM slugs s JOIN people p ON p.id = s.entity_id
+      LEFT JOIN obras_por_pessoa opp ON opp.person_id = p.id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
         -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
@@ -566,46 +624,10 @@ async function aggregateEntity(
         -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
         -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
         -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
-        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
-        -- titulo original, portao de localizacao D3 e decisao efetiva index.
-        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
-        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
+        -- A filmografia vem de obras_por_pessoa, computada uma vez nas CTEs acima.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
         AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-        AND (
-          SELECT COUNT(*) FROM (
-            SELECT 1
-            FROM (
-              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
-              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-              UNION
-              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
-              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            ) obra
-            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
-              AND ws.language_code = ${language} AND ws.is_canonical = true
-            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
-            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
-            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
-              AND NOT (
-                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
-                AND NOT EXISTS (
-                  SELECT 1 FROM entity_translations et
-                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
-                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
-                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
-                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
-                      OR BTRIM(COALESCE(et.summary, '')) <> ''
-                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
-                )
-              )
-              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
-                  AND wd.language_code = ${language} AND wd.is_current = true
-                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
-          ) obras_no_indice
-        ) >= CASE
+        AND COALESCE(opp.obras, 0) >= CASE
           WHEN BTRIM(COALESCE(p.biography, '')) <> ''
             AND p.biography_source_status::text IN ('official','licensed','third_party')
           THEN 1
@@ -967,8 +989,66 @@ async function pageEntity(
   }
   if (type === "people") {
     return prisma.$queryRaw<PageRow[]>`
+      WITH
+      obra_no_indice AS MATERIALIZED (
+        -- OBRA NO INDICE, computada UMA VEZ para o catalogo inteiro.
+        --
+        -- POR QUE MATERIALIZED (medido em producao em 22/09/2026): este predicado
+        -- vivia DENTRO de uma subconsulta correlacionada, refeita para cada uma das
+        -- ~73,5 mil pessoas com slug. O indice do sitemap passou de 3,9 s para
+        -- 31,7 s e o arquivo de pessoas para 30,3 s. O LIMIT limitava o trabalho
+        -- POR pessoa, nunca o numero de pessoas.
+        --
+        -- E o predicado que poe a obra no sitemap: slug canonico, titulo original,
+        -- portao de localizacao D3 e decisao efetiva index.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        SELECT ws.entity_type AS entity_type, ws.entity_id AS entity_id
+        FROM slugs ws
+        LEFT JOIN movies wm ON ws.entity_type = 'movie' AND wm.id = ws.entity_id
+        LEFT JOIN tv_shows wt ON ws.entity_type = 'tv' AND wt.id = ws.entity_id
+        WHERE ws.entity_type IN ('movie','tv')
+          AND ws.language_code = ${language} AND ws.is_canonical = true
+          AND BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
+          AND NOT (
+            ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
+            AND NOT EXISTS (
+              SELECT 1 FROM entity_translations et
+              WHERE et.entity_type = ws.entity_type AND et.entity_id = ws.entity_id
+                AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
+                AND ((BTRIM(COALESCE(et.title, '')) <> ''
+                      AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
+                  OR BTRIM(COALESCE(et.summary, '')) <> ''
+                  OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+            )
+          )
+          AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
+            WHERE wd.entity_type = ws.entity_type AND wd.entity_id = ws.entity_id
+              AND wd.language_code = ${language} AND wd.is_current = true
+            LIMIT 1), CASE ws.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
+      ),
+      obras_por_pessoa AS MATERIALIZED (
+        -- Conta OBRA distinta, nao linha de credito: a mesma pessoa pode estar no
+        -- elenco E na equipe do mesmo titulo. UNION ALL com COUNT(DISTINCT)
+        -- deduplica POR PESSOA, um grupo pequeno, em vez de deduplicar o universo
+        -- inteiro de creditos.
+        SELECT c.person_id AS person_id, COUNT(DISTINCT (c.entity_type, c.entity_id)) AS obras
+        FROM (
+          SELECT cm.person_id AS person_id, cm.entity_type AS entity_type, cm.entity_id AS entity_id
+          FROM cast_members cm WHERE cm.entity_type IN ('movie','tv')
+          UNION ALL
+          SELECT rm.person_id AS person_id, rm.entity_type AS entity_type, rm.entity_id AS entity_id
+          FROM crew_members rm WHERE rm.entity_type IN ('movie','tv')
+        ) c
+        -- Sem foto a pessoa nao passa no portao de qualquer jeito: contar a
+        -- filmografia dela seria trabalho jogado fora. O filtro fica AQUI, e nao
+        -- so no WHERE de fora, porque aqui ele corta ANTES da juncao de creditos.
+        JOIN people pp ON pp.id = c.person_id AND BTRIM(COALESCE(pp.profile_path, '')) <> ''
+        JOIN obra_no_indice o ON o.entity_type = c.entity_type AND o.entity_id = c.entity_id
+        GROUP BY c.person_id
+      )
       SELECT s.slug AS slug, p.updated_at AS lastmod
       FROM slugs s JOIN people p ON p.id = s.entity_id
+      LEFT JOIN obras_por_pessoa opp ON opp.person_id = p.id
       WHERE s.entity_type = 'person' AND s.language_code = ${language} AND s.is_canonical = true
         AND BTRIM(p.name) <> ''
         -- PORTAO DE PESSOA (decisao do dono D2, 2026-09-11; leitura de 22/09/2026):
@@ -977,46 +1057,10 @@ async function pageEntity(
         -- obras no indice. E o portao que a pagina aplica (entity-quality-gates.ts).
         -- Ate 22/09 a biografia era obrigatoria; como biography_source_status nasce
         -- unknown e libera-lo e decisao de licenca, o sitemap tinha zero pessoa.
-        -- OBRA NO INDICE e o predicado que poe a obra no sitemap: slug canonico,
-        -- titulo original, portao de localizacao D3 e decisao efetiva index.
-        -- Conta OBRA distinta (UNION), nao linha de credito, e para no piso
-        -- (LIMIT): a pessoa com 150 obras custa o mesmo que a de 5.
+        -- A filmografia vem de obras_por_pessoa, computada uma vez nas CTEs acima.
         -- NUNCA use crase neste comentario: ela fecha o template literal.
         AND BTRIM(COALESCE(p.profile_path, '')) <> ''
-        AND (
-          SELECT COUNT(*) FROM (
-            SELECT 1
-            FROM (
-              SELECT cm.entity_type, cm.entity_id FROM cast_members cm
-              WHERE cm.person_id = p.id AND cm.entity_type IN ('movie','tv')
-              UNION
-              SELECT rm.entity_type, rm.entity_id FROM crew_members rm
-              WHERE rm.person_id = p.id AND rm.entity_type IN ('movie','tv')
-            ) obra
-            JOIN slugs ws ON ws.entity_type = obra.entity_type AND ws.entity_id = obra.entity_id
-              AND ws.language_code = ${language} AND ws.is_canonical = true
-            LEFT JOIN movies wm ON obra.entity_type = 'movie' AND wm.id = obra.entity_id
-            LEFT JOIN tv_shows wt ON obra.entity_type = 'tv' AND wt.id = obra.entity_id
-            WHERE BTRIM(COALESCE(wm.title_original, wt.name_original, '')) <> ''
-              AND NOT (
-                ws.slug ~ ${TMDB_FALLBACK_SLUG_SQL_PATTERN}
-                AND NOT EXISTS (
-                  SELECT 1 FROM entity_translations et
-                  WHERE et.entity_type = obra.entity_type AND et.entity_id = obra.entity_id
-                    AND et.language_code = ANY(${PUBLISHED_LOCALE_CODES})
-                    AND ((BTRIM(COALESCE(et.title, '')) <> ''
-                          AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(wm.title_original, wt.name_original, '')))
-                      OR BTRIM(COALESCE(et.summary, '')) <> ''
-                      OR BTRIM(COALESCE(et.meta_description, '')) <> '')
-                )
-              )
-              AND COALESCE((SELECT wd.decision::text FROM page_indexability_decisions wd
-                WHERE wd.entity_type = obra.entity_type AND wd.entity_id = obra.entity_id
-                  AND wd.language_code = ${language} AND wd.is_current = true
-                LIMIT 1), CASE obra.entity_type::text WHEN 'movie' THEN ${absentMovie} ELSE ${absentTv} END) = 'index'
-            LIMIT ${MIN_INDEXABLE_WORKS_WITHOUT_BIOGRAPHY}
-          ) obras_no_indice
-        ) >= CASE
+        AND COALESCE(opp.obras, 0) >= CASE
           WHEN BTRIM(COALESCE(p.biography, '')) <> ''
             AND p.biography_source_status::text IN ('official','licensed','third_party')
           THEN 1
@@ -1440,19 +1484,30 @@ async function allEntityCounts(
   // um tipo. Agora a consulta que falha tira do index SO o seu tipo — e se o
   // banco inteiro caiu, todos falham um a um e o resultado converge para vazio
   // pelo motivo certo.
-  for (const type of ENTITY_TYPES) {
-    try {
-      const agg = await aggregateEntity(prisma, type, language, coverage);
-      counts[type] = agg.count;
-      maxLastmod[type] = agg.maxLastmod;
-    } catch (error) {
+  // EM PARALELO, nao em serie (22/09/2026). O laco sequencial fazia o tempo do
+  // index ser a SOMA das contagens: com pessoas, temporadas e episodios no
+  // indice, 31,7 s medidos em producao com cache frio. Sao consultas de leitura
+  // independentes entre si; o que o index espera passa a ser a MAIOR delas.
+  //
+  // `allSettled`, e nao `all`: cada tipo mantem o seu proprio desfecho. Uma
+  // contagem que falha tira do index SO o seu tipo — era o que o try por tipo ja
+  // garantia, e `all` rejeitaria tudo junto no primeiro erro.
+  const resultados = await Promise.allSettled(
+    ENTITY_TYPES.map((type) => aggregateEntity(prisma, type, language, coverage)),
+  );
+  ENTITY_TYPES.forEach((type, i) => {
+    const resultado = resultados[i];
+    if (resultado === undefined || resultado.status === "rejected") {
       console.error(
         `[sitemap] a contagem do tipo ${type} falhou; SO este tipo sai do index, os demais seguem:`,
-        error,
+        resultado === undefined ? new Error("resultado ausente") : resultado.reason,
       );
       unavailable.push(type);
+      return;
     }
-  }
+    counts[type] = resultado.value.count;
+    maxLastmod[type] = resultado.value.maxLastmod;
+  });
   return { counts, maxLastmod, unavailable };
 }
 
