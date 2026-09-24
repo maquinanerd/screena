@@ -23,8 +23,6 @@ import type {
 } from '../catalog-jobs/store-port.js'
 import type { CatalogEntityKind, CatalogJobType } from '../catalog-jobs/types.js'
 
-type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
-
 function asPayload(value: unknown): Record<string, unknown> {
   return value != null && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
@@ -167,38 +165,55 @@ export function createPrismaCatalogJobStore(
         }
       }
 
-      // Claim concorrente-seguro: SELECT ... FOR UPDATE SKIP LOCKED + UPDATE.
-      // `available_at` e `timestamp` (sem tz), gravado pelo Prisma como wall-clock
-      // UTC. Comparar com um Date cru em raw SQL sofreria conversao pela timezone
-      // da sessao; por isso o horario entra como ISO string e e trazido ao mesmo
-      // frame UTC-wall-clock (::timestamptz AT TIME ZONE 'UTC') — deterministico.
+      // Claim concorrente-seguro numa instrucao SO: o SELECT ... FOR UPDATE SKIP
+      // LOCKED vira a subconsulta do UPDATE, e o RETURNING devolve a linha ja
+      // reivindicada. `available_at` e `timestamp` (sem tz), gravado pelo Prisma
+      // como wall-clock UTC. Comparar com um Date cru em raw SQL sofreria
+      // conversao pela timezone da sessao; por isso o horario entra como ISO
+      // string e e trazido ao mesmo frame UTC-wall-clock
+      // (::timestamptz AT TIME ZONE 'UTC') — deterministico.
+      //
+      // DUAS mudancas de 24/09/2026, as duas medidas em producao (fila com 3,6
+      // milhoes de linhas e ~160 mil elegiveis):
+      //
+      // 1. Sem `prisma.$transaction(async tx => ...)`. A transacao interativa
+      //    carregava o teto padrao do Prisma (espera de 2 s, duracao de 5 s); com
+      //    o SELECT lento ela estourava (P2028), o erro escapava do loop e o
+      //    worker saia com `exit(1)`. Uma instrucao unica nao tem esse teto, e o
+      //    lock do SKIP LOCKED vale ate o fim do proprio UPDATE — a mesma
+      //    exclusao, em uma ida ao banco em vez de duas.
+      // 2. `status IN (...)` com o ENUM, nao `status::text IN (...)`. O cast
+      //    impedia o indice `(status, priority, available_at)`: o plano era
+      //    varredura sequencial da tabela inteira, 172.735 blocos lidos do disco
+      //    e 908 ms por claim, sem concorrencia. Com o enum o mesmo SELECT usa o
+      //    indice: 50.093 blocos e 379 ms.
+      //
+      // `updated_at` e preenchido a mao: o `@updatedAt` do Prisma e do lado da
+      // aplicacao, e um UPDATE cru nao passa por ele.
       const atIso = at.toISOString()
-      return prisma.$transaction(async (tx: Tx) => {
-        // `$queryRaw` devolve `unknown` sem o parametro de tipo: o shape vem do
-        // SELECT acima (snake_case), nao do model Prisma.
-        const rows = await tx.$queryRaw<(RawClaimRow & { attempts: number })[]>`
-          SELECT id, job_type, entity_type, external_id, payload, attempts, max_attempts, run_id
-          FROM catalog_jobs
-          WHERE status::text IN ('pending', 'retry_wait')
-            AND available_at <= ${atIso}::timestamptz AT TIME ZONE 'UTC'
-          ORDER BY priority ASC, available_at ASC
-          FOR UPDATE SKIP LOCKED
-          LIMIT 1`
-        const picked = rows[0]
-        if (picked === undefined) return null
-
-        await tx.catalogJob.update({
-          where: { id: picked.id },
-          data: {
-            status: 'running',
-            claimedAt: at,
-            heartbeatAt: at,
-            attempts: { increment: 1 },
-          },
-        })
-        // attempts retornado ja reflete a tentativa em curso (pos-incremento).
-        return toClaimed(picked, picked.attempts + 1)
-      })
+      // `$queryRaw` devolve `unknown` sem o parametro de tipo: o shape vem do
+      // RETURNING abaixo (snake_case), nao do model Prisma.
+      const rows = await prisma.$queryRaw<(RawClaimRow & { attempts: number })[]>`
+        UPDATE catalog_jobs
+           SET status = 'running'::"CatalogJobStatus",
+               claimed_at = ${atIso}::timestamptz AT TIME ZONE 'UTC',
+               heartbeat_at = ${atIso}::timestamptz AT TIME ZONE 'UTC',
+               attempts = attempts + 1,
+               updated_at = ${atIso}::timestamptz AT TIME ZONE 'UTC'
+         WHERE id = (
+           SELECT id
+             FROM catalog_jobs
+            WHERE status IN ('pending'::"CatalogJobStatus", 'retry_wait'::"CatalogJobStatus")
+              AND available_at <= ${atIso}::timestamptz AT TIME ZONE 'UTC'
+            ORDER BY priority ASC, available_at ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+         )
+        RETURNING id, job_type, entity_type, external_id, payload, attempts, max_attempts, run_id`
+      const picked = rows[0]
+      if (picked === undefined) return null
+      // `attempts` do RETURNING ja e o valor pos-incremento (a tentativa em curso).
+      return toClaimed(picked, picked.attempts)
     },
 
     async heartbeat(id: string): Promise<void> {

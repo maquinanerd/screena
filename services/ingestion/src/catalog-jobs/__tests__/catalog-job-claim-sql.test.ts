@@ -27,8 +27,18 @@ describe('catalog-job-store claim SQL', () => {
   })
 
   it('so reivindica estados claimaveis (pending/retry_wait) elegiveis por available_at', () => {
-    expect(source).toMatch(/status::text IN \('pending', 'retry_wait'\)/)
+    expect(source).toMatch(
+      /status IN \('pending'::"CatalogJobStatus", 'retry_wait'::"CatalogJobStatus"\)/,
+    )
     expect(source).toMatch(/available_at <= \$\{atIso\}::timestamptz AT TIME ZONE 'UTC'/)
+  })
+
+  it('compara o status como ENUM: o cast para texto desligava o indice (varredura da fila inteira)', () => {
+    // Medido em producao em 24/09/2026 com a fila a 3,6 milhoes de linhas: com
+    // `status::text IN (...)` o plano era Seq Scan (172.735 blocos, 908 ms por
+    // claim); com o enum, Bitmap Index Scan no indice (status, priority,
+    // available_at) (50.093 blocos, 379 ms).
+    expect(source).not.toMatch(/status::text\s+IN/)
   })
 
   it('ordena por prioridade ASC e depois available_at ASC (menor prioridade primeiro)', () => {
@@ -37,7 +47,20 @@ describe('catalog-job-store claim SQL', () => {
 
   it('reivindica um por vez (LIMIT 1) e incrementa attempts no claim', () => {
     expect(source).toMatch(/LIMIT 1/)
-    expect(source).toMatch(/attempts:\s*\{\s*increment:\s*1\s*\}/)
+    expect(source).toMatch(/attempts = attempts \+ 1/)
+  })
+
+  it('reivindica numa instrucao unica, sem transacao interativa (o teto de 5 s do Prisma derrubava o worker)', () => {
+    // A transacao interativa estourava (P2028) com o SELECT lento, o erro
+    // escapava do loop e o servico saia com exit(1): 36-55 containers por hora.
+    expect(source).toMatch(/UPDATE catalog_jobs\s+SET status = 'running'::"CatalogJobStatus"/)
+    expect(source).toMatch(/WHERE id = \(\s*SELECT id/)
+    expect(source).toMatch(/RETURNING id, job_type, entity_type, external_id, payload, attempts/)
+    expect(source).not.toMatch(/\$transaction/)
+  })
+
+  it('preenche updated_at no UPDATE cru do claim (o @updatedAt do Prisma nao passa por SQL cru)', () => {
+    expect(source).toMatch(/updated_at = \$\{atIso\}::timestamptz AT TIME ZONE 'UTC'/)
   })
 })
 
