@@ -213,6 +213,7 @@ function fakeStore(): EntityStorePort {
     touchSeason: async () => true,
     upsertPerson: async () => ({ id: '1', created: true }),
     touchPerson: async () => true,
+    fillMissingTitleCountries: async () => 0,
   } as unknown as EntityStorePort
 }
 

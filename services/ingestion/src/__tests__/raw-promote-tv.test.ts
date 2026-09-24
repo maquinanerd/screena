@@ -104,6 +104,7 @@ function makeTvStore(seeded: number[] = []) {
     touchSeason: () => Promise.reject(new Error('n/a')),
     upsertPerson: () => Promise.reject(new Error('n/a')),
     touchPerson: () => Promise.reject(new Error('n/a')),
+    fillMissingTitleCountries: () => Promise.reject(new Error('n/a')),
   }
   return { store, tvCalls, seasonCalls }
 }

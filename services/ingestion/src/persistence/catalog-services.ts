@@ -28,7 +28,7 @@ import { isContentAuthoringLocale } from '@screena/config'
 import { isUpsertRefused } from '../ports.js'
 import type { CatalogAdmissionRefusal } from '../ports.js'
 import { refusalErrorCode } from './admission.js'
-import { CatalogServiceError, assertImportOk } from '../import/assert-ok.js'
+import { CatalogServiceError, assertImportOk, refusedDetailOutcome } from '../import/assert-ok.js'
 import { normalizeMovie } from '../normalizers/movie.js'
 import { extractLatestSeasonNumbers, normalizeTvShow } from '../normalizers/tv.js'
 import { normalizePerson } from '../normalizers/person.js'
@@ -95,6 +95,7 @@ import { createPrismaSearchStore } from './search-store.js'
 import { createPrismaSearchProjectionSource } from './search-projection-source.js'
 import { createPrismaDiscoverySnapshotStore } from './discovery-snapshot-store.js'
 import { createPrismaChangesCheckpoint } from './changes-checkpoint-store.js'
+import { createPrismaChangesCatalog } from './changes-catalog-reader.js'
 import { createPrismaCatalogJobStore } from './catalog-job-store.js'
 import { createPrismaRawMovieSource, createPrismaRawPersonSource, createPrismaRawTvSource } from './tmdb-raw-promote-store.js'
 import { createPrismaCatalogFinalize } from './catalog-finalize.js'
@@ -420,8 +421,14 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
 
   const detailSync: CatalogDetailSyncPort = {
     async syncDetail({ kind, tmdbId, locale }) {
+      // Recusa na porta (recorte de idioma) conclui o job como PULADO, sem
+      // retry e sem dead-letter — ver `refusedDetailOutcome`. So depois dela o
+      // resultado passa por `assertImportOk`, que converte falha em excecao.
       if (kind === 'movie') {
-        const result = assertImportOk(await importMovie(importContext, tmdbId), `importMovie(${tmdbId})`)
+        const imported = await importMovie(importContext, tmdbId)
+        const refused = refusedDetailOutcome(imported)
+        if (refused !== null) return refused
+        const result = assertImportOk(imported, `importMovie(${tmdbId})`)
         await finalizeDetail('movie', result.id, result.display, tmdbId, locale)
         return {
           created: result.created,
@@ -435,7 +442,10 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         }
       }
       if (kind === 'tv') {
-        const result = assertImportOk(await importTvShow(importContext, tmdbId), `importTvShow(${tmdbId})`)
+        const imported = await importTvShow(importContext, tmdbId)
+        const refused = refusedDetailOutcome(imported)
+        if (refused !== null) return refused
+        const result = assertImportOk(imported, `importTvShow(${tmdbId})`)
         await finalizeDetail('tv', result.id, result.display, tmdbId, locale)
         return {
           created: result.created,
@@ -949,6 +959,9 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
       return catalogEndpoints.getPersonChanges(params)
     },
     checkpoint,
+    // So re-sincroniza o que ja esta no catalogo (ver `changes/run.ts`).
+    catalog: createPrismaChangesCatalog(prisma),
+    syncLog: persistence.syncLog,
     now,
   }
 

@@ -17,6 +17,8 @@
  */
 
 import { PermanentJobError } from '../catalog-jobs/handler.js'
+import type { DetailSyncOutcome } from '../catalog-jobs/handlers/ports.js'
+import { refusalErrorCode } from '../persistence/admission.js'
 import type { ImportResult } from './types.js'
 
 /** Erro transitorio de um servico pipeline-safe que reportou falha. */
@@ -90,4 +92,43 @@ export function assertImportOk(result: ImportResult, operation: string): ImportR
     result.errorCode,
     result.errorStatus,
   )
+}
+
+/**
+ * O desfecho de fila de um titulo RECUSADO pela porta do catalogo — ou `null`
+ * quando o import nao foi recusado.
+ *
+ * ============================================================================
+ * RECUSA NAO E FALHA
+ * ============================================================================
+ * Ate 24/09/2026 a recusa de idioma chegava aqui como `status: 'empty'` e
+ * `assertImportOk` a convertia em `CatalogServiceError`. O worker via uma
+ * excecao TRANSITORIA, tentava de novo 5 vezes e o job morria em dead_letter
+ * com `last_error_code: 'empty'` — 12.993 jobs em 7 dias. As tentativas 2 a 5
+ * liam o `api_cache` (sem gastar TMDB), mas cada uma gravava mais uma linha
+ * `empty` em `api_sync_logs` e o dead_letter virava um monte de decisao
+ * editorial soterrando as falhas de verdade.
+ *
+ * Recusa e a regra funcionando: repetir devolve a MESMA recusa. O job conclui
+ * na primeira tentativa como PULADO (`skipped`, com o codigo da recusa no
+ * motivo), sem enfileirar dependentes — nao ha entidade dona para eles. A linha
+ * `empty` + `language_not_allowed:xx` em `api_sync_logs` continua, escrita UMA
+ * vez pelo proprio import.
+ *
+ * DISCRIMINA PELO CAMPO `refused`, NUNCA pela string `'empty'`: `empty` e um
+ * status de sync generico. Um `empty` sem `refused` nao e recusa e segue
+ * exatamente o caminho de antes (`assertImportOk` -> excecao -> retry).
+ */
+export function refusedDetailOutcome(result: ImportResult): DetailSyncOutcome | null {
+  if (result.refused === undefined) return null
+  return {
+    created: false,
+    updated: false,
+    unchanged: false,
+    entityId: null,
+    skipped: true,
+    skipReason: `titulo recusado pelo recorte de idioma (${refusalErrorCode(result.refused)})`,
+    watchOutcome: result.watch.outcome,
+    watchOffers: 0,
+  }
 }
