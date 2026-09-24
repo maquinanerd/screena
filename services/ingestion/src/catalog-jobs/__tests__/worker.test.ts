@@ -1,12 +1,13 @@
 /**
  * Testes do worker da fila de catalogo (PURO: store fake em memoria, sem DB).
  * Cobre: sucesso, retry transitorio, dead-letter permanente, sem-handler,
- * timeout, shutdown gracioso, teto de jobs e heartbeat.
+ * timeout, shutdown gracioso, teto de jobs, heartbeat e erro do store (o banco
+ * da propria fila) nos modos servico e drain.
  */
 
 import { describe, expect, it, vi } from 'vitest'
 import { createCatalogJobRegistry, CatalogJobInputError, PermanentJobError } from '../handler.js'
-import { runCatalogWorker } from '../worker.js'
+import { runCatalogWorker, storeErrorBackoffMs } from '../worker.js'
 import { createInMemoryMetricsSink, CATALOG_METRIC_NAMES } from '../../metrics/index.js'
 import type { CatalogJobStorePort, ResolvedFailure } from '../store-port.js'
 import type { CatalogJobHandler } from '../handler.js'
@@ -263,6 +264,110 @@ describe('runCatalogWorker', () => {
     }
     await runCatalogWorker(deps(store, [beating]), { concurrency: 1 })
     expect(row(store, 0).heartbeats).toBeGreaterThanOrEqual(2)
+  })
+
+  describe('erro do STORE (o banco da propria fila)', () => {
+    /** Erro no formato do Prisma: `code` e o que `toSafeError` grava. */
+    const prismaTimeout = () =>
+      Object.assign(new Error('Transaction already closed: timeout 5000ms'), { code: 'P2028' })
+
+    function captureLog() {
+      const events: { level: string; event: string; fields: Record<string, unknown> }[] = []
+      return {
+        events,
+        log: {
+          log(level: string, event: string, fields?: Readonly<Record<string, unknown>>) {
+            events.push({ level, event, fields: { ...fields } })
+          },
+        },
+      }
+    }
+
+    it('modo servico: claim que falha NAO derruba o worker — loga, espera e segue', async () => {
+      // Producao, 24/09/2026: o P2028 do claim escapava do loop e o servico saia
+      // com exit(1). Aqui a falha acontece duas vezes e o job seguinte e processado.
+      const store = createFakeStore([{}])
+      const realClaim = store.claimNext.bind(store)
+      let failuresLeft = 2
+      store.claimNext = async (options) => {
+        if (failuresLeft > 0) {
+          failuresLeft -= 1
+          throw prismaTimeout()
+        }
+        return realClaim(options)
+      }
+      const sleeps: number[] = []
+      const { events, log } = captureLog()
+      const report = await runCatalogWorker(
+        { ...deps(store, [okHandler()]), log, sleep: async (ms) => void sleeps.push(ms) },
+        { concurrency: 1, drain: false, maxJobs: 1, idleSleepMs: 1_000 },
+      )
+      expect(report.succeeded).toBe(1)
+      expect(row(store, 0).status).toBe('succeeded')
+      const warnings = events.filter((e) => e.event === 'catalog_worker_store_error')
+      expect(warnings).toHaveLength(2)
+      expect(warnings[0]?.level).toBe('warn')
+      expect(warnings[0]?.fields.stage).toBe('claim')
+      expect(warnings[0]?.fields.code).toBe('P2028')
+      // A espera dobra a cada falha SEGUIDA.
+      expect(sleeps).toEqual([1_000, 2_000])
+    })
+
+    it('modo servico: escrita do destino que falha NAO derruba o worker — o proximo job roda', async () => {
+      const store = createFakeStore([{}, {}])
+      let completeFailuresLeft = 1
+      const realComplete = store.complete.bind(store)
+      const realApplyFailure = store.applyFailure.bind(store)
+      store.complete = async (id) => {
+        if (completeFailuresLeft > 0) {
+          completeFailuresLeft -= 1
+          throw prismaTimeout()
+        }
+        return realComplete(id)
+      }
+      // O banco continua fora no mesmo instante: registrar a falha tambem falha.
+      let applyFailuresLeft = 1
+      store.applyFailure = async (id, failure) => {
+        if (applyFailuresLeft > 0) {
+          applyFailuresLeft -= 1
+          throw prismaTimeout()
+        }
+        return realApplyFailure(id, failure)
+      }
+      const { events, log } = captureLog()
+      const report = await runCatalogWorker(
+        { ...deps(store, [okHandler()]), log },
+        { concurrency: 1, drain: false, maxJobs: 2 },
+      )
+      // O 1o job fica em `running` (o reclaim de orfaos o devolve a fila); o 2o
+      // e processado normalmente.
+      expect(row(store, 0).status).toBe('running')
+      expect(row(store, 1).status).toBe('succeeded')
+      expect(report.claimed).toBe(2)
+      const warning = events.find((e) => e.event === 'catalog_worker_store_error')
+      expect(warning?.fields.stage).toBe('record')
+      expect(warning?.fields.jobId).toBe('1')
+    })
+
+    it('modo drain (CLI/CI): o erro do claim continua subindo', async () => {
+      const store = createFakeStore([{}])
+      store.claimNext = async () => {
+        throw prismaTimeout()
+      }
+      await expect(
+        runCatalogWorker(deps(store, [okHandler()]), { concurrency: 1 }),
+      ).rejects.toThrow(/Transaction already closed/)
+    })
+
+    it('a espera tem teto: falhas seguidas nunca passam de 5 s (abaixo do grace period do Docker)', () => {
+      expect(storeErrorBackoffMs(1, 1_000)).toBe(1_000)
+      expect(storeErrorBackoffMs(2, 1_000)).toBe(2_000)
+      expect(storeErrorBackoffMs(3, 1_000)).toBe(4_000)
+      expect(storeErrorBackoffMs(4, 1_000)).toBe(5_000)
+      expect(storeErrorBackoffMs(500, 1_000)).toBe(5_000)
+      // Intervalo de ociosidade zerado nao vira laco quente.
+      expect(storeErrorBackoffMs(1, 0)).toBe(1)
+    })
   })
 
   it('emite metricas por ciclo (total + duracao)', async () => {

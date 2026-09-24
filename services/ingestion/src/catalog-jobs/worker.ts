@@ -12,6 +12,9 @@
  *  - shutdown gracioso: para de reivindicar e aguarda o que esta em voo.
  *  - falha permanente (input invalido / sem handler / PermanentJobError) vai
  *    DIRETO para dead-letter — nao gasta tentativas de retry.
+ *  - erro do STORE (o banco da propria fila) no modo servico (`drain: false`) nao
+ *    derruba o processo: loga, espera e tenta de novo. No modo `drain` (CLI/CI)
+ *    continua subindo, como sempre.
  *  - logs estruturados com requestId + metricas por ciclo.
  *
  * PURO de IO proprio: relogio, sleep, random e a porta do store sao injetados.
@@ -77,6 +80,31 @@ const DEFAULTS = {
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/**
+ * Teto da espera depois de um erro do store no modo servico.
+ *
+ * POR QUE O SERVICO NAO SAI MAIS NESSE ERRO (medido em producao, 24/09/2026):
+ * o claim e as escritas de estado (`complete`/`applyFailure`) rodavam sem
+ * guarda, entao QUALQUER erro do banco da propria fila (um P2028 de transacao
+ * lenta, uma conexao que caiu) rejeitava o loop, o `Promise.all` e o `main()` —
+ * `process.exit(1)`. O Swarm subia outro container, que pagava de novo o
+ * download do pnpm pelo corepack e a impressao digital de 1.593 arquivos, e
+ * cada morte deixava ate 4 jobs em `running` para o reclaim. Com a fila a 3,6
+ * milhoes de linhas foram 36-55 containers por hora, vivendo 5-15 s. Reiniciar
+ * nao devolve o banco — o mesmo raciocinio do HEALTHCHECK do
+ * Dockerfile.catalog-worker, que de proposito nao consulta o banco.
+ *
+ * 5 s fica bem abaixo dos 10 s do grace period padrao de parada do Docker: um
+ * SIGTERM que chegue durante a espera ainda drena antes de virar SIGKILL.
+ */
+const STORE_ERROR_BACKOFF_CAP_MS = 5_000
+
+/** Espera depois da N-esima falha seguida do store: dobra a partir de `baseMs`, ate o teto. */
+export function storeErrorBackoffMs(consecutiveFailures: number, baseMs: number): number {
+  const exponent = Math.min(Math.max(consecutiveFailures - 1, 0), 16)
+  return Math.min(STORE_ERROR_BACKOFF_CAP_MS, Math.max(1, baseMs) * 2 ** exponent)
+}
 
 /** Erro de timeout de job (transitorio: o proximo claim tenta de novo). */
 class JobTimeoutError extends Error {
@@ -296,18 +324,65 @@ export async function runCatalogWorker(
     }
   }
 
+  /**
+   * Erro do STORE no modo servico: registra e espera, em vez de derrubar o
+   * processo. O job em voo (se houver) fica em `running` e o reclaim de orfaos
+   * o devolve a fila — o mesmo destino que ele teria se o container morresse.
+   */
+  async function backOffAfterStoreError(
+    stage: 'claim' | 'record',
+    error: unknown,
+    consecutiveFailures: number,
+    job: ClaimedCatalogJob | null,
+  ): Promise<void> {
+    const safe = toSafeError(error)
+    const inMs = storeErrorBackoffMs(consecutiveFailures, idleSleepMs)
+    log.log('warn', 'catalog_worker_store_error', {
+      runId,
+      stage,
+      jobId: job?.id ?? null,
+      jobType: job?.jobType ?? null,
+      code: safe.code,
+      error: safe.safe,
+      consecutiveFailures,
+      inMs,
+    })
+    await sleep(inMs)
+  }
+
   /** Um loop de worker: reivindica e processa ate parar. */
   async function loop(): Promise<void> {
+    let storeFailures = 0
     while (!shuttingDown() && !ceilingReached()) {
-      const job = await deps.store.claimNext()
+      let job: ClaimedCatalogJob | null
+      try {
+        job = await deps.store.claimNext()
+      } catch (error) {
+        // `drain` (CLI/CI) sobe o erro: la ele deve aparecer, e repetir sem fim
+        // esconderia um banco quebrado atras de um processo que nunca termina.
+        if (drain) throw error
+        storeFailures += 1
+        await backOffAfterStoreError('claim', error, storeFailures, null)
+        continue
+      }
       if (job === null) {
+        storeFailures = 0
         if (drain) return
         await sleep(idleSleepMs)
         continue
       }
       claimed += 1
       log.log('debug', 'catalog_job_claimed', { runId, jobId: job.id, jobType: job.jobType })
-      await processJob(job)
+      try {
+        // Falha do HANDLER nunca chega aqui (processJob a registra). O que chega
+        // e a escrita do destino (`complete`/`applyFailure`) falhando no banco.
+        await processJob(job)
+        storeFailures = 0
+      } catch (error) {
+        if (drain) throw error
+        storeFailures += 1
+        await backOffAfterStoreError('record', error, storeFailures, job)
+      }
     }
   }
 
