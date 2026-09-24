@@ -6,6 +6,7 @@
  */
 
 import { readMovieDisplayFields } from '../display-fields.js'
+import { normalizeMovieProductionCountries } from '../normalizers/detail-facts.js'
 import { normalizeMovie } from '../normalizers/movie.js'
 import {
   emptyDetailWatchReport,
@@ -70,6 +71,18 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
     // Agora o booleano DECIDE: sem linha para tocar, cai no caminho completo
     // (normaliza e faz upsert) em vez de certificar ausencia como sucesso.
     if (!result.changed && (await ctx.store.touchMovie(tmdbId, timestamps))) {
+      // PAIS: o payload nao mudou, mas o pais dele pode nunca ter sido gravado —
+      // `movie_production_countries` nasceu em 20/08 sem backfill, e sem mudanca
+      // de hash nenhum sync voltava ao upsert. Preenche SO se o titulo nao tem
+      // pais nenhum: com pais gravado nada e reescrito (regra do hash).
+      const countries = normalizeMovieProductionCountries(
+        (result.data as { production_countries?: unknown }).production_countries,
+      )
+      const countriesFilled = await ctx.store.fillMissingTitleCountries(
+        'movie',
+        tmdbId,
+        countries.links,
+      )
       // O payload nao mudou, mas a DISPONIBILIDADE dele pode nunca ter sido
       // materializada (entidade promovida do bruto, ou sincronizada antes de
       // existir esta ponte). Ingerir tambem aqui e o que faz uma passada de
@@ -87,6 +100,8 @@ export async function importMovie(ctx: ImportContext, tmdbId: number): Promise<I
         endpoint,
         status: 'success',
         itemsProcessed: 1,
+        // Gravar o pais que faltava E uma atualizacao da ficha; tocar carimbo nao.
+        itemsUpdated: countriesFilled > 0 ? 1 : 0,
         durationMs: ctx.now().getTime() - startedMs,
         quotaCost,
         payloadHash: result.payloadHash,

@@ -19,6 +19,7 @@ import type {
   SaveSnapshotResult,
 } from '../../../discovery-snapshots/index.js'
 import type { ChangesPage } from '../../../changes/run.js'
+import type { SyncLogInput } from '../../../ports.js'
 import type { ChangesKind } from '../../../discovery/changes-plan.js'
 import type { CatalogHandlerDependencies } from '../registry.js'
 import type {
@@ -133,6 +134,10 @@ export interface FakeCalls {
   snapshots: DiscoverySnapshotPlan[]
   reindex: { entityType: string; entityId: string; locale: string }[]
   changesFetch: { kind: ChangesKind; page: number }[]
+  /** Consultas da porta de catalogo do `/changes` (ids perguntados por kind). */
+  changesCatalog: { kind: ChangesKind; ids: readonly number[] }[]
+  /** Linhas que o `/changes` gravaria em `api_sync_logs`. */
+  syncLog: SyncLogInput[]
 }
 
 /** Handles dos fakes, para o teste ajustar comportamento por caso. */
@@ -156,6 +161,11 @@ export interface HandlerFakes {
   setSnapshotResult: (result: SaveSnapshotResult) => void
   /** Define as paginas de `/changes` por kind. */
   setChangesPages: (pages: Readonly<Record<string, readonly ChangesPage[]>>) => void
+  /**
+   * Define quais ids ja estao no catalogo, por kind. Kind sem entrada = TODO id
+   * perguntado existe (o default mantem os testes antigos com o mesmo sentido).
+   */
+  setCatalogIds: (ids: Readonly<Partial<Record<ChangesKind, readonly number[]>>>) => void
 }
 
 /** Monta o conjunto completo de fakes + as dependencias do registry. */
@@ -174,6 +184,8 @@ export function createHandlerFakes(): HandlerFakes {
     snapshots: [],
     reindex: [],
     changesFetch: [],
+    changesCatalog: [],
+    syncLog: [],
   }
 
   let detailError: unknown = null
@@ -195,6 +207,7 @@ export function createHandlerFakes(): HandlerFakes {
   let latestSeasonNumbers: readonly number[] = [2]
   let snapshotResult: SaveSnapshotResult = { id: 'snap-1', created: true, items: 2 }
   let changesPages: Readonly<Record<string, readonly ChangesPage[]>> = {}
+  let catalogIds: Readonly<Partial<Record<ChangesKind, readonly number[]>>> = {}
 
   const checkpointState = new Map<string, { lastPage: number; totalPages: number | null; done: boolean; cursor: string | null }>()
 
@@ -319,6 +332,18 @@ export function createHandlerFakes(): HandlerFakes {
           return { enqueued }
         },
       },
+      catalog: {
+        async existingTmdbIds(kind, ids) {
+          calls.changesCatalog.push({ kind, ids: [...ids] })
+          const known = catalogIds[kind]
+          return new Set(known === undefined ? ids : ids.filter((id) => known.includes(id)))
+        },
+      },
+      syncLog: {
+        async write(input) {
+          calls.syncLog.push(input)
+        },
+      },
       now: () => new Date('2026-07-16T00:00:00.000Z'),
     },
     search: {
@@ -356,6 +381,9 @@ export function createHandlerFakes(): HandlerFakes {
     },
     setChangesPages: (pages) => {
       changesPages = pages
+    },
+    setCatalogIds: (ids) => {
+      catalogIds = ids
     },
   }
 }

@@ -79,6 +79,7 @@ function makeStore(seeded: number[] = []) {
     touchSeason: () => Promise.reject(new Error('n/a')),
     upsertPerson: () => Promise.reject(new Error('n/a')),
     touchPerson: () => Promise.reject(new Error('n/a')),
+    fillMissingTitleCountries: () => Promise.reject(new Error('n/a')),
   }
   return { store, calls }
 }
@@ -215,6 +216,7 @@ describe('promoteMoviesFromRaw', () => {
       touchSeason: () => Promise.reject(new Error('n/a')),
       upsertPerson: () => Promise.reject(new Error('n/a')),
       touchPerson: () => Promise.reject(new Error('n/a')),
+      fillMissingTitleCountries: () => Promise.reject(new Error('n/a')),
     }
     const { finalize } = makeFinalize()
     await promoteMoviesFromRaw(opts({ source: makeSource([movieRow(7)]), store, finalize }))

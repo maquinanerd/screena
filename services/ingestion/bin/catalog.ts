@@ -79,6 +79,11 @@ import {
   type LanguageBackfillEntityType,
 } from '../src/persistence/language-backfill.js'
 import {
+  backfillTitleCountries,
+  COUNTRY_BACKFILLABLE_TYPES,
+  type CountryBackfillEntityType,
+} from '../src/persistence/country-backfill.js'
+import {
   describeDeleteCascade,
   measureCatalogByLanguage,
   planLanguageCutdown,
@@ -294,6 +299,7 @@ const DB_ONLY_COMMANDS = new Set([
   'backfill-finalization',
   'backfill-text',
   'backfill-language',
+  'backfill-countries',
   'language-cutdown',
 ])
 
@@ -420,6 +426,8 @@ async function main() {
           return await cmdBackfillText(db, flags, locale)
         case 'backfill-language':
           return await cmdBackfillLanguage(db, flags)
+        case 'backfill-countries':
+          return await cmdBackfillCountries(db, flags)
         case 'language-cutdown':
           return await cmdLanguageCutdown(db, flags)
         case 'dead-letter':
@@ -1138,6 +1146,115 @@ async function cmdBackfillLanguage(services: DbOnlyRuntime, flags: CatalogFlags)
 }
 
 /**
+ * backfill-countries — grava o pais de origem do payload JA guardado, so em
+ * titulo sem pais nenhum. ZERO chamadas ao TMDB. Ver
+ * `src/persistence/country-backfill.ts`.
+ *
+ * Sem `--apply` nunca escreve: o `--dry-run` RODA a leitura de verdade (esta em
+ * `DRY_RUN_RUNS_REAL_POLICY`) e mostra quantos titulos ganhariam pais e quais.
+ */
+async function cmdBackfillCountries(services: DbOnlyRuntime, flags: CatalogFlags): Promise<number> {
+  const requested = splitList(flags.entity)
+  const types =
+    requested === null
+      ? COUNTRY_BACKFILLABLE_TYPES
+      : requested.filter((t): t is CountryBackfillEntityType =>
+          (COUNTRY_BACKFILLABLE_TYPES as readonly string[]).includes(t),
+        )
+  if (types.length === 0) {
+    process.stderr.write(
+      `erro: --entity precisa conter um de: ${COUNTRY_BACKFILLABLE_TYPES.join(', ')}\n`,
+    )
+    return EXIT_CODES.usage
+  }
+
+  const iniciadoMs = services.now().getTime()
+  const dryRun = !flags.apply
+  const report = await backfillTitleCountries(services.prisma, {
+    entityTypes: types,
+    ...(flags.limit !== null ? { limit: flags.limit } : {}),
+    dryRun,
+    onBatch: ({ entityType, seen, recovered, lastId }) => {
+      if (flags.json) return
+      process.stderr.write(
+        `  [${entityType}] vistos ${seen} · com pais no payload ${recovered} · ultimo id ${lastId}\n`,
+      )
+    },
+  })
+
+  // LOG DE SYNC (invariante 10). Mesmo desenho de `cmdBackfillLanguage`: escrito
+  // DEPOIS do trabalho, e a falha dele nao apaga o relatorio.
+  let falhaDeLog: string | null = null
+  try {
+    await createPrismaSyncLog(services.prisma).write({
+      endpoint: `backfill-countries/${types.join('+')}${dryRun ? '?dry-run=1' : ''}`,
+      status: report.recovered === 0 ? 'empty' : 'success',
+      itemsProcessed: report.candidates,
+      itemsCreated: report.rowsWritten,
+      itemsUpdated: report.titlesWritten,
+      durationMs: services.now().getTime() - iniciadoMs,
+      quotaCost: 0,
+    })
+  } catch (error) {
+    falhaDeLog =
+      redactSecrets(errorMessage(error))
+        .split('\n')
+        .map((linha) => linha.trim())
+        .find((linha) => linha !== '') ?? 'erro desconhecido'
+    process.stderr.write(
+      [
+        'AVISO: a execucao rodou, mas o log em `api_sync_logs` NAO foi gravado.',
+        `  causa: ${falhaDeLog}`,
+        '  O relatorio abaixo e valido; o que falta e o rastro auditavel.',
+        '',
+      ].join('\n'),
+    )
+  }
+
+  emit(flags, report, [
+    `backfill de pais de origem · ${report.dryRun ? 'DRY-RUN' : 'APLICADO'}`,
+    `  candidatos (titulos SEM nenhum pais): ${report.candidates}`,
+    `  com pais no payload guardado: ${report.recovered}`,
+    `  titulos gravados: ${report.titlesWritten} · linhas de pais: ${report.rowsWritten}`,
+    `  escritas recusadas por ja haver pais: ${report.refusedAlreadyFilled}`,
+    `  chamadas TMDB executadas: ${report.externalCallsMade}`,
+    '',
+    '  pais lido de:',
+    `    api_cache                   ${report.byPayloadSource.api_cache}`,
+    `    tmdb_raw                    ${report.byPayloadSource.tmdb_raw}`,
+    '',
+    Object.keys(report.byType).length > 0 ? '  com pais por tipo:' : '  nenhum titulo com pais no payload.',
+    ...Object.entries(report.byType).map(([k, v]) => `    ${k.padEnd(10)} ${v}`),
+    '',
+    Object.keys(report.byFirstCountry).length > 0 ? '  primeiro pais (top 20):' : '',
+    ...Object.entries(report.byFirstCountry)
+      .slice(0, 20)
+      .map(([k, v]) => `    ${k.padEnd(4)} ${v}`),
+    '',
+    // `empty_country_list_in_payload` NAO e defeito nosso: o TMDB mandou a
+    // lista vazia. O comando nao inventa pais para esses.
+    Object.keys(report.skipped).length > 0 ? '  sem pais gravavel:' : '',
+    ...Object.entries(report.skipped).map(([k, v]) => `    ${k.padEnd(32)} ${v}`),
+    '',
+    report.samples.length > 0 ? '  amostra:' : '',
+    ...report.samples
+      .slice(0, 30)
+      .map(
+        (x) =>
+          `    ${x.entityType}#${x.entityId} tmdb ${x.tmdbId} [${x.from}] ${x.countries.join(',')} · ${x.title}`,
+      ),
+    '',
+    `  ultimo id visitado: ${JSON.stringify(report.checkpoint)}`,
+    '  (para continuar, basta rodar de novo: titulo com pais sai do conjunto)',
+    '',
+    report.dryRun
+      ? 'Nada foi gravado. Use --apply para preencher.'
+      : 'Pais preenchido so onde faltava. Nenhum pais existente foi reescrito.',
+  ])
+  return falhaDeLog === null ? EXIT_CODES.ok : EXIT_CODES.failed
+}
+
+/**
  * backfill-text — preenche sinopse/biografia a partir do payload JA guardado.
  *
  * ZERO chamadas ao TMDB: o texto foi baixado com o detalhe (`translations` esta
@@ -1661,10 +1778,12 @@ async function cmdChanges(
     deps,
   )
   emit(flags, report, [
-    `changes ${report.window.from} .. ${report.window.to} · ${report.totalEnqueued} jobs enfileirados`,
+    `changes ${report.window.from} .. ${report.window.to} · ${report.totalEnqueued} jobs enfileirados` +
+      ` · ${report.totalDiscardedNotInCatalog} ids fora do catalogo descartados`,
     ...report.kinds.map(
       (k) =>
-        `  ${k.kind}: ${k.pages} paginas · ${k.changedIds} ids · +${k.enqueued}` +
+        `  ${k.kind}: ${k.pages} paginas · ${k.changedIds} ids · ${k.inCatalog} no catalogo` +
+        ` · ${k.discardedNotInCatalog} descartados · +${k.enqueued}` +
         `${k.skipped ? ' (janela ja concluida)' : k.done ? ' (concluida)' : ' (parcial)'}`,
     ),
   ])

@@ -33,6 +33,7 @@ export const CATALOG_COMMANDS = [
   'backfill-finalization',
   'backfill-text',
   'backfill-language',
+  'backfill-countries',
   'language-cutdown',
   'dead-letter',
 ] as const
@@ -208,6 +209,9 @@ const MUTATING_COMMANDS: ReadonlySet<CatalogCommand> = new Set([
   // guardado. E a coluna que o RECORTE DE IDIOMA usa para decidir o que fica e
   // o que sai — errar aqui apaga catalogo por engano.
   'backfill-language',
+  // Grava pais de origem a partir de payload JA guardado, so em titulo sem
+  // pais. O pais e o que o portao de relevancia le (EUA/BR ficam no indice).
+  'backfill-countries',
   // APAGA catalogo em massa. Sem `--dry-run`/`--apply` explicito nao roda —
   // e o `--apply` ainda exige `--confirm-mass-change` (ver `bin/catalog.ts`).
   'language-cutdown',
@@ -272,6 +276,9 @@ const DRY_RUN_RUNS_REAL_POLICY: ReadonlySet<CatalogCommand> = new Set([
   // `--dry-run` dele E a medicao (quantas linhas a leitura recupera, e em que
   // idiomas). Sem executar, a resposta seria uma frase sobre a intencao.
   'backfill-language',
+  // Mesma razao: so-de-banco, zero cota, e o `--dry-run` E a medicao (quantos
+  // titulos sem pais tem pais no payload guardado, e quais).
+  'backfill-countries',
   // O `--dry-run` DELE E O ENTREGAVEL da Parte B: a tabela por idioma, o que
   // sai com a cascata e os titulos com oferta no Brasil. Curto-circuitar em
   // `describePlan` devolveria uma frase sobre a intencao do comando, e o dono

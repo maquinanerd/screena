@@ -21,6 +21,8 @@ export interface SyncChangesResult {
   readonly window: { readonly from: string; readonly to: string }
   readonly kinds: ChangesRunReport['kinds']
   readonly totalEnqueued: number
+  /** Ids alterados no TMDB que NAO viraram job por nao estarem no catalogo. */
+  readonly totalDiscardedNotInCatalog: number
 }
 
 /** Dependencias do handler. */
@@ -83,6 +85,7 @@ export class SyncChangesHandler implements CatalogJobHandler<SyncChangesInput, S
         window: report.window,
         kinds: report.kinds,
         totalEnqueued: report.totalEnqueued,
+        totalDiscardedNotInCatalog: report.totalDiscardedNotInCatalog,
       }
     } catch (error) {
       context.metrics.increment(CATALOG_METRIC_NAMES.jobsFailedTotal, 1, {

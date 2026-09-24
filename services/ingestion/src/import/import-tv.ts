@@ -108,6 +108,14 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       id = upsert.id
     }
 
+    // PAIS no caminho de payload inalterado. Ver o mesmo bloco em
+    // `import-movie.ts`: `tv_show_origin_countries` nasceu em 20/08 sem
+    // backfill, e com o hash igual o upsert nunca mais rodava. Preenche SO se a
+    // serie nao tem pais nenhum — com pais gravado, nada e reescrito.
+    const countriesFilled = tocou
+      ? await ctx.store.fillMissingTitleCountries('tv', tmdbId, normalized.countries)
+      : 0
+
     // Disponibilidade a partir do MESMO payload que ja esta em maos: zero
     // chamada nova ao TMDB, zero cota. Roda TAMBEM no short-circuit de cache
     // (`id === null`, resolvido pelo tmdbId no sink) — sem isso, re-sincronizar
@@ -153,7 +161,7 @@ export async function importTvShow(ctx: ImportContext, tmdbId: number): Promise<
       status: 'success',
       itemsProcessed: 1 + normalized.seasonNumbers.length,
       itemsCreated: result.changed && created ? 1 : 0,
-      itemsUpdated: result.changed && !created ? 1 : 0,
+      itemsUpdated: (result.changed && !created) || countriesFilled > 0 ? 1 : 0,
       durationMs: ctx.now().getTime() - startedMs,
       quotaCost,
       payloadHash: result.payloadHash,
