@@ -64,7 +64,12 @@ import type { NewsCardView } from "../lib/news-presenter";
 import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import type { SimilarTitlesView } from "../lib/similar-titles-presenter";
-import { evaluateLocalizationGate, type PageSeoResolution } from "@screena/seo";
+import {
+  evaluateLocalizationGate,
+  firstFailedQualityGate,
+  type PageSeoResolution,
+} from "@screena/seo";
+import { evaluateTitleRelevance } from "./seo/title-relevance";
 import { getImageDisplayAuthorization } from "./image-license";
 
 /** Idioma de publicacao do MVP (invariante 7): pt-BR indexa primeiro. */
@@ -197,6 +202,8 @@ export const getMoviePageData = cache(
           certification: true,
           budget: true,
           releaseDateBr: true,
+          // Portao de relevancia (decisao do dono, 24/09/2026).
+          voteCountTmdb: true,
         },
       }),
       prisma.slug.findFirst({
@@ -311,7 +318,7 @@ export const getMoviePageData = cache(
     // SQL do sitemap aplica o mesmo predicado.
     // O titulo vai junto com o ORIGINAL porque a linha pt-BR costuma carregar o
     // original copiado, e copia nao e traducao (ver `isLocalizedTitle`).
-    const qualityGate = evaluateLocalizationGate({
+    const localizationGate = evaluateLocalizationGate({
       canonicalSlug,
       localizedTitle: translation?.title ?? null,
       originalTitle: movie.titleOriginal,
@@ -319,6 +326,19 @@ export const getMoviePageData = cache(
         (translation?.summary ?? "").trim() !== "" ||
         (translation?.metaDescription ?? "").trim() !== "",
     });
+    // PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais EUA/BR, 500+
+    // votos no TMDB ou oferta no Brasil; senao `noindex, follow`. O MESMO
+    // predicado do SQL do sitemap (`sitemap-index.ts`). Desligavel so pela chave
+    // de emergencia `CINERIE_RELEVANCE_GATE=off`. A D3 vem primeiro: ficha sem
+    // localizacao e causa mais especifica que titulo de cauda.
+    const qualityGate = firstFailedQualityGate([
+      localizationGate,
+      await evaluateTitleRelevance(prisma, {
+        entityType: ENTITY_TYPE,
+        entityId,
+        voteCount: movie.voteCountTmdb,
+      }),
+    ]);
 
     // Fonte unica da Fase 3: funde os fatos vivos com a decisao VIGENTE
     // persistida em page_indexability_decisions. Falha de banco LANCA (5xx) —

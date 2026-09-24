@@ -91,7 +91,7 @@ export const getSeasonPageData = cache(
       await Promise.all([
         prisma.tvShow.findUnique({
           where: { id: seriesId },
-          select: { nameOriginal: true, posterPath: true, backdropPath: true },
+          select: { nameOriginal: true, posterPath: true, backdropPath: true, voteCountTmdb: true },
         }),
         prisma.slug.findFirst({
           where: {
@@ -181,6 +181,7 @@ export const getSeasonPageData = cache(
           seriesId,
           canonicalSlug: canonicalSlugRow?.slug ?? null,
           nameOriginal: series.nameOriginal,
+          voteCountTmdb: series.voteCountTmdb,
         },
         LANGUAGE_CODE,
       ),

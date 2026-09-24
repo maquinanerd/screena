@@ -29,10 +29,21 @@
  * MODULO PURO: sem banco, sem rede, sem IO, sem Date.
  */
 
+import {
+  RELEVANCE_GATE_ANCHOR_COUNTRIES,
+  RELEVANCE_GATE_MIN_TMDB_VOTES,
+} from "@screena/config";
+
 import { evaluatePersonEligibility } from "./person-eligibility.js";
 
 /** Qual portao produziu o veredito. */
-export type QualityGateId = "gallery" | "person" | "localization" | "season" | "episode";
+export type QualityGateId =
+  | "gallery"
+  | "person"
+  | "localization"
+  | "season"
+  | "episode"
+  | "relevance";
 
 /** Veredito de um portao de qualidade. */
 export interface QualityGateVerdict {
@@ -178,6 +189,106 @@ export function evaluateLocalizationGate(input: LocalizationGateInput): QualityG
     "not_localized",
     "Ficha com slug de fallback tmdb-{id}, sem titulo localizado (ausente ou igual ao original) e sem descricao em pt-BR: nao indexa ate ser enriquecida (decisao do dono D3, 2026-09-11). Indexa sozinha quando ganhar titulo proprio ou descricao.",
   );
+}
+
+// ---------------------------------------------------------------------------
+// RELEVANCIA — decisao do dono de 24/09/2026
+// ---------------------------------------------------------------------------
+
+/** Fatos que o portao de relevancia le, de filme ou de serie. */
+export interface RelevanceGateInput {
+  readonly entityType: "movie" | "tv";
+  /**
+   * Paises de origem GRAVADOS, em qualquer posicao: `movie_production_countries`
+   * (filme) ou `tv_show_origin_countries` (serie). Lista vazia = sem pais.
+   * Comparados como estao no banco — o CHECK da tabela ja trava `^[A-Z]{2}$`, e
+   * o SQL do sitemap compara igual.
+   */
+  readonly countries: readonly string[];
+  /** `vote_count_tmdb`; `null` conta como zero (igual ao `COALESCE` do SQL). */
+  readonly voteCount: number | null;
+  /**
+   * Existe QUALQUER linha em `watch_availability` do titulo com
+   * `country_code = 'BR'`. Nao so a exibivel: a pergunta aqui e "o titulo e
+   * distribuido no Brasil?", nao "podemos mostrar a oferta?" — essa segunda e a
+   * invariante 6, que continua valendo na tela. Ver a decisao registrada.
+   */
+  readonly hasBrazilOffer: boolean;
+}
+
+/**
+ * Portao de RELEVANCIA (decisao do dono, 24/09/2026 — ver
+ * `docs/seo/DECISOES-DO-DONO-2026-09-24.md`).
+ *
+ * Fica no indice o filme ou a serie que tem pais de origem EUA ou Brasil, OU
+ * pelo menos `RELEVANCE_GATE_MIN_TMDB_VOTES` votos no TMDB, OU oferta de
+ * streaming no Brasil. Qualquer outro sai — inclusive o SEM PAIS, que e dado
+ * medido e nao lacuna nossa: dos 14.963 titulos sem pais em 24/09/2026, 14.939
+ * tinham a lista VAZIA no proprio payload do TMDB.
+ *
+ * Medido em producao em 24/09/2026: 108.974 titulos, 95.610 paginas de titulo no
+ * indice, 82% do catalogo com menos de 100 votos. A cauda que o `/changes` trazia
+ * todo dia (96% com menos de 100 votos, 2/3 de fora dos EUA) e o que sai.
+ *
+ * O PORTAO SE ABRE SOZINHO: o titulo que chega a 500 votos, ganha oferta no
+ * Brasil ou tem pais EUA/BR gravado volta ao indice na revalidacao seguinte, sem
+ * comando nenhum. E o desfecho e `noindex, FOLLOW` — a pagina continua de pe.
+ */
+export function evaluateRelevanceGate(input: RelevanceGateInput): QualityGateVerdict {
+  const anchor = input.countries.find((code) => RELEVANCE_GATE_ANCHOR_COUNTRIES.includes(code));
+  if (anchor !== undefined) {
+    return passed("relevance", "anchor_country", `Pais de origem ${anchor}: fica no indice.`);
+  }
+  const votes = input.voteCount ?? 0;
+  if (votes >= RELEVANCE_GATE_MIN_TMDB_VOTES) {
+    return passed(
+      "relevance",
+      "tmdb_votes",
+      `${votes} votos no TMDB (minimo ${RELEVANCE_GATE_MIN_TMDB_VOTES}): fica no indice.`,
+    );
+  }
+  if (input.hasBrazilOffer) {
+    return passed("relevance", "brazil_offer", "Oferta de streaming no Brasil: fica no indice.");
+  }
+  const tipo = input.entityType === "movie" ? "Filme" : "Serie";
+  const volta = `Volta sozinho ao indice ao chegar a ${RELEVANCE_GATE_MIN_TMDB_VOTES} votos, ganhar oferta no Brasil ou ter pais EUA/BR gravado (decisao do dono, 2026-09-24).`;
+  if (input.countries.length === 0) {
+    return failed(
+      "relevance",
+      "no_country",
+      `${tipo} SEM pais de origem gravado, com ${votes} voto(s) no TMDB e sem oferta no Brasil: fora do indice. ${volta}`,
+    );
+  }
+  return failed(
+    "relevance",
+    "country_outside_anchor",
+    `${tipo} de ${input.countries.join(", ")} (fora de EUA/BR), com ${votes} voto(s) no TMDB e sem oferta no Brasil: fora do indice. ${volta}`,
+  );
+}
+
+/**
+ * Veredito quando a chave de EMERGENCIA desligou o portao
+ * (`CINERIE_RELEVANCE_GATE=off`). Passa sempre: a pagina e o sitemap voltam a
+ * ser exatamente o que eram antes da decisao de 24/09/2026.
+ */
+export const RELEVANCE_GATE_OFF_VERDICT: QualityGateVerdict = Object.freeze(
+  passed(
+    "relevance",
+    "gate_off",
+    "Portao de relevancia DESLIGADO pela chave de emergencia (CINERIE_RELEVANCE_GATE=off).",
+  ),
+);
+
+/**
+ * Junta os portoes de UMA pagina: o primeiro que reprova decide (o `reason` dele
+ * vai para a decisao); se todos passam, vale o ultimo. A ORDEM e a do chamador
+ * — a ficha passa `[D3, relevancia]`, porque titulo sem localizacao e causa mais
+ * especifica que titulo de cauda.
+ */
+export function firstFailedQualityGate(
+  verdicts: readonly [QualityGateVerdict, ...QualityGateVerdict[]],
+): QualityGateVerdict {
+  return verdicts.find((verdict) => !verdict.passed) ?? verdicts[verdicts.length - 1]!;
 }
 
 // ---------------------------------------------------------------------------

@@ -6,8 +6,11 @@
  * URL dela carrega o slug da serie.
  *
  * O MESMO PREDICADO DO SITEMAP. A serie esta no indice quando tem slug canonico
- * no locale, titulo original, passa no portao de localizacao (D3) e tem decisao
- * efetiva `index` — a persistida, ou a "ausente" que a cobertura do tipo manda.
+ * no locale, titulo original, passa no portao de localizacao (D3), passa no
+ * portao de RELEVANCIA (decisao do dono de 24/09/2026: pais EUA/BR, 500+ votos
+ * ou oferta no Brasil) e tem decisao efetiva `index` — a persistida, ou a
+ * "ausente" que a cobertura do tipo manda. Serie que sai pela relevancia leva
+ * junto as temporadas e os episodios.
  * E exatamente o que poe a serie no sitemap (`sitemap-index.ts`, tipo `series`),
  * e as consultas de temporada e de episodio de la repetem o texto. Esta funcao e
  * a traducao do lado da pagina: se as duas divergirem, a meta tag de uma
@@ -22,6 +25,7 @@ import { evaluateLocalizationGate, TMDB_FALLBACK_SLUG_PATTERN } from "@screena/s
 
 import { PUBLISHED_LOCALES } from "../../lib/synopsis-language";
 import { absentDecisionFor, readDecisionCoverageForPage } from "./decision-coverage";
+import { evaluateTitleRelevance } from "./title-relevance";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
@@ -32,6 +36,8 @@ export interface SeriesIndexFacts {
   readonly canonicalSlug: string | null;
   /** `tv_shows.name_original`. */
   readonly nameOriginal: string | null;
+  /** `tv_shows.vote_count_tmdb` — um dos fatos do portao de relevancia. */
+  readonly voteCountTmdb: number | null;
 }
 
 export async function isSeriesInIndex(
@@ -83,6 +89,15 @@ export async function isSeriesInIndex(
       }).passed,
   );
   if (!localizada) return false;
+
+  // PORTAO DE RELEVANCIA: o mesmo veredito que a ficha da serie usa. Desligado
+  // pela chave de emergencia, passa sem consultar nada.
+  const relevancia = await evaluateTitleRelevance(prisma, {
+    entityType: "tv",
+    entityId: facts.seriesId,
+    voteCount: facts.voteCountTmdb,
+  });
+  if (!relevancia.passed) return false;
 
   const efetiva =
     persisted !== null ? String(persisted.decision) : absentDecisionFor(coverage, "tv");

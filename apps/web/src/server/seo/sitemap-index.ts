@@ -48,6 +48,12 @@
 
 import { getPrismaClient } from "@screena/db/server";
 import {
+  isRelevanceGateEnabled,
+  RELEVANCE_GATE_ANCHOR_COUNTRIES,
+  RELEVANCE_GATE_MIN_TMDB_VOTES,
+  RELEVANCE_GATE_OFFER_COUNTRY,
+} from "@screena/config";
+import {
   describeSitemapCeilingVerdict,
   evaluateSitemapCeilings,
   evaluateSitemapTypeCeiling,
@@ -241,6 +247,13 @@ const ENTITY_TYPES: readonly EntitySitemapType[] = SUPPORTED_ENTITY_TYPES.filter
  * sitemap e meta robots discordando de novo.
  */
 const PUBLISHED_LOCALE_CODES: string[] = [...PUBLISHED_LOCALES];
+
+/**
+ * Os paises-ancora do portao de relevancia (EUA, Brasil) como parametro de SQL
+ * (`= ANY(...)`). Vem de `@screena/config`, a MESMA lista que
+ * `evaluateRelevanceGate` usa na pagina.
+ */
+const RELEVANCE_ANCHOR_CODES: string[] = [...RELEVANCE_GATE_ANCHOR_COUNTRIES];
 
 /**
  * Tipos aceitos por `parseShardId`. Tipo suspenso NAO entra: o shard antigo
@@ -488,6 +501,8 @@ async function aggregateEntity(
   language: string,
   coverage: DecisionCoverage,
 ): Promise<Aggregate> {
+  // Chave de EMERGENCIA do portao de relevancia, lida a cada consulta (runtime).
+  const relevanceOff = !isRelevanceGateEnabled();
   const absentMovie = absentDecisionFor(coverage, "movie");
   const absentTv = absentDecisionFor(coverage, "tv");
   const absentPerson = absentDecisionFor(coverage, "person");
@@ -520,6 +535,26 @@ async function aggregateEntity(
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
           )
         )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(m.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM movie_production_countries rc
+            WHERE rc.movie_id = m.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'movie' AND rw.entity_id = m.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
+          )
+        )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
           WHERE d.entity_type = 'movie' AND d.entity_id = s.entity_id
             AND d.language_code = ${language} AND d.is_current = true
@@ -548,6 +583,26 @@ async function aggregateEntity(
                     AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(t.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM tv_show_origin_countries rc
+            WHERE rc.tv_show_id = t.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'tv' AND rw.entity_id = t.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
           )
         )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
@@ -655,6 +710,26 @@ async function aggregateEntity(
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
           )
         )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(t.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM tv_show_origin_countries rc
+            WHERE rc.tv_show_id = t.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'tv' AND rw.entity_id = t.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
+          )
+        )
         AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
           WHERE sd.entity_type = 'tv' AND sd.entity_id = s.entity_id
             AND sd.language_code = ${language} AND sd.is_current = true
@@ -703,6 +778,26 @@ async function aggregateEntity(
                     AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(t.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM tv_show_origin_countries rc
+            WHERE rc.tv_show_id = t.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'tv' AND rw.entity_id = t.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
           )
         )
         AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
@@ -896,6 +991,8 @@ async function pageEntity(
   offset: number,
   coverage: DecisionCoverage,
 ): Promise<PageRow[]> {
+  // Chave de EMERGENCIA do portao de relevancia, lida a cada consulta (runtime).
+  const relevanceOff = !isRelevanceGateEnabled();
   const absentMovie = absentDecisionFor(coverage, "movie");
   const absentTv = absentDecisionFor(coverage, "tv");
   const absentPerson = absentDecisionFor(coverage, "person");
@@ -924,6 +1021,26 @@ async function pageEntity(
                     AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(m.title_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(m.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM movie_production_countries rc
+            WHERE rc.movie_id = m.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'movie' AND rw.entity_id = m.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
           )
         )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
@@ -957,6 +1074,26 @@ async function pageEntity(
                     AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(t.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM tv_show_origin_countries rc
+            WHERE rc.tv_show_id = t.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'tv' AND rw.entity_id = t.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
           )
         )
         AND COALESCE((SELECT d.decision::text FROM page_indexability_decisions d
@@ -1136,6 +1273,8 @@ async function pageSeasonEpisode(
   offset: number,
   coverage: DecisionCoverage,
 ): Promise<SitemapXmlUrl[]> {
+  // Chave de EMERGENCIA do portao de relevancia, lida a cada consulta (runtime).
+  const relevanceOff = !isRelevanceGateEnabled();
   const absentTv = absentDecisionFor(coverage, "tv");
   const absentSeason = absentDecisionFor(coverage, "season");
   const absentEpisode = absentDecisionFor(coverage, "episode");
@@ -1163,6 +1302,26 @@ async function pageSeasonEpisode(
                     AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(t.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM tv_show_origin_countries rc
+            WHERE rc.tv_show_id = t.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'tv' AND rw.entity_id = t.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
           )
         )
         AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd
@@ -1227,6 +1386,26 @@ async function pageSeasonEpisode(
                     AND BTRIM(COALESCE(et.title, '')) <> BTRIM(COALESCE(t.name_original, '')))
                 OR BTRIM(COALESCE(et.summary, '')) <> ''
                 OR BTRIM(COALESCE(et.meta_description, '')) <> '')
+          )
+        )
+        -- PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026): pais de origem EUA ou
+        -- Brasil, OU 500+ votos no TMDB, OU oferta de streaming no Brasil. Sem pais
+        -- tambem sai. Mesmo predicado de evaluateRelevanceGate, que a pagina usa, com
+        -- os numeros de @screena/config. EXISTS correlacionado e nunca CTE: a PR 323
+        -- reverteu um portao em CTE que piorou producao. O primeiro termo e a chave de
+        -- emergencia CINERIE_RELEVANCE_GATE=off, que torna o predicado verdadeiro.
+        -- NUNCA use crase neste comentario: ela fecha o template literal.
+        AND (
+          ${relevanceOff}
+          OR COALESCE(t.vote_count_tmdb, 0) >= ${RELEVANCE_GATE_MIN_TMDB_VOTES}
+          OR EXISTS (
+            SELECT 1 FROM tv_show_origin_countries rc
+            WHERE rc.tv_show_id = t.id AND rc.country_code = ANY(${RELEVANCE_ANCHOR_CODES})
+          )
+          OR EXISTS (
+            SELECT 1 FROM watch_availability rw
+            WHERE rw.entity_type = 'tv' AND rw.entity_id = t.id
+              AND rw.country_code = ${RELEVANCE_GATE_OFFER_COUNTRY}
           )
         )
         AND COALESCE((SELECT sd.decision::text FROM page_indexability_decisions sd

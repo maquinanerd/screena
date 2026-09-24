@@ -58,10 +58,12 @@ import type { CastMemberView } from "../lib/cast-presenter";
 import type { WatchAvailabilityView } from "../lib/watch-availability-presenter";
 import {
   evaluateLocalizationGate,
+  firstFailedQualityGate,
   type IndexabilityResult,
   type PageSeoResolution,
 } from "@screena/seo";
 import { getImageDisplayAuthorization } from "./image-license";
+import { evaluateTitleRelevance } from "./seo/title-relevance";
 
 const LANGUAGE_CODE = "pt-BR";
 const ENTITY_TYPE = "tv";
@@ -209,6 +211,8 @@ export const getSeriesPageData = cache(
             status: true,
             originalLanguage: true,
             certification: true,
+            // Portao de relevancia (decisao do dono, 24/09/2026).
+            voteCountTmdb: true,
           },
         }),
         prisma.slug.findFirst({
@@ -409,7 +413,7 @@ export const getSeriesPageData = cache(
     // pela mesma funcao: serie com slug de fallback tmdb-{id}, sem titulo e sem
     // descricao no locale publicado, fica fora do indice ate ser enriquecida.
     // Titulo igual ao original nao conta como traducao (ver `isLocalizedTitle`).
-    const qualityGate = evaluateLocalizationGate({
+    const localizationGate = evaluateLocalizationGate({
       canonicalSlug,
       localizedTitle: translation?.title ?? null,
       originalTitle: series.nameOriginal,
@@ -417,6 +421,17 @@ export const getSeriesPageData = cache(
         (translation?.summary ?? "").trim() !== "" ||
         (translation?.metaDescription ?? "").trim() !== "",
     });
+    // PORTAO DE RELEVANCIA (decisao do dono, 24/09/2026) — o gemeo do de
+    // movie-page.ts: pais EUA/BR, 500+ votos ou oferta no Brasil. Temporada e
+    // episodio herdam o resultado por `series-in-index.ts`.
+    const qualityGate = firstFailedQualityGate([
+      localizationGate,
+      await evaluateTitleRelevance(prisma, {
+        entityType: ENTITY_TYPE,
+        entityId,
+        voteCount: series.voteCountTmdb,
+      }),
+    ]);
 
     // Fonte unica da Fase 3: fatos vivos + decisao vigente persistida. Falha de
     // banco LANCA (5xx), nunca vira noindex.

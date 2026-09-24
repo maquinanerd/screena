@@ -13,3 +13,4 @@ export * from "./provider-quotas.js";
 export * from "./omdb-budget.js";
 export * from "./omdb-rotation.js";
 export * from "./catalog-languages.js";
+export * from "./relevance-gate.js";

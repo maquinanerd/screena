@@ -73,6 +73,11 @@ const VALIDATORS: readonly ValidatorSpec[] = [
     label: "Gate de elegibilidade de pessoa (sitemap)",
     script: "validate-person-eligibility-real-postgres.ts",
   },
+  {
+    key: "validate:relevance-gate",
+    label: "Portao de relevancia de filme e serie (pagina x sitemap)",
+    script: "validate-relevance-gate-real-postgres.ts",
+  },
 ];
 
 interface ValidatorOutcome {

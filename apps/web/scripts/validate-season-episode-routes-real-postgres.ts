@@ -115,8 +115,17 @@ async function seedSeries(
     translationTitle?: string;
   },
 ): Promise<bigint> {
+  // 1.000 votos: a serie da fixture e RELEVANTE para o portao de 24/09/2026 (a
+  // decisao do dono tira do indice serie sem pais EUA/BR, com menos de 500 votos
+  // e sem oferta no Brasil). Aqui se testa conteudo de temporada/episodio e a
+  // heranca da serie dona; relevancia tem validador proprio (validate:relevance-gate).
   const tv = await prisma.tvShow.create({
-    data: { tmdbId: opts.tmdbId, nameOriginal: opts.title, posterPath: opts.posterPath ?? null },
+    data: {
+      tmdbId: opts.tmdbId,
+      nameOriginal: opts.title,
+      posterPath: opts.posterPath ?? null,
+      voteCountTmdb: 1000,
+    },
     select: { id: true },
   });
   await prisma.slug.create({
