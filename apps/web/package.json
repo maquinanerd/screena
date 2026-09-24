@@ -17,6 +17,8 @@
     "validate:news-pages": "tsx scripts/validate-news-pages-real-postgres.ts",
     "validate:entity-resolve": "tsx scripts/validate-entity-resolve-real-postgres.ts",
     "validate:seo-runtime": "tsx scripts/validate-seo-runtime-real-postgres.ts",
+    "validate:relevance-gate": "tsx scripts/validate-relevance-gate-real-postgres.ts",
+    "bench:sitemap-relevance-gate": "tsx scripts/bench-sitemap-relevance-gate-real-postgres.ts",
     "perf:lab": "tsx scripts/perf-lab-chrome.ts",
     "css:parity": "tsx scripts/css-parity-chrome.ts",
     "css:parity:seed": "tsx scripts/css-parity-seed.ts",

@@ -94,7 +94,10 @@ export const getEpisodePageData = cache(
     const seriesId = slugRow.entityId;
 
     const [series, canonicalSlugRow, seriesTranslation, season] = await Promise.all([
-      prisma.tvShow.findUnique({ where: { id: seriesId }, select: { nameOriginal: true } }),
+      prisma.tvShow.findUnique({
+        where: { id: seriesId },
+        select: { nameOriginal: true, voteCountTmdb: true },
+      }),
       prisma.slug.findFirst({
         where: {
           entityType: SERIES_ENTITY_TYPE,
@@ -212,6 +215,7 @@ export const getEpisodePageData = cache(
           seriesId,
           canonicalSlug: canonicalSlugRow?.slug ?? null,
           nameOriginal: series.nameOriginal,
+          voteCountTmdb: series.voteCountTmdb,
         },
         LANGUAGE_CODE,
       ),

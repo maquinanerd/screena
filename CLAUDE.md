@@ -50,6 +50,20 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
      enriquecimento. Os criterios e limites estao em
      [`DECISOES-DO-DONO-2026-09-11.md`](docs/seo/DECISOES-DO-DONO-2026-09-11.md).
      Sao excecoes explicitas por tipo, nao a volta do gate de blocos editoriais.
+   - **Portao de RELEVANCIA de filme e serie (decisao do dono assinada em
+     24/09/2026, nasce ligado).** Fica no indice o titulo com pais de origem EUA
+     ou Brasil, OU `vote_count_tmdb >= 500`, OU oferta de streaming no Brasil
+     (qualquer linha BR de `watch_availability`). Os demais, inclusive o SEM
+     PAIS, ficam `noindex, follow` e fora do sitemap, e temporadas e episodios
+     da serie saem junto. Medido em 24/09/2026: 108.974 titulos, 95.610 paginas
+     de titulo no indice, 82% do catalogo com menos de 100 votos. Numeros num
+     lugar so (`packages/config/src/relevance-gate.ts`), a mesma regra na
+     pagina (`evaluateRelevanceGate`) e no SQL do sitemap. Volta sozinho ao
+     indice quando o titulo ganha 500 votos, oferta BR ou pais EUA/BR. So a
+     chave de EMERGENCIA `CINERIE_RELEVANCE_GATE=off` (runtime, nunca
+     build-arg) desliga. Nao autoriza apagar nem mexer em home, listagens,
+     busca ou no portao de pessoa. Registro:
+     [`DECISOES-DO-DONO-2026-09-24.md`](docs/seo/DECISOES-DO-DONO-2026-09-24.md).
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — `en` e `es` sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES**; nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.

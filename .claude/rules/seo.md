@@ -46,6 +46,21 @@ A integracao dessas decisoes foi autorizada pelo dono em 17/09/2026. Consulte
 para os criterios, a volta automatica ao indice e os limites. Esses casos
 devem concordar entre pagina e sitemap e nao exigem blocos editoriais de IA.
 
+**Portao de relevancia de filme e serie (decisao do dono assinada em
+24/09/2026, nasce ligado).** Fica no indice o titulo com pais de origem EUA ou
+Brasil (qualquer posicao), OU `vote_count_tmdb >= 500`, OU oferta de streaming
+no Brasil (qualquer linha BR de `watch_availability`: a pergunta e distribuicao,
+nao licenca de tela). Os demais, inclusive o SEM PAIS (14.939 dos 14.963 sem
+pais tinham a lista vazia no proprio TMDB), ficam `noindex, follow` e fora do
+sitemap, e temporadas e episodios da serie saem junto. A regra pura e
+`evaluateRelevanceGate` (`@screena/seo`); os numeros vivem em
+`packages/config/src/relevance-gate.ts`; o SQL do sitemap repete o predicado
+com EXISTS correlacionado (nunca CTE). O titulo volta sozinho quando ganha 500
+votos, oferta BR ou pais EUA/BR. A unica chave e a de EMERGENCIA
+`CINERIE_RELEVANCE_GATE=off`, lida em runtime. Nao autoriza apagar nem mexer em
+home, listagens, busca ou no portao de pessoa. Registro:
+[`DECISOES-DO-DONO-2026-09-24.md`](../../docs/seo/DECISOES-DO-DONO-2026-09-24.md).
+
 Os **blocos de valor proprios** deixaram de ser pre-requisito de `index` e
 passaram a ser **alavanca de qualidade e ranqueamento** (E-E-A-T, profundidade,
 citacao em AI Overview) e sinal de "riqueza" da pagina (`hasUniqueValue`). Dado

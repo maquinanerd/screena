@@ -117,9 +117,13 @@ async function runChecks(
   void getMoviePageData;
 
   // ---------------------------------------------------------------- cenario
+  // `vote_count_tmdb = 1000`: os filmes desta fixture sao RELEVANTES para o
+  // portao de 24/09/2026 (decisao do dono: sem pais EUA/BR, com menos de 500
+  // votos e sem oferta no Brasil, o titulo sai do indice). Aqui se prova que
+  // nota e oferta licenciadas nao derrubam a indexacao, nao relevancia.
   const movie = (
     await q<{ id: bigint }>(
-      `INSERT INTO movies (tmdb_id, title_original, updated_at) VALUES (900001, 'Licensed Title', now()) RETURNING id`,
+      `INSERT INTO movies (tmdb_id, title_original, vote_count_tmdb, updated_at) VALUES (900001, 'Licensed Title', 1000, now()) RETURNING id`,
     )
   )[0]!;
   const movieId = movie.id.toString();
@@ -440,7 +444,7 @@ async function runChecks(
   // ------------------------------------------ 4. estado honesto SEM fonte
   const bare = (
     await q<{ id: bigint }>(
-      `INSERT INTO movies (tmdb_id, title_original, updated_at) VALUES (900002, 'Sem Fontes', now()) RETURNING id`,
+      `INSERT INTO movies (tmdb_id, title_original, vote_count_tmdb, updated_at) VALUES (900002, 'Sem Fontes', 1000, now()) RETURNING id`,
     )
   )[0]!;
   await x(

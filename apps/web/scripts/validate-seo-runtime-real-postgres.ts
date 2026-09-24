@@ -114,6 +114,15 @@ type PrismaLike = {
 
 const BODY = "Corpo editorial proprio e substancial para a noticia. ".repeat(6);
 
+/**
+ * Votos no TMDB de todo filme desta fixture. Desde 24/09/2026 o portao de
+ * RELEVANCIA (decisao do dono) tira do indice titulo sem pais EUA/BR, com menos
+ * de 500 votos e sem oferta no Brasil. Os filmes daqui testam decisao persistida,
+ * D3, paginacao e imagem — nao relevancia — entao representam titulos relevantes.
+ * O portao tem validador proprio: `validate:relevance-gate`.
+ */
+const VOTOS_RELEVANTES = 1000;
+
 async function seedMovie(
   prisma: PrismaLike,
   opts: {
@@ -130,6 +139,7 @@ async function seedMovie(
     data: {
       tmdbId: opts.tmdbId,
       titleOriginal: opts.title,
+      voteCountTmdb: VOTOS_RELEVANTES,
       posterPath: opts.posterPath ?? null,
       backdropPath: opts.backdropPath ?? null,
     },
@@ -507,6 +517,7 @@ async function runChecks(prisma: PrismaLike, seams: Seams): Promise<void> {
     data: Array.from({ length: totalArmado }, (_, i) => ({
       tmdbId: TMDB_BASE + i,
       titleOriginal: `Armado ${i}`,
+      voteCountTmdb: VOTOS_RELEVANTES,
     })),
   });
   const armados = await prisma.movie.findMany({

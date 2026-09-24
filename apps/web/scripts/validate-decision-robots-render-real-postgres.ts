@@ -373,11 +373,14 @@ async function main(): Promise<void> {
     const prisma = dbServer.getPrismaClient();
 
     // ---- Fixtures: uma entidade COMPLETA de cada tipo --------------------
+    // 1.000 votos: filme e serie RELEVANTES para o portao de 24/09/2026. O que
+    // se mede aqui e decisao -> robots; relevancia tem validador proprio.
     const movie = await prisma.movie.create({
       data: {
         tmdbId: 97_000_001,
         titleOriginal: "Filme Alvo",
         posterPath: "/poster.jpg",
+        voteCountTmdb: 1000,
       },
       select: { id: true },
     });
@@ -401,7 +404,12 @@ async function main(): Promise<void> {
     });
 
     const tv = await prisma.tvShow.create({
-      data: { tmdbId: 97_000_002, nameOriginal: "Serie Alvo", posterPath: "/poster-tv.jpg" },
+      data: {
+        tmdbId: 97_000_002,
+        nameOriginal: "Serie Alvo",
+        posterPath: "/poster-tv.jpg",
+        voteCountTmdb: 1000,
+      },
       select: { id: true },
     });
     await prisma.slug.create({
