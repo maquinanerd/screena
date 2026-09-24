@@ -627,6 +627,33 @@ describe('SyncChangesHandler', () => {
     expect(fakes.store.enqueued.map((j) => j.externalId)).toEqual(['10'])
   })
 
+  it('so enfileira id que JA esta no catalogo; o resto e descartado e contado', async () => {
+    const fakes = createHandlerFakes()
+    fakes.setChangesPages({
+      movie: [{ results: [{ id: 10 }, { id: 11 }, { id: 12 }], page: 1, total_pages: 1 }],
+    })
+    fakes.setCatalogIds({ movie: [11] })
+    const handler = new SyncChangesHandler({ changes: fakes.deps.changes })
+
+    const result = await handler.execute(
+      createFakeContext().context,
+      handler.validateInput({ kinds: ['movie'], from: '2026-07-15', to: '2026-07-16' }),
+    )
+
+    expect(fakes.store.enqueued.map((j) => j.externalId)).toEqual(['11'])
+    expect(result.totalEnqueued).toBe(1)
+    expect(result.totalDiscardedNotInCatalog).toBe(2)
+    expect(fakes.calls.syncLog).toEqual([
+      expect.objectContaining({
+        endpoint: '/movie/changes',
+        status: 'success',
+        itemsProcessed: 3,
+        itemsUpdated: 1,
+        itemsCreated: 1,
+      }),
+    ])
+  })
+
   it('recusa janela invertida ANTES de tocar o provider', () => {
     const fakes = createHandlerFakes()
     const handler = new SyncChangesHandler({ changes: fakes.deps.changes })

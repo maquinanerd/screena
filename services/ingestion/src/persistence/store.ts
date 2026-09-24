@@ -10,6 +10,7 @@
 import type { PrismaClient } from '@screena/db/server'
 
 import { createCatalogAdmissionPolicy, type CatalogAdmissionPolicy } from './admission.js'
+import { writeTitleCountriesIfEmpty } from './country-backfill.js'
 import type {
   CreditsWriteOutcome,
   EntityStorePort,
@@ -647,6 +648,16 @@ export function createPrismaStore(
       const count = await prisma.$executeRaw`
         UPDATE "people" SET "last_synced_at" = ${lastSyncedAt} WHERE "tmdb_id" = ${tmdbId}`
       return count > 0
+    },
+
+    // Preenche lacuna, nunca substitui: o `NOT EXISTS` esta na mesma instrucao
+    // que grava. Ver `EntityStorePort.fillMissingTitleCountries`.
+    async fillMissingTitleCountries(
+      kind: 'movie' | 'tv',
+      tmdbId: number,
+      countries: readonly TitleCountryLink[],
+    ): Promise<number> {
+      return writeTitleCountriesIfEmpty(prisma, kind, 'tmdb_id', tmdbId, countries)
     },
   }
 }

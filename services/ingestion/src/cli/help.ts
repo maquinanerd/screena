@@ -38,6 +38,7 @@ Comandos:
   backfill-finalization  Cria slug/traducao de entidades presas pelo cache
   backfill-text          Preenche sinopse/biografia a partir do payload guardado
   backfill-language      Recupera original_language do payload guardado
+  backfill-countries     Grava pais de origem do payload guardado (so em titulo sem pais)
   language-cutdown       Mede e apaga o catalogo fora do recorte de idioma
   dead-letter       list | replay dos jobs esgotados
 
@@ -292,6 +293,42 @@ Exemplos:
   pnpm catalog backfill-language --dry-run --json
   pnpm catalog backfill-language --entity movie --limit 5000 --dry-run
   pnpm catalog backfill-language --apply`,
+
+  'backfill-countries': `catalog backfill-countries — grava o PAIS DE ORIGEM do payload JA guardado.
+
+ZERO CHAMADAS AO TMDB. \`production_countries\` (filme) e \`origin_country\` (serie)
+sao campos de topo de \`/movie/{id}\` e \`/tv/{id}\`, e a resposta inteira esta em
+\`api_cache.payload\` (lido primeiro) e \`tmdb_raw.payload\` (reserva).
+
+O DEFEITO QUE ELE CONSERTA. \`movie_production_countries\` e
+\`tv_show_origin_countries\` nasceram em 20/08/2026 SEM backfill, e o caminho de
+payload inalterado do import so tocava carimbos — com o hash igual, o pais nunca
+era gravado. Medido em producao em 24/09/2026: 24 titulos (19 filmes e 5 series
+do bootstrap de 10/07) com pais no payload e NENHUM pais gravado.
+
+O QUE ELE NAO FAZ. Nao inventa pais: dos ~14.963 titulos sem pais, ~14.939 tem a
+lista VAZIA no proprio payload do TMDB. Esses aparecem no relatorio como
+\`empty_country_list_in_payload\` e continuam sem pais.
+
+GARANTIAS:
+  - so preenche titulo SEM NENHUM pais — \`INSERT ... WHERE NOT EXISTS\`, avaliado
+    pelo PostgreSQL na MESMA instrucao; pais existente nunca e reescrito;
+  - nao toca \`movies\`/\`tv_shows\` (nem \`updated_at\`): so as tabelas de pais;
+  - idempotente: a segunda execucao grava zero (titulo com pais sai do conjunto);
+  - le em LOTE (\`api_cache\` nao tem indice em \`endpoint\`);
+  - sem --apply nunca escreve; o --dry-run LE o banco e mostra os numeros;
+  - grava log em \`api_sync_logs\` (invariante 10).
+
+Flags:
+  --entity <lista>   movie,tv (default: ambos)
+  --limit <n>        teto de candidatos por tipo (default: sem teto)
+  --dry-run          conta e classifica, sem gravar (roda de verdade)
+  --apply            grava
+
+Exemplos:
+  pnpm catalog backfill-countries --dry-run
+  pnpm catalog backfill-countries --dry-run --json
+  pnpm catalog backfill-countries --apply`,
 
   'index-decisions': `catalog index-decisions — PRODUZ page_indexability_decisions.
 

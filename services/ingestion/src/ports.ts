@@ -292,4 +292,24 @@ export interface EntityStorePort {
   touchSeason(tvShowTmdbId: number, seasonNumber: number, lastSyncedAt: Date): Promise<boolean>
   upsertPerson(input: StorePersonInput): Promise<UpsertOutcome>
   touchPerson(tmdbId: number, lastSyncedAt: Date): Promise<boolean>
+  /**
+   * Grava os paises de origem de um titulo SO QUANDO ELE NAO TEM NENHUM.
+   *
+   * E o que o caminho de "payload inalterado" (`touch*`) chama: ali nao ha
+   * upsert, e ate 24/09/2026 o pais daquele payload nunca era gravado — os
+   * titulos do bootstrap de 10/07 entraram antes de
+   * `movie_production_countries`/`tv_show_origin_countries` existirem (20/08) e,
+   * com o hash igual, ficaram sem pais para sempre.
+   *
+   * PREENCHE LACUNA, NUNCA SUBSTITUI: com pais ja gravado nao escreve nada e nao
+   * mexe em `updated_at` do titulo (regra do hash de `.claude/rules/ingestion.md`
+   * — payload inalterado nao reescreve a tabela final). O guard mora na MESMA
+   * instrucao que grava. Devolve quantas linhas gravou (0 = ja tinha pais, lista
+   * vazia ou titulo inexistente).
+   */
+  fillMissingTitleCountries(
+    kind: 'movie' | 'tv',
+    tmdbId: number,
+    countries: readonly TitleCountryLink[],
+  ): Promise<number>
 }

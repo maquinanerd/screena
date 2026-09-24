@@ -25,6 +25,7 @@ import type {
   TmdbReadPort,
   UpsertOutcome,
 } from '../ports.js'
+import type { TitleCountryLink } from '../types.js'
 import { hashPayload } from '../utils/hash.js'
 
 /** Cache fake: sempre "busca", compara hash por endpoint (ignora TTL). */
@@ -114,6 +115,24 @@ class FakeStore implements EntityStorePort {
   async touchPerson(tmdbId: number): Promise<boolean> {
     this.touchPersonCount += 1
     return this.people.has(tmdbId)
+  }
+  /** Espelha o guard do adapter real: so grava em titulo SEM pais nenhum. */
+  readonly countries = new Map<string, readonly string[]>()
+  readonly fillCalls: { kind: 'movie' | 'tv'; tmdbId: number; codes: string[] }[] = []
+  async fillMissingTitleCountries(
+    kind: 'movie' | 'tv',
+    tmdbId: number,
+    links: readonly TitleCountryLink[],
+  ): Promise<number> {
+    this.fillCalls.push({ kind, tmdbId, codes: links.map((l) => l.countryCode) })
+    const exists = kind === 'movie' ? this.movies.has(tmdbId) : this.tvShows.has(tmdbId)
+    const key = `${kind}:${tmdbId}`
+    if (!exists || links.length === 0 || (this.countries.get(key)?.length ?? 0) > 0) return 0
+    this.countries.set(
+      key,
+      links.map((l) => l.countryCode),
+    )
+    return links.length
   }
 }
 
@@ -240,6 +259,79 @@ describe('importTvShow', () => {
     expect(store.upsertSeasonCount).toBe(2)
     expect(store.touchTvCount).toBe(1)
     expect(store.touchSeasonCount).toBe(2)
+  })
+})
+
+/**
+ * PAIS no caminho de "payload inalterado" (2026-09-24). 24 titulos do bootstrap
+ * de 10/07 tinham pais no payload de `api_cache` e nenhum gravado: as tabelas de
+ * pais nasceram em 20/08, e com o hash igual o import so tocava carimbos.
+ */
+describe('pais no caminho de payload inalterado', () => {
+  const movieWithCountries = makeTmdb({
+    getMovie: async (id) => ({
+      id,
+      original_title: 'Filme',
+      original_language: 'en',
+      production_countries: [
+        { iso_3166_1: 'US', name: 'United States of America' },
+        { iso_3166_1: 'gb', name: 'United Kingdom' },
+      ],
+    }),
+  })
+  const tvWithCountries = makeTmdb({
+    getTvShow: async (id) => ({ id, original_name: 'Serie', origin_country: ['KR'], seasons: [] }),
+  })
+
+  it('filme: payload inalterado + pais AUSENTE = pais gravado (e o log conta a atualizacao)', async () => {
+    const { ctx, store, syncLog } = makeContext(movieWithCountries)
+    await importMovie(ctx, 272)
+    const second = await importMovie(ctx, 272)
+    expect(second).toMatchObject({ status: 'success', changed: false })
+    expect(store.upsertMovieCount).toBe(1) // o upsert NAO roda de novo
+    expect(store.fillCalls).toEqual([{ kind: 'movie', tmdbId: 272, codes: ['US', 'GB'] }])
+    expect(store.countries.get('movie:272')).toEqual(['US', 'GB'])
+    expect(syncLog.entries[1]).toMatchObject({ status: 'success', itemsUpdated: 1 })
+  })
+
+  it('filme: payload inalterado + pais PRESENTE = nada reescrito', async () => {
+    const { ctx, store, syncLog } = makeContext(movieWithCountries)
+    await importMovie(ctx, 272)
+    store.countries.set('movie:272', ['FR'])
+    await importMovie(ctx, 272)
+    expect(store.countries.get('movie:272')).toEqual(['FR'])
+    expect(store.upsertMovieCount).toBe(1)
+    expect(syncLog.entries[1]).toMatchObject({ status: 'success', itemsUpdated: 0 })
+  })
+
+  it('filme: payload com lista VAZIA nao grava nada (sem inventar pais)', async () => {
+    const tmdb = makeTmdb({
+      getMovie: async (id) => ({ id, original_title: 'F', original_language: 'en', production_countries: [] }),
+    })
+    const { ctx, store } = makeContext(tmdb)
+    await importMovie(ctx, 9)
+    await importMovie(ctx, 9)
+    expect(store.fillCalls).toEqual([{ kind: 'movie', tmdbId: 9, codes: [] }])
+    expect(store.countries.has('movie:9')).toBe(false)
+  })
+
+  it('serie: payload inalterado + pais AUSENTE = pais gravado; PRESENTE = intocado', async () => {
+    const { ctx, store, syncLog } = makeContext(tvWithCountries)
+    await importTvShow(ctx, 433)
+    await importTvShow(ctx, 433)
+    expect(store.upsertTvCount).toBe(1)
+    expect(store.countries.get('tv:433')).toEqual(['KR'])
+    expect(syncLog.entries[1]).toMatchObject({ status: 'success', itemsUpdated: 1 })
+
+    await importTvShow(ctx, 433)
+    expect(store.countries.get('tv:433')).toEqual(['KR'])
+    expect(syncLog.entries[2]).toMatchObject({ status: 'success', itemsUpdated: 0 })
+  })
+
+  it('caminho de upsert (payload MUDOU) nao chama o preenchimento de lacuna', async () => {
+    const { ctx, store } = makeContext(movieWithCountries)
+    await importMovie(ctx, 605)
+    expect(store.fillCalls).toEqual([])
   })
 })
 

@@ -106,6 +106,7 @@ function makePersonStore(seeded: number[] = []) {
     upsertSeasonWithEpisodes: () => Promise.reject(new Error('n/a')),
     touchSeason: () => Promise.reject(new Error('n/a')),
     touchPerson: () => Promise.reject(new Error('n/a')),
+    fillMissingTitleCountries: () => Promise.reject(new Error('n/a')),
   }
   return { store, personCalls, movieCalls, tvCalls }
 }

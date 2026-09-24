@@ -28,6 +28,9 @@ import { createPrismaCatalogJobStore } from '../src/persistence/catalog-job-stor
 import { createPrismaSearchStore } from '../src/persistence/search-store.js'
 import { createPrismaDiscoverySnapshotStore } from '../src/persistence/discovery-snapshot-store.js'
 import { createPrismaChangesCheckpoint } from '../src/persistence/changes-checkpoint-store.js'
+import { createPrismaChangesCatalog } from '../src/persistence/changes-catalog-reader.js'
+import { createPrismaSyncLog } from '../src/persistence/sync-log.js'
+import { runChangesSync } from '../src/changes/run.js'
 import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
 import { buildIdempotencyKey } from '../src/catalog-jobs/idempotency.js'
 import { planFailure } from '../src/catalog-jobs/transitions.js'
@@ -1095,6 +1098,24 @@ async function runPipelineChecks(prisma: PrismaClient, url: string): Promise<voi
   await prisma.discoverySnapshot.deleteMany({})
   await prisma.tmdbSyncCheckpoint.deleteMany({})
 
+  // `/changes` so re-sincroniza o que ja esta no catalogo (2026-09-24). Os ids
+  // do fake de changes sao 88xxxx de proposito: UM filme e UMA pessoa existem
+  // no banco, os demais nao — e a porta de catalogo e o adapter Prisma REAL.
+  // `api_sync_logs.provider_api` e FK para `api_providers`: sem a linha `tmdb`
+  // (que vem do seed, nao de migration) o log do ciclo estouraria P2003.
+  await prisma.apiProvider.upsert({
+    where: { key: 'tmdb' },
+    create: { key: 'tmdb', name: 'TMDB', kind: 'data' },
+    update: {},
+  })
+  await prisma.movie.create({ data: { tmdbId: 880_001, titleOriginal: 'Changes: no catalogo' } })
+  await prisma.person.create({ data: { tmdbId: 880_021, name: 'Changes: pessoa do catalogo' } })
+  const CHANGES_IDS: Record<string, number[]> = {
+    movie: [880_001, 880_002, 880_003],
+    tv: [880_011],
+    person: [880_021, 880_022],
+  }
+
   // Servicos fake: determinísticos, sem rede. O alvo do teste e o caminho ate o
   // banco, nao o provider.
   const calls = { detail: 0, media: 0, lists: 0, changes: 0 }
@@ -1176,11 +1197,14 @@ async function runPipelineChecks(prisma: PrismaClient, url: string): Promise<voi
     },
     snapshots,
     changes: {
-      async fetchChanges(_kind: string, params: { page: number }) {
+      async fetchChanges(kind: string, params: { page: number }) {
         calls.changes += 1
-        return { results: [{ id: 603 }, { id: 604 }], page: params.page, total_pages: 1 }
+        const ids = CHANGES_IDS[kind] ?? []
+        return { results: ids.map((id) => ({ id })), page: params.page, total_pages: 1 }
       },
       checkpoint,
+      catalog: createPrismaChangesCatalog(prisma),
+      syncLog: createPrismaSyncLog(prisma),
       now: () => new Date('2026-07-16T00:00:00.000Z'),
     },
     search: {
@@ -1294,6 +1318,91 @@ async function runPipelineChecks(prisma: PrismaClient, url: string): Promise<voi
     'changes executa e enfileira re-sync dos ids alterados',
     changesReport.totalEnqueued > 0,
     `enqueued=${changesReport.totalEnqueued}`,
+  )
+
+  // So o filme que JA existe virou job; os dois ids desconhecidos foram
+  // descartados — e contados, no relatorio e em api_sync_logs.
+  const changesJobs = await prisma.catalogJob.findMany({
+    where: { jobType: 'sync_details', entityType: 'movie' },
+    select: { externalId: true, payload: true },
+  })
+  const changesMovieIds = changesJobs
+    .filter((j) => (j.payload as { reason?: string }).reason === 'changes')
+    .map((j) => j.externalId)
+  record(
+    'changes: SO o id que ja esta no catalogo vira sync_details (Postgres real)',
+    JSON.stringify(changesMovieIds) === JSON.stringify(['880001']) &&
+      (changesReport as { totalDiscardedNotInCatalog?: number }).totalDiscardedNotInCatalog === 2,
+    `jobs=${JSON.stringify(changesMovieIds)} descartados=${(changesReport as { totalDiscardedNotInCatalog?: number }).totalDiscardedNotInCatalog}`,
+  )
+  const changesLog = await prisma.apiSyncLog.findMany({ where: { endpoint: '/movie/changes' } })
+  record(
+    'changes: UMA linha em api_sync_logs com vieram=3, no catalogo=1, enfileirados=1',
+    changesLog.length === 1 &&
+      changesLog[0]?.status === 'success' &&
+      changesLog[0]?.providerApi === 'tmdb' &&
+      changesLog[0]?.itemsProcessed === 3 &&
+      changesLog[0]?.itemsUpdated === 1 &&
+      changesLog[0]?.itemsCreated === 1 &&
+      changesLog[0]?.quotaCost === 1,
+    `linhas=${changesLog.length} ${JSON.stringify(
+      changesLog.map((r) => [r.status, r.itemsProcessed, r.itemsUpdated, r.itemsCreated, r.quotaCost]),
+    )}`,
+  )
+
+  // Pessoa: `upsertPerson` NAO tem porta de admissao — sem o filtro, toda pessoa
+  // editada no TMDB viraria linha em `people`. Mesma regra, janela propria.
+  await changesHandler!.execute(
+    changesCtx as never,
+    changesHandler!.validateInput({ kinds: ['person', 'tv'], from: '2026-07-15', to: '2026-07-16' }) as never,
+  )
+  const personJobs = await prisma.catalogJob.findMany({
+    where: { jobType: 'sync_details', entityType: { in: ['person', 'tv'] } },
+    select: { entityType: true, externalId: true },
+  })
+  record(
+    'changes: pessoa/serie fora do catalogo tambem nao vira job',
+    JSON.stringify(personJobs.map((j) => `${j.entityType}:${j.externalId}`)) ===
+      JSON.stringify(['person:880021']),
+    `jobs=${JSON.stringify(personJobs.map((j) => `${j.entityType}:${j.externalId}`))}`,
+  )
+
+  // Porta de catalogo que FALHA: a excecao sobe antes do commit, entao nem job
+  // nem checkpoint sao gravados para a janela — a retomada reprocessa a pagina.
+  let catalogFailed = false
+  try {
+    await runChangesSync(
+      {
+        fetchChanges: async (kind: string, params: { page: number }) => ({
+          results: (CHANGES_IDS[kind] ?? []).map((id) => ({ id })),
+          page: params.page,
+          total_pages: 1,
+        }),
+        checkpoint,
+        catalog: {
+          async existingTmdbIds() {
+            throw new Error('catalogo indisponivel (sonda)')
+          },
+        },
+        syncLog: createPrismaSyncLog(prisma),
+        metrics,
+        now: () => new Date('2026-07-20T00:00:00.000Z'),
+      },
+      { kinds: ['movie'] },
+    )
+  } catch {
+    catalogFailed = true
+  }
+  const failedWindow = await prisma.tmdbSyncCheckpoint.findFirst({
+    where: { job: 'changes:movie', paramsHash: '2026-07-19:2026-07-20' },
+  })
+  const failedLog = await prisma.apiSyncLog.findMany({
+    where: { endpoint: '/movie/changes', status: 'failed' },
+  })
+  record(
+    'changes: porta de catalogo que falha NAO avanca o checkpoint (e o ciclo loga failed)',
+    catalogFailed && failedWindow === null && failedLog.length === 1,
+    `lancou=${catalogFailed} checkpoint=${failedWindow === null ? 'ausente' : 'GRAVADO'} logFailed=${failedLog.length}`,
   )
 
   const cp = await prisma.tmdbSyncCheckpoint.findFirst({ where: { job: 'changes:movie' } })
