@@ -683,6 +683,10 @@ model Episode {
 
   @@unique([seasonId, episodeNumber])
   @@index([tvShowId])
+  // A home filtra episodios por data de exibicao (ticker, "no ar", antecipados).
+  // Sem este indice cada carregamento varria a tabela inteira (~4 milhoes de
+  // linhas): 14 s ou mais em 28/09/2026. Ver a migration de 20260928120000.
+  @@index([airDate])
   @@map("episodes")
 }
 
