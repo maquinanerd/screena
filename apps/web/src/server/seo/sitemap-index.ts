@@ -123,6 +123,7 @@ import {
   type DecisionCoverage,
   type DecisionEntity,
 } from "./decision-coverage";
+import { createCountsGuard, SITEMAP_COUNTS_DEADLINE_MS } from "./sitemap-counts-guard";
 
 // Reexportados daqui de proposito: a suite de governanca e o validador real ja
 // importavam estes nomes deste modulo, e a regra continua sendo uma so.
@@ -1591,10 +1592,56 @@ export function eligibleStaticRoutes(
   return urls;
 }
 
+/**
+ * A contagem de UM tipo, com o guarda de producao (`sitemap-counts-guard.ts`).
+ *
+ * Medido em 28/09/2026: a contagem de pessoas levava minutos, a borda desistia em
+ * 100 s (524, que ela nao guarda) e cada novo pedido do index ou de um shard de
+ * pessoas disparava MAIS uma — 4 copias presas havia 16-24 min. Com o guarda,
+ * nunca ha duas contagens do mesmo tipo em voo, e com uma contagem anterior a
+ * resposta nao espera mais que o prazo.
+ *
+ * So com o cliente de PRODUCAO (`guarded`). Cliente injetado (testes, validador
+ * que isola um cenario) conta sempre, direto, como antes.
+ *
+ * A chave leva idioma, tipo, cobertura e a chave de emergencia do portao de
+ * relevancia: se qualquer um muda, a contagem anterior nao serve de resposta.
+ */
+const entityAggregateGuard = createCountsGuard<Aggregate>({
+  deadlineMs: SITEMAP_COUNTS_DEADLINE_MS,
+  onStale: ({ key, reason, error }) => {
+    console.warn(
+      `[sitemap] contagem ${key}: resposta com a contagem ANTERIOR (${reason === "deadline" ? "a nova passou do prazo e segue em segundo plano" : "a nova falhou"})`,
+      error ?? "",
+    );
+  },
+});
+
+function guardedAggregate(
+  prisma: PrismaClient,
+  type: EntitySitemapType,
+  language: string,
+  coverage: DecisionCoverage,
+  guarded: boolean,
+): Promise<Aggregate> {
+  if (!guarded) return aggregateEntity(prisma, type, language, coverage);
+  const key = `${language}|${type}|${JSON.stringify(coverage)}|relevance:${isRelevanceGateEnabled() ? "on" : "off"}`;
+  return entityAggregateGuard.get(key, () => aggregateEntity(prisma, type, language, coverage));
+}
+
+/**
+ * Esquece contagens anteriores e em voo. Existe para o VALIDADOR real que chama o
+ * index com o cliente de producao e precisa de uma rodada sem historico.
+ */
+export function resetSitemapCountsGuard(): void {
+  entityAggregateGuard.reset();
+}
+
 async function allEntityCounts(
   prisma: PrismaClient,
   language: string,
   coverage: DecisionCoverage,
+  guarded: boolean,
 ): Promise<{
   counts: Record<EntitySitemapType, number>;
   maxLastmod: Record<EntitySitemapType, Date | null>;
@@ -1621,7 +1668,7 @@ async function allEntityCounts(
   // pelo motivo certo.
   for (const type of ENTITY_TYPES) {
     try {
-      const agg = await aggregateEntity(prisma, type, language, coverage);
+      const agg = await guardedAggregate(prisma, type, language, coverage, guarded);
       counts[type] = agg.count;
       maxLastmod[type] = agg.maxLastmod;
     } catch (error) {
@@ -1661,7 +1708,12 @@ export async function getSitemapIndexXml(
     // index inteiro ainda sai vazio (catch abaixo).
     const coverage = await readDecisionCoverage(prisma, language);
     warnUnarmedGates(coverage);
-    const { counts, maxLastmod, unavailable } = await allEntityCounts(prisma, language, coverage);
+    const { counts, maxLastmod, unavailable } = await allEntityCounts(
+      prisma,
+      language,
+      coverage,
+      client === undefined,
+    );
 
     // TETO POR TIPO: antes de anunciar um shard sequer. Ver SITEMAP_TYPE_URL_CEILING.
     // So entra na avaliacao quem conseguiu ser contado; tipo `unavailable` ja
@@ -1756,7 +1808,7 @@ export async function getSitemapShardXml(
     if (type === "static") {
       if (page !== 1) return null; // so existe 1 shard estatico
       const [{ counts, maxLastmod }, hubs] = await Promise.all([
-        allEntityCounts(prisma, language, coverage),
+        allEntityCounts(prisma, language, coverage, client === undefined),
         (opts?.staticHubDecisions ?? defaultStaticHubDecisions)(),
       ]);
       const routes = eligibleStaticRoutes(counts, maxLastmod, hubs);
@@ -1766,7 +1818,13 @@ export async function getSitemapShardXml(
 
     const entityType = type as EntitySitemapType;
     // Uma contagem (deste tipo) para saber quantos shards existem.
-    const { count } = await aggregateEntity(prisma, entityType, language, coverage);
+    const { count } = await guardedAggregate(
+      prisma,
+      entityType,
+      language,
+      coverage,
+      client === undefined,
+    );
     // O MESMO teto que o index aplica, pela mesma funcao. Se so o index cortasse,
     // o shard de um tipo estourado continuaria servindo URLs para quem guardou o
     // endereco — o index e o shard descreveriam sitemaps diferentes.
