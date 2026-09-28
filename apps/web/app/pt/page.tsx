@@ -92,7 +92,18 @@ import '../_components/home-like.css'
  */
 export const dynamic = 'force-dynamic'
 
-const HOME_TITLE = 'Cinerie — filmes, séries, pessoas e notícias'
+/**
+ * O MESMO texto no `<title>` e no `<h1>`. Uma constante, nao duas frases.
+ *
+ * MEDIDO no Google em 28/09/2026, na primeira vez que a marca apareceu na busca:
+ * o `<title>` dizia "Cinerie — filmes, séries, pessoas e notícias" e o H1 dizia
+ * "Cinerie — filmes, séries e pessoas". O buscador exibiu o H1 — ou seja, as
+ * duas frases competiram e a que estava fora do `<title>` ganhou.
+ *
+ * Fica valendo o texto do H1, que e o institucional do handoff canonico (tela
+ * 02) e esta travado por dois guards. O que tinha derivado era o titulo.
+ */
+const HOME_TITLE = 'Cinerie — filmes, séries e pessoas'
 const HOME_DESCRIPTION =
   'Base editorial de entretenimento em português: fichas de filmes e séries, perfis de pessoas e notícias com curadoria própria da redação da Cinerie.'
 
@@ -298,7 +309,8 @@ export default async function HomePage() {
 
   return (
     <main data-vertical="home">
-      <h1 className="visually-hidden">Cinerie — filmes, séries e pessoas</h1>
+      {/* A MESMA constante do `<title>`: duas frases divergiram uma vez. */}
+      <h1 className="visually-hidden">{HOME_TITLE}</h1>
 
       <HomeLike
         adPrefix="home"

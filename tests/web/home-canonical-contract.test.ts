@@ -59,8 +59,15 @@ describe('home pública — design canônico (tela 02)', () => {
   })
 
   it('expõe um único H1 institucional e navegação para destinos reais', () => {
-    expect(home.match(/<h1[\s>]/g)).toHaveLength(1)
-    expect(home).toContain('Cinerie — filmes, séries e pessoas')
+    // Conta no código SEM comentários. Um comentário que EXPLIQUE a regra do H1
+    // precisa poder escrever a tag: contar no texto cru fazia a documentação da
+    // regra reprovar a regra (aconteceu em 28/09/2026).
+    expect(code(home).match(/<h1[\s>]/g)).toHaveLength(1)
+    // O texto institucional vive numa constante só, usada pelo `<title>` e pelo
+    // H1 — duas frases divergiram uma vez e o Google escolheu sozinho qual
+    // exibir (28/09/2026). A forma do grafo está em `home-seo-identity.test.ts`.
+    expect(home).toContain("const HOME_TITLE = 'Cinerie — filmes, séries e pessoas'")
+    expect(home).toContain('<h1 className="visually-hidden">{HOME_TITLE}</h1>')
     // A navegação das seções vive no template compartilhado (HomeLike).
     for (const destination of ['MOVIES_INDEX_PATH', 'SERIES_INDEX_PATH', 'NEWS_INDEX_PATH']) {
       expect(homeLike).toContain(`href={${destination}}`)

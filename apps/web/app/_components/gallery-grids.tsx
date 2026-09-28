@@ -46,8 +46,11 @@ export function GalleryImageGrid({ images }: { images: readonly GalleryImageView
               width={image.width ?? undefined}
             />
           </a>
+          {/* Mesmo motivo do separador da galeria de vídeo: `justify-content:
+              space-between` afasta os dois na tela e não no texto extraído. */}
           <p className="gallery-tile__meta">
             <span className="gallery-tile__kind">{image.kindLabel}</span>
+            <span className="visually-hidden">, </span>
             <span className="gallery-tile__lang">{image.languageLabel}</span>
           </p>
         </li>
@@ -128,16 +131,36 @@ export function GalleryVideoList({
           </div>
           <div className="gallery-video__body">
             <p className="gallery-video__title">{video.title}</p>
+            {/*
+              O SEPARADOR INVISÍVEL entre os rótulos não é enfeite.
+
+              MEDIDO no Google em 28/09/2026: o snippet de uma galeria de vídeo
+              saiu "Featurette1080pInglêsOficial". Os `span` são adjacentes e o
+              `gap: 10px` do CSS separa para o OLHO — o texto extraído do HTML
+              (snippet, copiar-colar, leitor de tela) não tem separação nenhuma
+              e cola tudo.
+
+              O separador vai em `visually-hidden`, e não visível, porque o
+              espaçamento na tela já existe: acrescentar um ponto à vista seria
+              mudar o canônico para consertar o que só quebra fora dele.
+            */}
             <p className="gallery-video__meta">
               <span className="gallery-video__type">{video.typeLabel}</span>
               {/* RESOLUCAO, nao duracao: `size` do TMDB e 360/480/720/1080.
                   Ver `gallery-presenter.ts`. */}
               {video.resolutionLabel !== null ? (
-                <span className="gallery-video__resolution">{video.resolutionLabel}</span>
+                <>
+                  <span className="visually-hidden">, </span>
+                  <span className="gallery-video__resolution">{video.resolutionLabel}</span>
+                </>
               ) : null}
+              <span className="visually-hidden">, </span>
               <span className="gallery-video__lang">{video.languageLabel}</span>
               {video.official ? (
-                <span className="gallery-video__official">Oficial</span>
+                <>
+                  <span className="visually-hidden">, </span>
+                  <span className="gallery-video__official">Oficial</span>
+                </>
               ) : null}
             </p>
           </div>
