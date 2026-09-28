@@ -52,8 +52,13 @@ daqui depois de comparação visual ou de contrato.
 ## D-005 — Runtime publicitário ausente
 
 - **Canônico:** 23 posições descritas como Google AdSense.
-- **Produto:** não há unidade, client ID nem autorização para carregar script
-  publicitário externo.
+- **Produto:** não há unidade nem autorização para carregar script publicitário
+  externo. Desde 28/09/2026 existe a conta (`ca-pub-9994816010226342`),
+  associada ao site só para a verificação de propriedade: metatag
+  `google-adsense-account` no layout raiz e `/ads.txt`, sem script
+  (`apps/web/src/lib/adsense.ts`). Carregar `adsbygoogle.js` continua sendo
+  decisão do dono, porque consentimento, Política de Privacidade (item 6),
+  `Permissions-Policy` e CSP mudam junto.
 - **Produto portado:** inventaria as 23 posições exatas — 15 leaderboards, 4
   billboards, 3 skyscrapers e 1 rectangle — com margem e hint de cada tela.
   Treze posições pertencem a superfícies reais ativas/condicionais; dez ficam
