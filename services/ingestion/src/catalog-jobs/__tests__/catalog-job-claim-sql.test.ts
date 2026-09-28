@@ -27,10 +27,20 @@ describe('catalog-job-store claim SQL', () => {
   })
 
   it('so reivindica estados claimaveis (pending/retry_wait) elegiveis por available_at', () => {
-    expect(source).toMatch(
-      /status IN \('pending'::"CatalogJobStatus", 'retry_wait'::"CatalogJobStatus"\)/,
-    )
+    expect(source).toMatch(/status = 'pending'::"CatalogJobStatus"/)
+    expect(source).toMatch(/status = 'retry_wait'::"CatalogJobStatus"/)
     expect(source).toMatch(/available_at <= \$\{atIso\}::timestamptz AT TIME ZONE 'UTC'/)
+  })
+
+  it('um status por subconsulta: a ordem do indice devolve a proxima, sem buscar e ordenar todas', () => {
+    // Medido em producao em 28/09/2026, no mesmo minuto: `status IN ('pending',
+    // 'retry_wait')` usava o indice so como FILTRO (Bitmap Heap Scan + Sort,
+    // 2.668 ms e 18.230 blocos do disco por claim); por status, Index Scan na
+    // ordem do indice, 11 ms e 2 blocos.
+    expect(source).not.toMatch(/status IN \(/)
+    // Cada candidata trava a sua linha (lock nao pode ir numa entrada de UNION).
+    expect(source.match(/FOR UPDATE SKIP LOCKED/g)).toHaveLength(2)
+    expect(source).toMatch(/UNION ALL/)
   })
 
   it('compara o status como ENUM: o cast para texto desligava o indice (varredura da fila inteira)', () => {

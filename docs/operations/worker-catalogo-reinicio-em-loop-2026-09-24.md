@@ -99,17 +99,52 @@ morte custa ainda mais tempo:
   saída) e com a linha de stderr que vem logo antes de cada linha "Corepack is
   about to download".
 
+## 28/09/2026 — o worker estável passou a pesar no banco inteiro
+
+Com o conserto da #327 no ar, o worker parou de reiniciar: 1 container com o
+código novo. Só que, trabalhando sem parar, o claim de `status IN (...)` virou o
+maior leitor do banco. **MEDI**, em 28/09:
+
+- **O site degradou:** a home levava de 16 a 56 s (era ~2 s em 24/09), o
+  `/sitemap.xml` voltava 524 depois de 127 s, e a listagem de filmes levava ~6 s.
+  A ficha de filme e o health seguiam rápidos.
+- **`pg_statio_user_tables` numa janela de 30 s:** a `catalog_jobs` lia **122 MB/s
+  do disco e 489 MB/s do cache**, praticamente toda a leitura do banco, que tem
+  `shared_buffers` de 128 MB.
+- **O claim em si, medido no mesmo minuto:**
+
+| forma do claim                            | plano                                  | tempo    | blocos do disco |
+| ----------------------------------------- | -------------------------------------- | -------- | --------------- |
+| `status IN ('pending', 'retry_wait')`     | Bitmap Heap Scan + Sort de ~30 mil     | 2.668 ms | 18.230          |
+| um status por subconsulta (este conserto) | Index Scan na ordem do índice, LIMIT 1 | 11 ms    | 2               |
+
+- **A contagem do sitemap de pessoas** (um `COUNT(*)` sobre `slugs` junto com
+  `people`) tinha 4 cópias rodando ao mesmo tempo, há 16 a 24 minutos cada, todas
+  esperando disco. A Cloudflare desiste em 100 s, mas a consulta continua no banco,
+  e cada nova leitura do sitemap empilha mais uma.
+
+**O conserto:** o claim passa a buscar a melhor candidata de cada status em sua própria
+subconsulta (`WITH pendente …, em_espera …`), cada uma com `FOR UPDATE SKIP LOCKED`,
+porque o Postgres não aceita lock numa entrada de `UNION`. Depois fica a melhor das duas por
+`(priority, available_at)`, a mesma ordem global de antes. Com um status só, a
+ordem pedida é a ordem do índice `(status, priority, available_at)`, e o Postgres para na
+primeira entrada elegível. Não precisa de índice novo nem de migration.
+
 ## Próximos passos, fora deste PR
 
-1. **Índice parcial** `(priority, available_at) WHERE status IN ('pending', 'retry_wait')`.
-   Com ele o claim vira um index scan ordenado que para na primeira linha, em vez de
-   buscar e ordenar ~160 mil. É migration: exige tarefa aprovada para banco.
-   Atenção: índice com cast de enum não é IMMUTABLE e falha no `migrate deploy`.
-2. **Corepack no Dockerfile:** preparar o pnpm num `COREPACK_HOME` legível pelo
+1. **Índice parcial:** não é mais necessário para o claim. A consulta por status já usa
+   o índice existente na ordem certa (11 ms).
+2. **Sitemap de pessoas:** a contagem leva minutos e se empilha. Ela precisa de
+   `statement_timeout` próprio e de uma forma que não varra `slugs × people` a cada
+   pedido. Ver [`../../apps/web/src/server/seo/sitemap-index.ts`](../../apps/web/src/server/seo/sitemap-index.ts)
+   e a reversão da #323.
+3. **`shared_buffers` de 128 MB** é o padrão de fábrica, para um banco de ~10 GB. É
+   configuração do servidor: decisão do dono.
+4. **Corepack no Dockerfile:** preparar o pnpm num `COREPACK_HOME` legível pelo
    usuário `node`, para a subida não depender da rede nem pagar o download a cada
    reinício.
-3. **Os produtores órfãos da prioridade 100** (14 a 16/09): cancelar é escrita em
+5. **Os produtores órfãos da prioridade 100** (14 a 16/09): cancelar é escrita em
    produção, decisão do dono.
-4. **O backlog de `sync_media`** (147 mil) é o combustível do problema. Revisar a
+6. **O backlog de `sync_media`** (147 mil) é o combustível do problema. Revisar a
    cascata de mídia por episódio, como no item "C" de
    [`fila-represada-2026-09-16.md`](./fila-represada-2026-09-16.md).
