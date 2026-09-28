@@ -182,11 +182,29 @@ export function createPrismaCatalogJobStore(
       //    worker saia com `exit(1)`. Uma instrucao unica nao tem esse teto, e o
       //    lock do SKIP LOCKED vale ate o fim do proprio UPDATE — a mesma
       //    exclusao, em uma ida ao banco em vez de duas.
-      // 2. `status IN (...)` com o ENUM, nao `status::text IN (...)`. O cast
+      // 2. `status` comparado como ENUM, nao `status::text IN (...)`. O cast
       //    impedia o indice `(status, priority, available_at)`: o plano era
       //    varredura sequencial da tabela inteira, 172.735 blocos lidos do disco
-      //    e 908 ms por claim, sem concorrencia. Com o enum o mesmo SELECT usa o
-      //    indice: 50.093 blocos e 379 ms.
+      //    e 908 ms por claim, sem concorrencia.
+      //
+      // E uma de 28/09/2026: UM status por subconsulta. Com
+      // `status IN ('pending', 'retry_wait')` o indice so FILTRAVA: o Postgres
+      // buscava todas as linhas elegiveis dos dois status e as ORDENAVA para
+      // devolver uma. Medido em producao em 28/09, no mesmo minuto: essa forma
+      // levava 2.668 ms e lia 18.230 blocos do DISCO por claim; a por status,
+      // 11 ms e 2 blocos. Com o worker estavel depois da #327, a fila lia
+      // 122 MB/s do disco e 489 MB/s do cache (`pg_statio_user_tables`, janela
+      // de 30 s) — praticamente toda a leitura do banco, com `shared_buffers` de
+      // 128 MB — e a home (16-56 s) e o indice do sitemap (524) disputavam o
+      // disco com ela. Com um status so, `ORDER BY priority, available_at` e a
+      // PROPRIA ordem do indice: o Postgres le a primeira entrada elegivel e
+      // para. As duas candidatas (a melhor pendente e a melhor em espera)
+      // competem por `(priority, available_at)` — a mesma ordem global de antes.
+      //
+      // `FOR UPDATE SKIP LOCKED` fica DENTRO de cada CTE: o Postgres nao aceita
+      // clausula de lock em entrada de UNION. A candidata que perde tambem fica
+      // travada, mas so ate o fim desta instrucao (commit implicito); outro
+      // worker que a encontre a pula e segue.
       //
       // `updated_at` e preenchido a mao: o `@updatedAt` do Prisma e do lado da
       // aplicacao, e um UPDATE cru nao passa por ele.
@@ -194,21 +212,41 @@ export function createPrismaCatalogJobStore(
       // `$queryRaw` devolve `unknown` sem o parametro de tipo: o shape vem do
       // RETURNING abaixo (snake_case), nao do model Prisma.
       const rows = await prisma.$queryRaw<(RawClaimRow & { attempts: number })[]>`
+        WITH pendente AS (
+          SELECT id, priority, available_at
+            FROM catalog_jobs
+           WHERE status = 'pending'::"CatalogJobStatus"
+             AND available_at <= ${atIso}::timestamptz AT TIME ZONE 'UTC'
+           ORDER BY priority ASC, available_at ASC
+           FOR UPDATE SKIP LOCKED
+           LIMIT 1
+        ),
+        em_espera AS (
+          SELECT id, priority, available_at
+            FROM catalog_jobs
+           WHERE status = 'retry_wait'::"CatalogJobStatus"
+             AND available_at <= ${atIso}::timestamptz AT TIME ZONE 'UTC'
+           ORDER BY priority ASC, available_at ASC
+           FOR UPDATE SKIP LOCKED
+           LIMIT 1
+        ),
+        escolhido AS (
+          SELECT id
+            FROM (
+              SELECT id, priority, available_at FROM pendente
+              UNION ALL
+              SELECT id, priority, available_at FROM em_espera
+            ) candidatas
+           ORDER BY priority ASC, available_at ASC
+           LIMIT 1
+        )
         UPDATE catalog_jobs
            SET status = 'running'::"CatalogJobStatus",
                claimed_at = ${atIso}::timestamptz AT TIME ZONE 'UTC',
                heartbeat_at = ${atIso}::timestamptz AT TIME ZONE 'UTC',
                attempts = attempts + 1,
                updated_at = ${atIso}::timestamptz AT TIME ZONE 'UTC'
-         WHERE id = (
-           SELECT id
-             FROM catalog_jobs
-            WHERE status IN ('pending'::"CatalogJobStatus", 'retry_wait'::"CatalogJobStatus")
-              AND available_at <= ${atIso}::timestamptz AT TIME ZONE 'UTC'
-            ORDER BY priority ASC, available_at ASC
-            FOR UPDATE SKIP LOCKED
-            LIMIT 1
-         )
+         WHERE id = (SELECT id FROM escolhido)
         RETURNING id, job_type, entity_type, external_id, payload, attempts, max_attempts, run_id`
       const picked = rows[0]
       if (picked === undefined) return null
