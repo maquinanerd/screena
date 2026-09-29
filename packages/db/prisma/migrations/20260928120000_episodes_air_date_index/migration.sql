@@ -1,0 +1,21 @@
+-- Indice na data de exibicao dos episodios (28/09/2026, autorizado pelo dono).
+--
+-- Tres secoes da home filtram episodios por air_date e ordenam por ela:
+--   apps/web/src/server/home-ticker.ts     (agenda: air_date entre hoje e o futuro)
+--   apps/web/src/server/popular-rankings.ts ("no ar": air_date nos ultimos 7 dias)
+--   apps/web/src/server/anticipated.ts      (antecipados: air_date depois do corte)
+-- A tabela (~4 milhoes de linhas) so tinha indice em tv_show_id e na chave
+-- (season_id, episode_number). Sem indice na data, cada carregamento da home
+-- varria a tabela inteira.
+--
+-- Medido em producao em 28/09/2026 (pg_stat_activity durante um carregamento):
+-- a leitura de episodios da home rodava ha 14 s com 2 processos paralelos,
+-- esperando disco (IO:DataFileRead), e a home levava de 11 a 56 s. Em 24/09 ela
+-- levava ~2 s: a tabela ainda estava no cache, e o cache foi varrido nos dias em
+-- que o claim da fila lia 600 MB/s (#329).
+--
+-- CREATE INDEX sem CONCURRENTLY pelo mesmo motivo registrado em
+-- 20260915120000_admin_operational_panel: o Prisma roda a migration dentro de
+-- transacao. Enquanto o indice e construido, escritas em episodes esperam. Nao
+-- apaga nem altera linha.
+CREATE INDEX "episodes_air_date_idx" ON "episodes"("air_date");
