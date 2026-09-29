@@ -46,11 +46,18 @@ describe('governança SEO: home entity-first e grafo de identidade', () => {
     const raw = read(HOME_REL)
     const code = withoutComments(raw)
     expect(countMatches(code, /<h1[\s>]/g)).toBe(1)
-    expect(raw).toContain('Cinerie — filmes, séries e pessoas')
+    expect(raw).toContain("const HOME_TITLE = 'Cinerie — filmes, séries e pessoas'")
     // Design canônico (tela 02): o H1 institucional é visually-hidden — o hero
     // exibe o TÍTULO DO DESTAQUE, não o nome do site. O H1 continua único,
     // estável e com o mesmo texto institucional.
-    expect(code).toContain('className="visually-hidden">Cinerie — filmes, séries e pessoas</h1>')
+    //
+    // UMA CONSTANTE, não duas frases (28/09/2026): o `<title>` dizia "…, pessoas
+    // e notícias" e o H1 dizia "… e pessoas", e o Google exibiu o H1. Duas
+    // frases para a mesma coisa competem, e quem escolhe é o buscador. O guard
+    // passa a exigir a FONTE ÚNICA, não o literal repetido — literal repetido
+    // foi exatamente o que deixou as duas divergirem sem ninguém ver.
+    expect(code).toContain('className="visually-hidden">{HOME_TITLE}</h1>')
+    expect(code).toContain('title: { absolute: HOME_TITLE }')
   })
 
   it('home emite a organização e o WebSite, sem SearchAction nem AggregateRating', () => {

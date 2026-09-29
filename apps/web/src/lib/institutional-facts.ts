@@ -44,6 +44,28 @@ export const SITE_CONTROLLER_ADDRESS = {
  *
  * Assim que o dono informar os enderecos, basta acrescenta-los: o JSON-LD passa
  * a emitir `sameAs` sozinho, e o teste de governanca cobre os dois estados.
+ *
+ * ============================================================================
+ * O CUSTO DE ELA ESTAR VAZIA, MEDIDO
+ * ============================================================================
+ * 28/09/2026, busca por "Cinerie" no Google: o site ja e o primeiro resultado e
+ * ja tem sitelinks — mas a Visao Geral de IA abre com
+ *
+ *     "O termo Cinerie pode se referir principalmente a duas vertentes
+ *      diferentes na internet"
+ *
+ * Ou seja: o buscador NAO tem como saber que a marca daqui e uma entidade so.
+ * `sameAs` e exatamente o sinal que resolve isso, e continua vazio porque
+ * ninguem pode inventar um perfil oficial — nem eu, nem o codigo.
+ *
+ * FORMATO, para quando os enderecos chegarem: URL absoluta do PERFIL, uma por
+ * plataforma, sem parametro de rastreio. Exemplo do que entraria:
+ *
+ *     "https://www.instagram.com/<perfil>/",
+ *     "https://www.youtube.com/@<canal>",
+ *     "https://x.com/<perfil>",
+ *
+ * Perfil que a Cinerie nao controla NAO entra, mesmo que fale dela.
  */
 export const OFFICIAL_PROFILES: readonly string[] = [];
 
