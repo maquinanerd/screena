@@ -271,6 +271,15 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   // no build ignoraria o kill switch de indexacao (auditoria de SEO, 2026-09-11).
   "/llms.txt": publicDynamic("indice do site para ferramentas de IA; gate de indexacao por ambiente"),
 
+  // ------------------------------------------------------- conta do AdSense
+  // Sem a chave de ambiente do robots.txt/llms.txt: anunciar vendedor nao e pedir
+  // indexacao (ver `app/ads.txt/route.ts`). Constante — o build sem
+  // `DATABASE_URL` a alcanca.
+  "/ads.txt": publicStatic(
+    BUILD_PRERENDERED,
+    "vendedores autorizados (linha da conta AdSense): constante, sem banco nem env",
+  ),
+
   // ----------------------------------------------------- aliases de entrada
   "/filmes": publicStatic(BUILD_PRERENDERED, "alias que redireciona para /pt/filmes/"),
   "/series": publicStatic(BUILD_PRERENDERED, "alias que redireciona para /pt/series/"),
