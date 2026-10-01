@@ -22,6 +22,7 @@ import {
 } from "@screena/seo";
 
 import { getPrismaClient } from "@screena/db/server";
+import type { NewsSitemapOutcome } from "../../lib/news-sitemap-response";
 import { MIN_ARTICLE_BODY_CHARS } from "../../lib/news-presenter";
 import { NEWS_INDEX_PATH, SITE_URL, isOfficialIndexableEnvironment } from "../../lib/site";
 
@@ -43,11 +44,12 @@ interface NewsRow {
  */
 export async function getNewsSitemapXml(
   nowIso: string = new Date().toISOString(),
-): Promise<{ xml: string; contentType: string; degraded?: boolean }> {
+): Promise<NewsSitemapOutcome> {
   // Ambiente nao indexavel (preview, staging) NAO publica sitemap de noticias.
-  // Um arquivo vazio e a resposta honesta: existe, e valido, e nao anuncia nada.
+  // Nao ha o que anunciar, e quem serve responde 404 — o mesmo que o /llms.txt
+  // ja faz. Antes saia um urlset sem nenhum filho, que o XSD reprova.
   if (!isOfficialIndexableEnvironment(process.env)) {
-    return { xml: renderNewsSitemap([], PUBLICATION_NAME), contentType: SITEMAP_CONTENT_TYPE };
+    return { kind: "no-entries" };
   }
 
   let rows: NewsRow[] = [];
@@ -75,19 +77,20 @@ export async function getNewsSitemapXml(
       ORDER BY COALESCE(at.published_at, a.published_at) DESC
       LIMIT 1000`;
   } catch (error) {
-    // FAIL-CLOSED. Banco indisponivel devolve sitemap VAZIO, nunca erro 500 nem
-    // lista parcial: anunciar meia lista ao Google News e pior que nao anunciar
-    // nada, porque as ausencias parecem despublicacao.
+    // FAIL-CLOSED, mas dizendo a verdade: nunca lista parcial, e nunca "zero
+    // materia". Anunciar meia lista ao Google News e pior que nao anunciar nada
+    // — e anunciar ZERO, numa queda de banco, e pior ainda, porque as ausencias
+    // parecem despublicacao. Era exatamente o que o XML vazio afirmava aqui.
+    //
+    // 503 diz "nao da para saber agora": o buscador mantem o estado anterior e
+    // volta depois. A recusa e a mesma; muda o lugar onde ela e dita.
     //
     // COM LOG (auditoria de SEO, 11/09/2026, M6). Sem ele, "nenhuma materia nas
-    // ultimas 48 h" e "o banco caiu" produziam o mesmo XML vazio e nenhum rastro.
-    // E `degraded` impede a borda de guardar a falha como se fosse a lista.
-    console.error("[news-sitemap] falha ao ler as materias; fail-closed (sitemap vazio):", error);
-    return {
-      xml: renderNewsSitemap([], PUBLICATION_NAME),
-      contentType: SITEMAP_CONTENT_TYPE,
-      degraded: true,
-    };
+    // ultimas 48 h" e "o banco caiu" produziam o mesmo XML vazio e nenhum rastro;
+    // agora produzem ate status diferente. O `no-store` da resposta impede a
+    // borda de guardar a falha.
+    console.error("[news-sitemap] falha ao ler as materias; fail-closed (503):", error);
+    return { kind: "unavailable" };
   }
 
   const candidates: NewsSitemapCandidate[] = rows
@@ -103,7 +106,14 @@ export async function getNewsSitemapXml(
     }));
 
   const plan = planNewsSitemap(candidates, nowIso);
+  // Janela vazia nao vira arquivo vazio: `renderNewsSitemap` recusaria a lista
+  // vazia, e um urlset sem filho e justamente o documento que o Search Console
+  // reprovou em 29/09/2026.
+  if (plan.entries.length === 0) {
+    return { kind: "no-entries" };
+  }
   return {
+    kind: "urlset",
     xml: renderNewsSitemap(plan.entries, PUBLICATION_NAME),
     contentType: SITEMAP_CONTENT_TYPE,
   };

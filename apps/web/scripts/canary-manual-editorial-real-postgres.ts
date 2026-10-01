@@ -964,10 +964,11 @@ async function main(): Promise<void> {
     )
 
     // O News Sitemap so anuncia em ambiente que PODE indexar: em preview ele
-    // devolve um arquivo valido e vazio, de proposito. O canario liga o sinal
-    // para exercitar o caminho real e devolve o ambiente ao estado anterior.
+    // nao se apresenta (desfecho `no-entries`, 404 na rota), de proposito. O
+    // canario liga o sinal para exercitar o caminho real e devolve o ambiente ao
+    // estado anterior.
     const { getNewsSitemapXml } = (await import('../src/server/seo/news-sitemap.ts')) as {
-      getNewsSitemapXml: () => Promise<{ xml: string }>
+      getNewsSitemapXml: () => Promise<{ kind: string; xml?: string }>
     }
     const previousIndexing = process.env.CINERIE_PUBLIC_INDEXING_ENABLED
     const previousSiteUrl = process.env.CINERIE_PUBLIC_SITE_URL
@@ -978,10 +979,13 @@ async function main(): Promise<void> {
     else process.env.CINERIE_PUBLIC_INDEXING_ENABLED = previousIndexing
     if (previousSiteUrl === undefined) delete process.env.CINERIE_PUBLIC_SITE_URL
     else process.env.CINERIE_PUBLIC_SITE_URL = previousSiteUrl
+    // A materia acabou de ser publicada: o desfecho TEM de ser `urlset`. Um
+    // `no-entries` aqui seria o canario passando por vacuidade.
+    const newsSitemapXml = newsSitemap.kind === 'urlset' ? (newsSitemap.xml ?? '') : ''
     record(
       'a materia manual entra no News Sitemap (elegivel por recencia)',
-      newsSitemap.xml.includes(SLUG),
-      `slug presente: ${String(newsSitemap.xml.includes(SLUG))}`,
+      newsSitemapXml.includes(SLUG),
+      `desfecho: ${newsSitemap.kind} | slug presente: ${String(newsSitemapXml.includes(SLUG))}`,
     )
 
     /* --- 11. Nenhum vestigio do MNScr no caminho publico ----------- */
@@ -990,7 +994,7 @@ async function main(): Promise<void> {
       jsonLdText,
       JSON.stringify(og),
       JSON.stringify(twitter),
-      newsSitemap.xml,
+      newsSitemapXml,
     ].join(' ')
     const leaks = ['mnscr', 'MNSCR', 'rssprime', 'RSSPRIME', 'mn26', 'MN26'].filter((needle) =>
       publicSurface.includes(needle),

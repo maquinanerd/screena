@@ -175,10 +175,27 @@ describe('renderNewsSitemap', () => {
     expect(xml).not.toMatch(/<news:title>[^<]*<ao vivo>/)
   })
 
-  it('lista vazia produz urlset valido', () => {
-    const xml = renderNewsSitemap([], 'Cinerie')
+  /**
+   * ESTE TESTE AFIRMAVA O CONTRARIO ("lista vazia produz urlset valido") e
+   * passava — era o teste verde para o caso errado.
+   *
+   * O XSD de sitemap 0.9 declara `url` dentro de `urlset` sem `minOccurs`, e o
+   * padrao de `minOccurs` e 1: `<urlset>` sem nenhum `<url>` e INVALIDO. O
+   * Search Console leu o /news-sitemap.xml em 29/09/2026, com a redacao parada,
+   * e reprovou: "Tag XML ausente — Linha 4, tag pai: urlset, tag: url". A linha
+   * 4 era o `</urlset>` que este render emitia.
+   */
+  it('lista vazia RECUSA renderizar — urlset sem url e invalido pelo XSD', () => {
+    expect(() => renderNewsSitemap([], 'Cinerie')).toThrow(RangeError)
+    expect(() => renderNewsSitemap([], 'Cinerie')).toThrow(/minOccurs=1/)
+  })
+
+  it('CONTROLE: com UMA entrada ele renderiza, e o documento tem <url>', () => {
+    // Sem este controle, a recusa acima passaria tambem se o render estivesse
+    // quebrado para todo caso — "nao renderiza nunca" satisfaz o teste de cima.
+    const xml = renderNewsSitemap(planNewsSitemap([candidate()], NOW).entries, 'Cinerie')
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>')
+    expect(xml).toContain('<url>')
     expect(xml).toContain('</urlset>')
-    expect(xml).not.toContain('<url>')
   })
 })

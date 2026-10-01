@@ -46,7 +46,21 @@ describe('Cache-Control dos sitemaps', () => {
 
   it('(4) as tres rotas usam a regra — e passam adiante o sinal de falha', () => {
     expect(route('sitemap.xml')).toContain('sitemapCacheControl("sitemap", degraded)')
-    expect(route('news-sitemap.xml')).toContain('sitemapCacheControl("news", degraded)')
     expect(route('sitemaps', '[shard]')).toContain('sitemapCacheControl("sitemap", result.degraded)')
+
+    // NOTICIAS: a rota passou a delegar o mapeamento inteiro (status +
+    // cabecalhos), porque "nenhuma materia na janela" e "banco fora" deixaram de
+    // ser o mesmo 200 com arquivo vazio — um urlset sem `<url>` e invalido pelo
+    // XSD, e o Search Console o reprovou em 29/09/2026.
+    //
+    // A regra de cache continua sendo a MESMA, um salto adiante: por isso aqui
+    // se cobra a delegacao E as duas polaridades do sinal de falha na funcao
+    // pura. Sem a segunda metade, mover a chamada bastaria para perder o guard.
+    expect(route('news-sitemap.xml')).toContain('newsSitemapResponse(await getNewsSitemapXml())')
+    const noticias = readSourceWithoutComments(
+      path.join(REPO_ROOT, 'apps', 'web', 'src', 'lib', 'news-sitemap-response.ts'),
+    )
+    expect(noticias).toContain('sitemapCacheControl("news", false)')
+    expect(noticias).toContain('sitemapCacheControl("news", true)')
   })
 })
