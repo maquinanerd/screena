@@ -68,9 +68,12 @@ export function planNewsSitemap(
 ): NewsSitemapPlan {
   const now = Date.parse(nowIso)
   if (!Number.isFinite(now)) {
-    // Sem instante confiavel nao ha como decidir a janela. Devolver vazio e
-    // fail-closed: um sitemap de noticias vazio e valido; um com materia fora
-    // da janela desqualifica o arquivo inteiro.
+    // Sem instante confiavel nao ha como decidir a janela. Devolver plano vazio
+    // e fail-closed: materia fora da janela desqualifica o arquivo inteiro, e
+    // "nenhuma" e a unica resposta que nao arrisca isso.
+    //
+    // Plano vazio NAO vira arquivo vazio: `renderNewsSitemap` recusa lista vazia
+    // (o XSD exige >= 1 `<url>`), e quem serve responde 404 no lugar.
     return {
       entries: [],
       dropped: {
@@ -140,6 +143,27 @@ export function renderNewsSitemap(
   entries: readonly NewsSitemapEntry[],
   publicationName: string,
 ): string {
+  if (entries.length === 0) {
+    // UM `<urlset>` SEM NENHUM `<url>` NAO E "VALIDO E VAZIO": E INVALIDO.
+    //
+    // O XSD do protocolo declara `<xsd:element name="url" type="tUrl"
+    // maxOccurs="unbounded"/>` — sem `minOccurs`, e o padrao de `minOccurs` e 1.
+    // Ou seja: pelo menos uma `<url>` e obrigatoria.
+    //
+    // MEDIDO: o Search Console leu o `/news-sitemap.xml` em 29/09/2026, com a
+    // redacao parada havia 15 dias, e reprovou com "Tag XML ausente — Linha 4,
+    // tag pai: urlset, tag: url". A linha 4 era exatamente o `</urlset>` que
+    // este render emitia quando nao havia entrada nenhuma. O comentario que
+    // estava aqui afirmava o contrario, e a producao o derrubou.
+    //
+    // Quem chama decide o que responder no lugar — a resposta HTTP tem como
+    // dizer "nao ha o que anunciar agora", e o XML nao. Aqui so se garante que
+    // documento invalido nao nasce.
+    throw new RangeError(
+      'renderNewsSitemap: urlset sem <url> e invalido pelo XSD (url tem minOccurs=1); trate a lista vazia antes de renderizar',
+    )
+  }
+
   const body = entries
     .map((entry) => {
       const language = entry.language.split('-')[0] ?? entry.language
@@ -168,7 +192,5 @@ export function renderNewsSitemap(
     body,
     '</urlset>',
     '',
-  ]
-    .filter((line, index) => !(index === 3 && line === ''))
-    .join('\n')
+  ].join('\n')
 }
