@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { warningsCountLabel } from "../../src/lib/content-block-warnings";
 import {
   contentBlockBadgeVariant,
   contentBlockStatusLabel,
@@ -159,6 +160,7 @@ export default async function AdminContentBlocksPage({
                 <th>block_type</th>
                 <th>Status</th>
                 <th>review_status</th>
+                <th>Avisos</th>
                 <th>Atualizado</th>
                 <th>Acao</th>
               </tr>
@@ -179,6 +181,7 @@ export default async function AdminContentBlocksPage({
                     </span>
                   </td>
                   <td>{row.reviewStatus}</td>
+                  <td>{row.warningCount > 0 ? warningsCountLabel(row.warningCount) : "—"}</td>
                   <td>{formatIsoDate(row.updatedAtIso)}</td>
                   <td>
                     <a className="admin-link-action" href={`/content-blocks/${row.id}`}>

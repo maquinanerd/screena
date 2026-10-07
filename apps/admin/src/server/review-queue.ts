@@ -17,6 +17,7 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
+import { parseContentBlockWarnings } from "../lib/content-block-warnings";
 import {
   BLOCKED_REVIEW_STATUSES,
   DISPLAYABLE_LICENSE_STATUSES,
@@ -52,6 +53,11 @@ export interface QueueItem {
   badgeVariant: ReadinessBadgeVariant;
   primaryIssue: string | null;
   href: string;
+  /**
+   * Avisos de geracao do content_block (`warnings_json`), para o revisor ver POR
+   * QUE o bloco caiu em revisao. Sempre vazio para artigo.
+   */
+  warnings: readonly string[];
 }
 
 export interface QueueSection {
@@ -200,6 +206,7 @@ export const getReviewQueueData = cache(async (): Promise<ReviewQueueData> => {
         blockType: true,
         reviewStatus: true,
         content: true,
+        warningsJson: true,
       },
     }),
     prisma.contentBlock.count({ where: { reviewStatus: { in: publishableReviews } } }),
@@ -215,6 +222,7 @@ export const getReviewQueueData = cache(async (): Promise<ReviewQueueData> => {
         blockType: true,
         reviewStatus: true,
         content: true,
+        warningsJson: true,
       },
     }),
   ]);
@@ -230,6 +238,7 @@ export const getReviewQueueData = cache(async (): Promise<ReviewQueueData> => {
       badgeVariant: readinessBadgeVariant(readiness.level),
       primaryIssue: readiness.primaryIssue,
       href: `/articles/${id}`,
+      warnings: [],
     };
   }
 
@@ -248,6 +257,7 @@ export const getReviewQueueData = cache(async (): Promise<ReviewQueueData> => {
       badgeVariant: readinessBadgeVariant(readiness.level),
       primaryIssue: readiness.primaryIssue,
       href: `/content-blocks/${id}`,
+      warnings: parseContentBlockWarnings(row.warningsJson),
     };
   }
 

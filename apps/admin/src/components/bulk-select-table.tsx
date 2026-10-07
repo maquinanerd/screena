@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { ContentBlockWarningsInline } from "./content-block-warnings";
+
 /**
  * bulk-select-table.tsx — Lista de itens selecionaveis para acao em lote (Fase 7C).
  *
@@ -8,6 +10,9 @@ import type { ReactNode } from "react";
  * (o unico `<input>` permitido: caixa de selecao, nunca texto livre). Fica DENTRO
  * do `<form>` do `BulkActionPanel`, entao as caixas marcadas viram
  * `formData.getAll("ids")`. Sem campo de titulo/slug/corpo, sem upload.
+ *
+ * `warnings` (opcional) sao os avisos de geracao de um content_block, so exibidos
+ * — nao entram no formulario.
  */
 
 export interface BulkSelectItem {
@@ -17,6 +22,7 @@ export interface BulkSelectItem {
   readonly statusLabel: string;
   readonly primaryIssue: string | null;
   readonly href: string;
+  readonly warnings?: readonly string[];
 }
 
 export function BulkSelectTable({ items }: { items: readonly BulkSelectItem[] }): ReactNode {
@@ -36,6 +42,7 @@ export function BulkSelectTable({ items }: { items: readonly BulkSelectItem[] })
           <a className="admin-link-action" href={item.href}>
             Revisar
           </a>
+          <ContentBlockWarningsInline warnings={item.warnings} />
         </li>
       ))}
     </ul>

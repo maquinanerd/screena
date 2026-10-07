@@ -142,6 +142,24 @@ export default async function AdminContentBlockDetailPage({
         </ul>
       ) : null}
 
+      <h3 className="admin-detail-heading">Avisos da geracao</h3>
+      <p className="admin-meta">
+        Gravados pelo Entity Writer em <code>warnings_json</code>: avisos do proprio modelo e da
+        validacao anti-alucinacao (ex.: nome citado que nao esta no payload). Bloco com aviso nasce{" "}
+        <code>needs_review</code>.
+      </p>
+      {detail.warnings.length > 0 ? (
+        <ul className="admin-issue-list">
+          {detail.warnings.map((warning, index) => (
+            <li className="admin-issue-list__item" key={index}>
+              {warning}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="admin-empty">Nenhum aviso registrado.</p>
+      )}
+
       <h3 className="admin-detail-heading">Preview do conteudo</h3>
       <p className="admin-preview-box">{detail.preview.length > 0 ? detail.preview : "(vazio)"}</p>
       <p className="admin-meta">
