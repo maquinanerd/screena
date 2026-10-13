@@ -33,22 +33,19 @@ describe('home pública — design canônico (tela 02)', () => {
 
   it('mantém os getters locais e a decisão canônica de indexabilidade', () => {
     for (const getter of [
-      // As vitrines da home pedem o escopo `home`: só título que está no índice
-      // (decisão do dono, 13/10/2026; ver `src/server/home-relevance.ts`).
-      "getHomeCatalogData('home')",
+      'getHomeCatalogData()',
       'getNewsIndexData()',
       // A home é a UNIÃO: ela pede o escopo `home` explicitamente, e é o único
       // lugar do app onde as duas verticais convivem numa seção só.
       "getHomeHeroSlides('home')",
       // A home mistura filme e serie no trilho "Em breve"; as categorias usam
       // os getters de uma vertical so (tests/web/upcoming-rail-by-route).
-      'getHomeUpcomingMixed(HOME_UPCOMING_OPTIONS)',
-      'const HOME_UPCOMING_OPTIONS = { relevantOnly: true } as const',
+      'getHomeUpcomingMixed()',
       // `getSeriesIndexData()` SAIU desta lista em 2026-08-26, e a ausencia e o
       // conserto. O trilho "Series da semana" era alimentado pela LISTAGEM
       // generica de series — sob um rotulo que afirma recorte de tempo, a home
       // exibia o comeco do alfabeto. Agora ele le o trending, que ja vem de
-      // `getHomeCatalogData('home')` (primeiro item desta lista). Reintroduzir o
+      // `getHomeCatalogData()` (primeiro item desta lista). Reintroduzir o
       // getter aqui e o sinal de que o fallback voltou.
       "getHomeTickerItems('home')",
       'getHomeEditorialHighlights()',
@@ -250,12 +247,16 @@ describe('home pública — design canônico (tela 02)', () => {
     ]) {
       expect(tickerServer).toMatch(new RegExp(`['"]${kind}['"]`))
     }
-    // Toda data vem de coluna persistida — nenhuma é estimada.
-    expect(tickerServer).toMatch(/airDate: \{ gte: dayStart, lt: futureEnd \}/)
-    expect(tickerServer).toMatch(/releaseDate: \{ gte: dayStart, lt: futureEnd \}/)
+    // Toda data vem de coluna persistida — nenhuma é estimada. Episódio,
+    // estreia e temporada são SQL desde 13/10/2026 (o portão de relevância tem
+    // um ramo numa tabela polimórfica, sem relação Prisma); a janela é a mesma.
+    expect(tickerServer).toContain('e.air_date >= $1::date AND e.air_date < $2::date')
+    expect(tickerServer).toContain('m.release_date >= $1::date AND m.release_date < $2::date')
+    expect(tickerServer).toContain('s.air_date >= $1::date AND s.air_date < $2::date')
+    expect(tickerServer).toMatch(/relevant(Episode|Movie|Season)Events\(prisma, dayStart, futureEnd\)/)
     expect(tickerServer).toMatch(/availableFrom: \{ gte: arrivalStart, lte: now \}/)
     // `season_number` REAL (nunca deduzido) e "especiais" (0) fora da estreia.
-    expect(tickerServer).toMatch(/seasonNumber: \{ gt: 0 \}/)
+    expect(tickerServer).toContain('AND s.season_number > 0')
     expect(tickerServer).toContain('seasonNumber: season.seasonNumber')
 
     // PROVEDOR: reusa o gate compartilhado (nunca uma segunda regra de licença)

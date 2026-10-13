@@ -1,18 +1,21 @@
 /**
- * home-relevance.ts — a HOME so DESTACA titulo que esta no indice.
+ * showcase-relevance.ts — as VITRINES so destacam titulo que esta no indice.
  *
  * DECISAO DO DONO, 13/10/2026, depois da recusa do AdSense por "conteudo de
- * baixo valor": as vitrines da home (`/pt/`) passam a usar o MESMO portao de
- * relevancia do sitemap (`DECISOES-DO-DONO-2026-09-24.md`). Fica o filme ou a
- * serie com pais de origem EUA ou Brasil, OU `vote_count_tmdb >= 500`, OU
- * qualquer linha de `watch_availability` no Brasil.
+ * baixo valor": as vitrines de titulo da home (`/pt/`), de `/pt/filmes/`, de
+ * `/pt/series/` e de `/pt/explorar/` (com o "Ver todos" dela, `/pt/em-breve/`)
+ * usam o MESMO portao de relevancia do sitemap (`DECISOES-DO-DONO-2026-09-24.md`).
+ * Fica o filme ou a serie com pais de origem EUA ou Brasil, OU
+ * `vote_count_tmdb >= 500`, OU qualquer linha de `watch_availability` no Brasil.
+ * Registro: `docs/seo/DECISOES-DO-DONO-2026-10-13.md`.
  *
  * O QUE ESTAVA ERRADO. A decisao de 24/09 tirou do indice 51 mil titulos, mas
- * deixou a home de fora de proposito — e a home seguiu escolhendo por DATA. Medido
- * no ar em 13/10/2026: o "NOVO" do topo era o episodio 32 da temporada 29 de uma
- * novela polonesa, e o "Em breve" abria com um documentario turco de 45 minutos.
- * As duas fichas respondem `noindex, follow`. A primeira dobra do site apontava
- * para paginas que o proprio site declara fora do indice — o oposto de curadoria.
+ * deixou as vitrines de fora de proposito — e elas seguiram escolhendo por DATA.
+ * Medido no ar em 13/10/2026: o "NOVO" da home era o episodio 32 da temporada 29
+ * de uma novela polonesa, e o "Em breve" abria com um documentario turco de 45
+ * minutos. As duas fichas respondem `noindex, follow`. A primeira dobra do site
+ * apontava para paginas que o proprio site declara fora do indice — o oposto de
+ * curadoria.
  *
  * O QUE ESTE MODULO NAO FAZ. Nao decide indexacao (quem decide e
  * `seo/title-relevance.ts`, na ficha, e o SQL de `seo/sitemap-index.ts`) e nao

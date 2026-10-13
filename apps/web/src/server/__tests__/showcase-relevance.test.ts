@@ -1,5 +1,5 @@
 /**
- * home-relevance.test.ts — o portao de relevancia das VITRINES da home.
+ * showcase-relevance.test.ts — o portao de relevancia das VITRINES da home.
  *
  * Decisao do dono, 13/10/2026: a home so destaca titulo que esta no indice. O
  * predicado e o MESMO do sitemap (`DECISOES-DO-DONO-2026-09-24.md`): pais EUA ou
@@ -16,7 +16,7 @@ import {
   RELEVANCE_GATE_OFFER_COUNTRY,
 } from "@screena/config";
 
-import { keepRelevant, relevanceSql, relevantTitleIds } from "../home-relevance";
+import { keepRelevant, relevanceSql, relevantTitleIds } from "../showcase-relevance";
 
 type Prisma = Parameters<typeof relevantTitleIds>[0];
 

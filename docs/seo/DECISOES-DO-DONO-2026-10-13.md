@@ -1,4 +1,4 @@
-# Decisões do dono — 13/10/2026 (recusa do AdSense: curadoria da home)
+# Decisões do dono — 13/10/2026 (recusa do AdSense: curadoria das vitrines)
 
 > **O que este documento é.** Em 13/10/2026 o AdSense recusou `cinerie.com` por
 > **"Conteúdo de baixo valor"** e pediu, antes de uma nova revisão, um site que
@@ -30,7 +30,7 @@ de origem EUA ou Brasil, **ou** `vote_count_tmdb >= 500`, **ou** qualquer linha 
 | "Filmes em alta" / "Séries da semana" | `src/server/home-catalog.ts` | filtra o trending (topo de 20) |
 | "Em breve" | `src/server/home-upcoming.ts` | **no SQL**, antes do `LIMIT` |
 
-O predicado vive em `src/server/home-relevance.ts`, com os números de
+O predicado vive em `src/server/showcase-relevance.ts`, com os números de
 `packages/config/src/relevance-gate.ts`. A chave de emergência
 `CINERIE_RELEVANCE_GATE=off` vale aqui também.
 
@@ -39,11 +39,11 @@ O predicado vive em `src/server/home-relevance.ts`, com os números de
 - **A curadoria manual do hero** (`hero_curation_decisions`) não passa pelo
   portão. Título fixado por humano entra, como já entrava apesar do portão de
   qualidade.
-- **`/pt/filmes/`, `/pt/series/` e `/pt/explorar/`** usam os mesmos getters e
-  ficam como estavam: a pergunta foi sobre a home. Estender a elas é uma decisão
-  à parte.
 - **Nada é apagado e nenhuma página muda de `index`/`noindex`.** O portão só
-  decide o que a home destaca.
+  decide o que as vitrines destacam.
+
+A primeira resposta valia só para a home. Na mesma data, o dono a estendeu às
+outras páginas de vitrine: ver **H3**.
 
 ### Por quê (medido no ar em 13/10/2026)
 
@@ -69,3 +69,32 @@ Fica registrado porque é a alavanca maior que **não** foi usada: se o AdSense
 recusar de novo pelo mesmo motivo, ela é a primeira a reabrir. A válvula para
 fazê-lo no mesmo dia continua pronta e vazia em
 `apps/web/src/server/seo/suspended-pages.ts`.
+
+## H3 · A regra vale também em `/pt/filmes/`, `/pt/series/` e `/pt/explorar/`
+
+**Decisão** (chat, 13/10/2026: *"estende a regra para filmes, séries e
+explorar também"*). As vitrines dessas páginas usam o mesmo portão de H1. Como
+todas as páginas que leem esses getters passaram a querer a regra, ela virou o
+comportamento do próprio getter, sem opção. A home voltou a chamá-los sem
+argumento.
+
+| Página | Vitrines |
+| --- | --- |
+| `/pt/filmes/`, `/pt/series/` | destaque, faixa de novidades, "Popular essa semana" (inclusive "No ar" e "Novas temporadas"), trilhos em alta, "Em breve" |
+| `/pt/explorar/` | destaque, "Em alta", "Populares" (`src/server/discover.ts`), agenda da semana ("Em breve" misto) e "Mais aguardados" (`src/server/anticipated.ts`) |
+| `/pt/em-breve/` | a página inteira. É o "Ver todos" de "Mais aguardados" e lê o mesmo getter; com a regra só no explorar, a vitrine e o "Ver todos" mostrariam listas diferentes |
+
+`/pt/em-breve/` não estava no pedido literal. A sessão a incluiu por ser o
+destino do "Ver todos" e declarou isso ao dono.
+
+**Medido no ar antes da mudança:** o "NOVO" de `/pt/filmes/` era um filme
+japonês sem título em português (*やぶからぼうに笑え*). O "Em breve" de lá
+repetia o documentário turco. "Mais aguardados" do explorar abria com *Le
+corset*, *Cosmogonie*, *End of the Wall* e *KDE: The Documentary*.
+
+Em "Mais aguardados", temporada e episódio seguem a **série dona**. O portão
+entra no SQL antes do `LIMIT`, porque os primeiros 24 por data eram justamente a
+cauda.
+
+**Continua de fora:** listagens completas do catálogo, busca, páginas de
+pessoa e a curadoria manual do hero.

@@ -60,8 +60,9 @@ votos, oferta BR ou pais EUA/BR. A unica chave e a de EMERGENCIA
 `CINERIE_RELEVANCE_GATE=off`, lida em runtime. Nao autoriza apagar nem mexer em
 listagens, busca ou no portao de pessoa. Registro:
 [`DECISOES-DO-DONO-2026-09-24.md`](../../docs/seo/DECISOES-DO-DONO-2026-09-24.md).
-Desde 13/10/2026 a **home** usa o mesmo portao nas vitrines (so destaca titulo
-que esta no indice), em `apps/web/src/server/home-relevance.ts`; nenhuma pagina
+Desde 13/10/2026 as **vitrines** (home, `/pt/filmes`, `/pt/series`,
+`/pt/explorar`, `/pt/em-breve`) usam o mesmo portao (so destacam titulo que esta
+no indice), em `apps/web/src/server/showcase-relevance.ts`; nenhuma pagina
 muda de `index`/`noindex` por isso. Registro:
 [`DECISOES-DO-DONO-2026-10-13.md`](../../docs/seo/DECISOES-DO-DONO-2026-10-13.md).
 

@@ -324,29 +324,23 @@ describe("aba curta nunca falha em silêncio", () => {
 });
 
 /**
- * A HOME SO DESTACA TITULO QUE ESTA NO INDICE (decisao do dono, 13/10/2026).
+ * AS VITRINES SO DESTACAM TITULO QUE ESTA NO INDICE (decisao do dono,
+ * 13/10/2026), na home e nas categorias.
  *
- * O trending e GLOBAL. Um titulo em alta no mundo pode responder `noindex` na
- * ficha pelo portao de relevancia de 24/09 — e a home nao aponta para ele. As
- * categorias (`/pt/filmes`, `/pt/series`) ficam como estavam: a decisao foi so
- * sobre a home.
+ * O trending e GLOBAL, e "No ar" ordena novela diaria entre as series. Um
+ * titulo pode responder `noindex` na ficha pelo portao de relevancia de 24/09 —
+ * e o ranking nao aponta para ele.
  */
-describe("na home, o ranking passa pelo portao de relevancia", () => {
+describe("o ranking passa pelo portao de relevancia", () => {
   type WithRelevance = { relevanceQueries: string[] };
 
-  it("(9) titulo fora do indice NAO aparece na home — e aparece na categoria", async () => {
+  it("(9) titulo fora do indice NAO aparece — nem na home, nem na categoria", async () => {
     // So o filme 1 esta no indice; o filme 2 esta em alta mas responde noindex.
     const relevant = new Set(["movie:1"]);
-
-    const home = await loadPopularRanking(fakePrisma([], relevant), "home", "filmes", NOW);
-    expect(home.items.map((item) => item.href)).toEqual(["/pt/filmes/filme-1/"]);
-
-    // CONTROLE: a mesma base, na categoria de filmes, mostra os dois.
-    const filmes = await loadPopularRanking(fakePrisma([], relevant), "movies", "filmes", NOW);
-    expect(filmes.items.map((item) => item.href)).toEqual([
-      "/pt/filmes/filme-1/",
-      "/pt/filmes/filme-2/",
-    ]);
+    for (const vertical of ["home", "movies"] as const) {
+      const result = await loadPopularRanking(fakePrisma([], relevant), vertical, "filmes", NOW);
+      expect(result.items.map((item) => item.href), vertical).toEqual(["/pt/filmes/filme-1/"]);
+    }
   });
 
   it("(10) a ORDEM do trending sobrevive ao filtro", async () => {
@@ -358,23 +352,36 @@ describe("na home, o ranking passa pelo portao de relevancia", () => {
     ]);
   });
 
-  it("(11) NEGATIVO: as categorias nem consultam o portao", async () => {
-    for (const [vertical, tab] of [
-      ["movies", "filmes"],
-      ["series", "series"],
-      ["movies", "streaming"],
-    ] as const) {
-      const prisma = fakePrisma([]);
-      await loadPopularRanking(prisma, vertical, tab, NOW);
-      expect((prisma as unknown as WithRelevance).relevanceQueries, `${vertical}/${tab}`).toEqual(
-        [],
-      );
+  it("(11) 'No ar' de /pt/series: a serie que exibe todo dia mas esta fora do indice nao entra", async () => {
+    const result = await loadPopularRanking(
+      fakePrisma([], new Set(["tv:10"])),
+      "series",
+      "no-ar",
+      NOW,
+    );
+    expect(result.items.map((item) => item.href)).toEqual(["/pt/series/serie-10/"]);
+  });
+
+  it("(12) CONTROLE: com a chave de emergencia, o portao nao e consultado e os dois voltam", async () => {
+    const previous = process.env.CINERIE_RELEVANCE_GATE;
+    process.env.CINERIE_RELEVANCE_GATE = "off";
+    try {
+      const prisma = fakePrisma([], new Set(["movie:1"]));
+      const result = await loadPopularRanking(prisma, "movies", "filmes", NOW);
+      expect(result.items.map((item) => item.href)).toEqual([
+        "/pt/filmes/filme-1/",
+        "/pt/filmes/filme-2/",
+      ]);
+      expect((prisma as unknown as WithRelevance).relevanceQueries).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.CINERIE_RELEVANCE_GATE;
+      else process.env.CINERIE_RELEVANCE_GATE = previous;
     }
   });
 
-  it("(12) CONTROLE POSITIVO: a home consulta o portao, com o predicado do sitemap", async () => {
+  it("(13) CONTROLE POSITIVO: a consulta do portao carrega o predicado do sitemap", async () => {
     const prisma = fakePrisma([]);
-    await loadPopularRanking(prisma, "home", "filmes", NOW);
+    await loadPopularRanking(prisma, "movies", "filmes", NOW);
     const [sql] = (prisma as unknown as WithRelevance).relevanceQueries;
     expect(sql).toContain("vote_count_tmdb");
     expect(sql).toContain("movie_production_countries");

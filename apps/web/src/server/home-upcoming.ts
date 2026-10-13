@@ -33,7 +33,7 @@ import { pickTrailer, type TrailerRow, type TrailerView } from "../lib/trailer-p
 // Continua sendo a rede de seguranca do teto de 32.767 bind variables: a lista
 // de `tmdb_id` agora e curta, mas o guarda-corpo nao sai por isso.
 import { findManyInChunks } from "../lib/prisma-in-chunks";
-import { relevanceSql } from "./home-relevance";
+import { relevanceSql } from "./showcase-relevance";
 
 const LANGUAGE_CODE = "pt-BR";
 
@@ -192,28 +192,23 @@ const UPCOMING_COLUMNS = {
 } as const;
 
 /**
- * Opcoes dos getters. `relevantOnly` liga o PORTAO DE RELEVANCIA (decisao do
- * dono, 13/10/2026), e so a HOME pede. Medido no ar no mesmo dia: o "Em breve"
- * da home abria com um documentario turco de 45 minutos e um longa frances sem
- * sinopse, as duas fichas `noindex, follow` — a estreia mais proxima do catalogo
- * inteiro e quase sempre um titulo que ninguem procura. O portao entra NO SQL,
- * antes do `LIMIT`: filtrar depois esvaziaria o trilho.
+ * Estreias futuras com o PORTAO DE RELEVANCIA (decisao do dono, 13/10/2026): o
+ * trilho so mostra titulo que esta no indice, nas tres superficies (home,
+ * `/pt/filmes`, `/pt/series`) e na agenda de `/pt/explorar`. Medido no ar no
+ * mesmo dia: o "Em breve" abria com um documentario turco de 45 minutos e um
+ * longa frances sem sinopse, as duas fichas `noindex, follow` — a estreia mais
+ * proxima do catalogo inteiro e quase sempre um titulo que ninguem procura. O
+ * portao entra NO SQL, antes do `LIMIT`: filtrar depois esvaziaria o trilho.
  */
-export interface UpcomingOptions {
-  readonly limit?: number;
-  readonly relevantOnly?: boolean;
-}
-
 async function loadUpcomingRows(
   entityType: "movie" | "tv",
   cutoff: Date,
   limit: number,
-  relevantOnly: boolean,
 ): Promise<UpcomingRow[]> {
   const prisma = getPrismaClient();
   const columns = UPCOMING_COLUMNS[entityType];
   const params: unknown[] = [LANGUAGE_CODE, cutoff];
-  const relevance = relevantOnly ? relevanceSql(entityType, "e", params) : "TRUE";
+  const relevance = relevanceSql(entityType, "e", params);
   // O LIMITE vai por ULTIMO, depois dos parametros do predicado.
   params.push(limit);
   const sql = upcomingSql(
@@ -233,14 +228,13 @@ async function loadUpcomingRows(
  * (com log, via `SectionBoundary`).
  */
 export const getHomeUpcomingMovies = cache(
-  async (options?: UpcomingOptions): Promise<HomeUpcomingItem[]> => {
+  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
     const now = new Date();
     const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
     const rows = await loadUpcomingRows(
       "movie",
       startOfUtcDay(now),
       limit * UPCOMING_FETCH_MULTIPLIER,
-      options?.relevantOnly === true,
     );
     if (rows.length === 0) return [];
 
@@ -274,14 +268,13 @@ export const getHomeUpcomingMovies = cache(
  * "Em breve" em "próximos episódios", que é outro produto.
  */
 export const getHomeUpcomingSeries = cache(
-  async (options?: UpcomingOptions): Promise<HomeUpcomingItem[]> => {
+  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
     const now = new Date();
     const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
     const rows = await loadUpcomingRows(
       "tv",
       startOfUtcDay(now),
       limit * UPCOMING_FETCH_MULTIPLIER,
-      options?.relevantOnly === true,
     );
     if (rows.length === 0) return [];
 
@@ -314,12 +307,11 @@ export const getHomeUpcomingSeries = cache(
  * vagas — e para herdar precisa ter candidatos suficientes carregados.
  */
 export const getHomeUpcomingMixed = cache(
-  async (options?: UpcomingOptions): Promise<HomeUpcomingItem[]> => {
+  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
     const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
-    const relevantOnly = options?.relevantOnly === true;
     const [movies, series] = await Promise.all([
-      getHomeUpcomingMovies({ limit, relevantOnly }),
-      getHomeUpcomingSeries({ limit, relevantOnly }),
+      getHomeUpcomingMovies({ limit }),
+      getHomeUpcomingSeries({ limit }),
     ]);
     return mergeUpcomingVerticals(movies, series, limit);
   },

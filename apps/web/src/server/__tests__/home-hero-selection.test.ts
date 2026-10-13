@@ -83,7 +83,7 @@ interface FakeOptions {
 
 function fakePrisma(options: FakeOptions = {}): Parameters<typeof loadHeroSlides>[0] {
   const movies = options.movies ?? [DER_LIEBESBRIEF, BLOCKBUSTER, MEDIANO];
-  /** O SQL do portão de relevância (`home-relevance.ts`) pergunta por uma lista. */
+  /** O SQL do portão de relevância (`showcase-relevance.ts`) pergunta por uma lista. */
   const relevance = (params: unknown[]) => {
     const pedidos = params[0] as string[];
     const aprovados =
@@ -302,22 +302,32 @@ describe("critério de seleção do hero", () => {
 });
 
 /**
- * NA HOME, O DESTAQUE SO APONTA PARA TITULO QUE ESTA NO INDICE (decisao do dono,
- * 13/10/2026). O piso de votos do hero (200) e mais baixo que o do indice (500):
- * um titulo de fora dos EUA/Brasil com 300 votos passava no hero e respondia
- * `noindex` na propria ficha.
+ * O DESTAQUE SO APONTA PARA TITULO QUE ESTA NO INDICE (decisao do dono,
+ * 13/10/2026), na home e nas categorias. O piso de votos do hero (200) e mais
+ * baixo que o do indice (500): um titulo de fora dos EUA/Brasil com 300 votos
+ * passava no hero e respondia `noindex` na propria ficha.
  */
-describe("portao de relevancia no hero da home", () => {
-  it("(13) titulo fora do indice NAO abre a home — e continua no hero de /pt/filmes", async () => {
+describe("portao de relevancia no hero", () => {
+  it("(13) titulo fora do indice NAO abre a home nem /pt/filmes", async () => {
     // O Blockbuster abriria (mais votado), mas so o Mediano esta no indice.
     const opcoes = { relevant: [3n] } as const;
 
-    const home = await loadHeroSlides(fakePrisma(opcoes), "home", NOW);
-    expect(home.map((s) => s.title)).toEqual(["Mediano"]);
+    for (const scope of ["home", "movies"] as const) {
+      const slides = await loadHeroSlides(fakePrisma(opcoes), scope, NOW);
+      expect(slides.map((s) => s.title), scope).toEqual(["Mediano"]);
+    }
+  });
 
-    // CONTROLE: a mesma base na categoria — a decisao foi so sobre a home.
-    const filmes = await loadHeroSlides(fakePrisma(opcoes), "movies", NOW);
-    expect(filmes.map((s) => s.title)).toEqual(["Blockbuster", "Mediano"]);
+  it("(13b) CONTROLE: com a chave de emergencia desligando o portao, ele volta", async () => {
+    const previous = process.env.CINERIE_RELEVANCE_GATE;
+    process.env.CINERIE_RELEVANCE_GATE = "off";
+    try {
+      const slides = await loadHeroSlides(fakePrisma({ relevant: [3n] }), "home", NOW);
+      expect(slides.map((s) => s.title)).toEqual(["Blockbuster", "Mediano"]);
+    } finally {
+      if (previous === undefined) delete process.env.CINERIE_RELEVANCE_GATE;
+      else process.env.CINERIE_RELEVANCE_GATE = previous;
+    }
   });
 
   it("(14) a curadoria manual NAO passa pelo portao de relevancia", async () => {

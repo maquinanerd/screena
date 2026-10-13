@@ -137,54 +137,67 @@ describe("escopo da faixa de agenda", () => {
 });
 
 /**
- * NA HOME, A FAIXA SO ANUNCIA TITULO QUE ESTA NO INDICE (decisao do dono,
- * 13/10/2026). Medido no ar no mesmo dia: o "NOVO" era o episodio 32 da
- * temporada 29 de uma novela polonesa cuja ficha responde `noindex, follow`.
+ * A FAIXA SO ANUNCIA TITULO QUE ESTA NO INDICE (decisao do dono, 13/10/2026),
+ * nos tres escopos. Medido no ar no mesmo dia: o "NOVO" da home era o episodio
+ * 32 da temporada 29 de uma novela polonesa cuja ficha responde `noindex,
+ * follow`; o de `/pt/filmes` era um filme japones sem titulo em portugues.
  *
  * A prova e sobre a CONSULTA: o portao tem de estar ANTES do teto de 60 linhas.
  * Um `.filter()` na saida passaria num teste de markup e esvaziaria a faixa num
  * dia de muitas novelas.
  */
-describe("portao de relevancia na faixa da home", () => {
-  const EVENT_SQL_MODELS = ["episode", "movie", "season"];
+describe("portao de relevancia na faixa", () => {
+  const EVENT_SQL_MODELS: Record<"home" | "movies" | "series", string[]> = {
+    home: ["episode", "movie", "season"],
+    movies: ["movie"],
+    series: ["episode", "season"],
+  };
 
-  it("(4) episodio, estreia e temporada carregam o predicado do sitemap, antes do LIMIT", async () => {
-    const calls = await recordedFor("home");
-    const sqlCalls = calls.filter((call) => call.sql !== undefined);
-
-    expect(sqlCalls.map((call) => call.model).sort()).toEqual([...EVENT_SQL_MODELS].sort());
-    for (const call of sqlCalls) {
-      const sql = call.sql ?? "";
-      const params = call.params ?? [];
-      expect(sql, call.model).toContain("vote_count_tmdb");
-      expect(sql, call.model).toContain("watch_availability");
-      expect(sql, call.model).toMatch(/movie_production_countries|tv_show_origin_countries/);
-      // Os NUMEROS sao os de @screena/config, como parametro — nunca literal.
-      expect(params, call.model).toContain(500);
-      expect(params, call.model).toContainEqual(["US", "BR"]);
-      expect(params, call.model).toContain("BR");
-      // O teto e o ULTIMO parametro, depois do predicado.
-      expect(params.at(-1), call.model).toBe(60);
-      expect(sql, call.model).toMatch(new RegExp(`LIMIT \\$${params.length}\\b`));
-      // A data vai como dia (YYYY-MM-DD): o fuso da sessao nao desloca o dia.
-      expect(params[0], call.model).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    }
-  });
-
-  it("(5) NEGATIVO: /pt/filmes e /pt/series continuam nas consultas Prisma, sem portao", async () => {
-    for (const scope of ["movies", "series"] as const) {
+  it("(4) nos tres escopos, cada fonte de evento carrega o predicado do sitemap antes do LIMIT", async () => {
+    for (const scope of ["home", "movies", "series"] as const) {
       const calls = await recordedFor(scope);
-      expect(calls.filter((call) => call.sql !== undefined), scope).toEqual([]);
+      const sqlCalls = calls.filter((call) => call.sql !== undefined);
+
+      expect(sqlCalls.map((call) => call.model).sort(), scope).toEqual(
+        [...EVENT_SQL_MODELS[scope]].sort(),
+      );
+      for (const call of sqlCalls) {
+        const sql = call.sql ?? "";
+        const params = call.params ?? [];
+        const label = `${scope}/${call.model}`;
+        expect(sql, label).toContain("vote_count_tmdb");
+        expect(sql, label).toContain("watch_availability");
+        expect(sql, label).toMatch(/movie_production_countries|tv_show_origin_countries/);
+        // Os NUMEROS sao os de @screena/config, como parametro — nunca literal.
+        expect(params, label).toContain(500);
+        expect(params, label).toContainEqual(["US", "BR"]);
+        expect(params, label).toContain("BR");
+        // O teto e o ULTIMO parametro, depois do predicado.
+        expect(params.at(-1), label).toBe(60);
+        expect(sql, label).toMatch(new RegExp(`LIMIT \\$${params.length}\\b`));
+        // A data vai como dia (YYYY-MM-DD): o fuso da sessao nao desloca o dia.
+        expect(params[0], label).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
     }
   });
 
-  it("(6) a chave de EMERGENCIA desliga o portao tambem na home", async () => {
+  it("(5) NEGATIVO: nenhum escopo consulta evento pelo caminho Prisma sem portao", async () => {
+    for (const scope of ["home", "movies", "series"] as const) {
+      const calls = await recordedFor(scope);
+      const semPortao = calls.filter(
+        (call) => call.sql === undefined && ["episode", "movie", "season"].includes(call.model),
+      );
+      expect(semPortao, scope).toEqual([]);
+    }
+  });
+
+  it("(6) a chave de EMERGENCIA desliga o portao", async () => {
     const previous = process.env.CINERIE_RELEVANCE_GATE;
     process.env.CINERIE_RELEVANCE_GATE = "off";
     try {
       const calls = await recordedFor("home");
       const sqlCalls = calls.filter((call) => call.sql !== undefined);
-      expect(sqlCalls).toHaveLength(EVENT_SQL_MODELS.length);
+      expect(sqlCalls).toHaveLength(EVENT_SQL_MODELS.home.length);
       for (const call of sqlCalls) {
         expect(call.sql, call.model).not.toContain("vote_count_tmdb");
         expect(call.params, call.model).toHaveLength(3);

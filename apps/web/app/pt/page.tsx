@@ -189,16 +189,9 @@ const HOME_WEBSITE_JSONLD = {
  * depois da recusa do AdSense por "conteúdo de baixo valor"). Toda vitrine de
  * título desta página — hero, faixa de novidades, "Popular essa semana",
  * trilhos em alta e "Em breve" — passa pelo MESMO portão de relevância do
- * sitemap (`src/server/home-relevance.ts`). Os getters são compartilhados com
- * `/pt/filmes` e `/pt/series`, que não pedem o escopo e ficam como estavam.
- *
- * Constante de MÓDULO, e não literal na chamada: `cache()` compara argumento
- * por identidade, e `getHomeData` roda duas vezes por requisição (metadata e
- * página). Um `{ relevantOnly: true }` novo a cada chamada carregaria o trilho
- * duas vezes.
+ * sitemap (`src/server/showcase-relevance.ts`). A regra mora nos getters, e vale
+ * igual em `/pt/filmes`, `/pt/series` e `/pt/explorar`.
  */
-const HOME_UPCOMING_OPTIONS = { relevantOnly: true } as const
-
 async function getHomeData() {
   const [
     catalog,
@@ -209,13 +202,13 @@ async function getHomeData() {
     editorialHighlights,
     rankings,
   ] = await Promise.all([
-    getHomeCatalogData('home'),
+    getHomeCatalogData(),
     getNewsIndexData(),
     // A home é a UNIÃO: escopo `home` mantém a composição canônica (filmes por
     // ano desc, depois séries) e as duas bandas ligadas — e o trilho "Em breve"
     // segue a mesma regra, com o dataset misto.
     getHomeHeroSlides('home'),
-    getHomeUpcomingMixed(HOME_UPCOMING_OPTIONS),
+    getHomeUpcomingMixed(),
     getHomeTickerItems('home'),
     getHomeEditorialHighlights(),
     getPopularRankings('home'),

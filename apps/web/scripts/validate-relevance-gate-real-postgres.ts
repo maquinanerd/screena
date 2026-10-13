@@ -444,17 +444,18 @@ async function runChecks(prisma: Raw, seams: Seams): Promise<void> {
 }
 
 /**
- * ---- 5. Vitrines da HOME (decisao do dono, 13/10/2026) -----------------------
+ * ---- 5. Vitrines (decisao do dono, 13/10/2026) --------------------------------
  *
- * A home so destaca titulo que esta no indice. O SQL de `home-relevance.ts` e a
- * TERCEIRA traducao da regra (depois da funcao pura e do SQL do sitemap), e so o
- * banco real prova que as tres concordam — e que o SQL das vitrines roda.
+ * Home, `/pt/filmes`, `/pt/series` e `/pt/explorar` so destacam titulo que esta
+ * no indice. O SQL de `showcase-relevance.ts` e a TERCEIRA traducao da regra
+ * (depois da funcao pura e do SQL do sitemap), e so o banco real prova que as
+ * tres concordam — e que o SQL das vitrines roda.
  */
 async function runHomeShowcaseChecks(
   prisma: Raw,
   pages: Map<string, SeoOut["seo"] | null>,
 ): Promise<void> {
-  const { relevantTitleIds } = (await import("../src/server/home-relevance.ts")) as {
+  const { relevantTitleIds } = (await import("../src/server/showcase-relevance.ts")) as {
     relevantTitleIds: (p: unknown, t: "movie" | "tv", ids: bigint[]) => Promise<Set<string>>;
   };
   const { getHomeTickerItems } = (await import("../src/server/home-ticker.ts")) as {
@@ -463,7 +464,7 @@ async function runHomeShowcaseChecks(
     ) => Promise<{ entityType: string; entityId: string }[]>;
   };
   const { getHomeUpcomingMixed } = (await import("../src/server/home-upcoming.ts")) as {
-    getHomeUpcomingMixed: (o?: { limit?: number; relevantOnly?: boolean }) => Promise<{ href: string }[]>;
+    getHomeUpcomingMixed: (o?: { limit?: number }) => Promise<{ href: string }[]>;
   };
 
   // (a) Paridade: o SQL da vitrine aprova EXATAMENTE quem a ficha indexa.
@@ -477,7 +478,7 @@ async function runHomeShowcaseChecks(
     }
   }
   record(
-    "home: o SQL das vitrines aprova exatamente os titulos que a ficha indexa (toda a fixture mista)",
+    "o SQL das vitrines aprova exatamente os titulos que a ficha indexa (toda a fixture mista)",
     divergentes.length === 0,
     divergentes.length === 0 ? `${FIXTURE.length} titulos` : `divergem: ${divergentes.join(" ")}`,
   );
@@ -503,37 +504,75 @@ async function runHomeShowcaseChecks(
     `itens=${faixaHome.map(chave).join(",")} fora=${foraDoIndice.join(",") || "nenhum"}`,
   );
   const faixaSeries = await getHomeTickerItems("series");
+  const foraSeries = faixaSeries.map(chave).filter((k) => !fica.has(k));
   record(
-    "CONTROLE: em /pt/series a faixa continua sem portao (a serie tailandesa aparece)",
-    faixaSeries.some((i) => chave(i) === "tv:21"),
-    `itens=${faixaSeries.map(chave).join(",")}`,
+    "/pt/series: a faixa tambem so anuncia serie do indice (a tailandesa e a sem pais nao entram)",
+    faixaSeries.length > 0 && foraSeries.length === 0,
+    `itens=${faixaSeries.map(chave).join(",")} fora=${foraSeries.join(",") || "nenhum"}`,
   );
   process.env[ENV_VAR] = "off";
   const faixaOff = await getHomeTickerItems("home");
   delete process.env[ENV_VAR];
   record(
-    "CINERIE_RELEVANCE_GATE=off: a faixa da home volta a anunciar a serie tailandesa",
+    "CINERIE_RELEVANCE_GATE=off: a faixa volta a anunciar a serie tailandesa",
     faixaOff.some((i) => chave(i) === "tv:21"),
     `itens=${faixaOff.map(chave).join(",")}`,
   );
 
-  // (c) "Em breve": estreia futura para todos os titulos.
+  // (c) "Em breve" (home, categorias e a agenda de /pt/explorar) e "Mais
+  // aguardados" (/pt/explorar e /pt/em-breve): estreia futura para todos.
   await prisma.$executeRawUnsafe(`UPDATE movies SET release_date = '${daquiATres}'::date`);
   await prisma.$executeRawUnsafe(`UPDATE tv_shows SET first_air_date = '${daquiATres}'::date`);
   const urlFica = new Set(
     FIXTURE.filter((t) => t.fica).map((t) => urlOf(`${t.kind}:${t.slug}`)),
   );
-  const emBreveHome = await getHomeUpcomingMixed({ limit: 20, relevantOnly: true });
-  const emBreveTodos = await getHomeUpcomingMixed({ limit: 20 });
+  const emBreve = await getHomeUpcomingMixed({ limit: 20 });
   record(
-    "home: 'Em breve' traz SO titulo do indice, e todos eles",
-    emBreveHome.length === urlFica.size && emBreveHome.every((i) => urlFica.has(i.href)),
-    `home=${emBreveHome.length} esperado=${urlFica.size}`,
+    "'Em breve' traz SO titulo do indice, e todos eles",
+    emBreve.length === urlFica.size && emBreve.every((i) => urlFica.has(i.href)),
+    `itens=${emBreve.length} esperado=${urlFica.size}`,
   );
+  const { getAnticipatedData } = (await import("../src/server/anticipated.ts")) as {
+    getAnticipatedData: () => Promise<{
+      cards: { bookmarkType: string; bookmarkId: string }[];
+      total: number;
+    }>;
+  };
+  const aguardados = await getAnticipatedData();
+  const foraAguardados = aguardados.cards
+    .map((c) => `${c.bookmarkType}:${c.bookmarkId}`)
+    .filter((k) => !fica.has(k));
   record(
-    "CONTROLE: sem o portao (como em /pt/explorar), 'Em breve' traz a fixture inteira",
-    emBreveTodos.length === FIXTURE.length,
-    `todos=${emBreveTodos.length} fixture=${FIXTURE.length}`,
+    "'Mais aguardados' (explorar e /pt/em-breve) traz SO titulo do indice, e todos eles",
+    aguardados.total === fica.size && foraAguardados.length === 0,
+    `cards=${aguardados.total} esperado=${fica.size} fora=${foraAguardados.join(",") || "nenhum"}`,
+  );
+
+  // (d) /pt/explorar: "Populares" sai da mesma lista curta do destaque e do "Em alta".
+  const { getDiscoverData } = (await import("../src/server/discover.ts")) as {
+    getDiscoverData: () => Promise<{ populares: { entityType: string; entityId: string }[] }>;
+  };
+  const populares = (await getDiscoverData()).populares;
+  const foraPopulares = populares.map(chave).filter((k) => !fica.has(k));
+  record(
+    "/pt/explorar: 'Populares' so traz titulo do indice",
+    populares.length > 0 && foraPopulares.length === 0,
+    `itens=${populares.map(chave).join(",")} fora=${foraPopulares.join(",") || "nenhum"}`,
+  );
+
+  // CONTROLE das tres vitrines: sem o portao, os titulos fora do indice voltam.
+  // Sem isto, um filtro que zerasse tudo "provaria" as tres asercoes acima.
+  process.env[ENV_VAR] = "off";
+  const emBreveOff = await getHomeUpcomingMixed({ limit: 20 });
+  const aguardadosOff = await getAnticipatedData();
+  const popularesOff = (await getDiscoverData()).populares;
+  delete process.env[ENV_VAR];
+  record(
+    "CINERIE_RELEVANCE_GATE=off: 'Em breve' e 'Mais aguardados' voltam a trazer a fixture inteira, e 'Populares' traz o frances de 499 votos",
+    emBreveOff.length === FIXTURE.length &&
+      aguardadosOff.total === FIXTURE.length &&
+      popularesOff.some((i) => chave(i) === "movie:8"),
+    `emBreve=${emBreveOff.length} aguardados=${aguardadosOff.total} populares=${popularesOff.map(chave).join(",")}`,
   );
 }
 
