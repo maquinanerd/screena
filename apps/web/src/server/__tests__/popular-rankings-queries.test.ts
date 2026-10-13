@@ -41,7 +41,14 @@ interface RecordedCall {
 const MOVIE_IDS = [1n, 2n];
 const TV_IDS = [10n, 11n];
 
-function fakePrisma(calls: RecordedCall[]) {
+/**
+ * `relevant`: ids (`tipo:id`) que o PORTAO DE RELEVANCIA aprova. Ausente, aprova
+ * todos — os testes de recorte abaixo medem a CONSULTA de cada aba, nao o portao.
+ * A consulta do portao NAO entra em `calls`: ela nao e descoberta de recorte, e
+ * contá-la mudaria o que `discoveryFor` chama de "o recorte propriamente dito".
+ */
+function fakePrisma(calls: RecordedCall[], relevant?: ReadonlySet<string>) {
+  const relevanceQueries: string[] = [];
   const record = (model: string, method: string) => (args: Record<string, unknown>) => {
     calls.push({ model, method, args });
     switch (`${model}.${method}`) {
@@ -84,6 +91,15 @@ function fakePrisma(calls: RecordedCall[]) {
     }
   };
   return {
+    relevanceQueries,
+    $queryRawUnsafe: (sql: string, ...params: unknown[]) => {
+      relevanceQueries.push(sql);
+      const type = sql.includes("FROM tv_shows") ? "tv" : "movie";
+      const ids = (params[0] as string[]).filter(
+        (id) => relevant === undefined || relevant.has(`${type}:${id}`),
+      );
+      return Promise.resolve(ids.map((id) => ({ id: BigInt(id) })));
+    },
     movie: { findMany: record("movie", "findMany") },
     tvShow: { findMany: record("tvShow", "findMany") },
     episode: { findMany: record("episode", "findMany") },
@@ -304,5 +320,64 @@ describe("aba curta nunca falha em silêncio", () => {
     expect(cartaz.result.absence?.actionable).toBe(true);
     // Não há clássico qualificado no catálogo: é um fato, não um passo pendente.
     expect(classicos.result.absence?.actionable).toBe(false);
+  });
+});
+
+/**
+ * A HOME SO DESTACA TITULO QUE ESTA NO INDICE (decisao do dono, 13/10/2026).
+ *
+ * O trending e GLOBAL. Um titulo em alta no mundo pode responder `noindex` na
+ * ficha pelo portao de relevancia de 24/09 — e a home nao aponta para ele. As
+ * categorias (`/pt/filmes`, `/pt/series`) ficam como estavam: a decisao foi so
+ * sobre a home.
+ */
+describe("na home, o ranking passa pelo portao de relevancia", () => {
+  type WithRelevance = { relevanceQueries: string[] };
+
+  it("(9) titulo fora do indice NAO aparece na home — e aparece na categoria", async () => {
+    // So o filme 1 esta no indice; o filme 2 esta em alta mas responde noindex.
+    const relevant = new Set(["movie:1"]);
+
+    const home = await loadPopularRanking(fakePrisma([], relevant), "home", "filmes", NOW);
+    expect(home.items.map((item) => item.href)).toEqual(["/pt/filmes/filme-1/"]);
+
+    // CONTROLE: a mesma base, na categoria de filmes, mostra os dois.
+    const filmes = await loadPopularRanking(fakePrisma([], relevant), "movies", "filmes", NOW);
+    expect(filmes.items.map((item) => item.href)).toEqual([
+      "/pt/filmes/filme-1/",
+      "/pt/filmes/filme-2/",
+    ]);
+  });
+
+  it("(10) a ORDEM do trending sobrevive ao filtro", async () => {
+    const relevant = new Set(["tv:10", "tv:11"]);
+    const home = await loadPopularRanking(fakePrisma([], relevant), "home", "series", NOW);
+    expect(home.items.map((item) => item.href)).toEqual([
+      "/pt/series/serie-10/",
+      "/pt/series/serie-11/",
+    ]);
+  });
+
+  it("(11) NEGATIVO: as categorias nem consultam o portao", async () => {
+    for (const [vertical, tab] of [
+      ["movies", "filmes"],
+      ["series", "series"],
+      ["movies", "streaming"],
+    ] as const) {
+      const prisma = fakePrisma([]);
+      await loadPopularRanking(prisma, vertical, tab, NOW);
+      expect((prisma as unknown as WithRelevance).relevanceQueries, `${vertical}/${tab}`).toEqual(
+        [],
+      );
+    }
+  });
+
+  it("(12) CONTROLE POSITIVO: a home consulta o portao, com o predicado do sitemap", async () => {
+    const prisma = fakePrisma([]);
+    await loadPopularRanking(prisma, "home", "filmes", NOW);
+    const [sql] = (prisma as unknown as WithRelevance).relevanceQueries;
+    expect(sql).toContain("vote_count_tmdb");
+    expect(sql).toContain("movie_production_countries");
+    expect(sql).toContain("watch_availability");
   });
 });

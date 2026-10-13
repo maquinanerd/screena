@@ -109,7 +109,9 @@ const ROUTES = [
   {
     label: "home",
     file: HOME,
-    getter: "getHomeUpcomingMixed()",
+    // A home pede o escopo dela: só título que está no índice (decisão do
+    // dono, 13/10/2026). As categorias chamam sem argumento.
+    getter: "getHomeUpcomingMixed(HOME_UPCOMING_OPTIONS)",
     vertical: "'mixed'",
     outros: ["getHomeUpcomingMovies(", "getHomeUpcomingSeries("],
   },

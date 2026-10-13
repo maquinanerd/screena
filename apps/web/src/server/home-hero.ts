@@ -40,6 +40,7 @@ import { getPrismaClient } from "@screena/db/server";
 
 import { getCastForEntity } from "./entity-cast";
 import { resolveEditorialScores, scoreFields, type ScoredEntityType } from "./editorial-score";
+import { keepRelevant } from "./home-relevance";
 import { orderByTrending, readTrendingSnapshot } from "./trending-snapshot";
 import {
   HERO_MAX_YEARS_AHEAD,
@@ -651,9 +652,23 @@ export async function loadHeroSlides(
   const seriados = applyHeroGate(series, now);
   const recusados = [...filmes.rejected, ...seriados.rejected];
 
+  // PORTAO DE RELEVANCIA, so na HOME (decisao do dono, 13/10/2026): o destaque
+  // da primeira dobra so aponta para titulo que esta no indice. O piso de votos
+  // do hero (200) e mais baixo que o do indice (500), entao um titulo coreano
+  // com 300 votos passava no hero e respondia `noindex` na ficha. `/pt/filmes` e
+  // `/pt/series` ficam como estavam. A curadoria manual nao passa por aqui:
+  // `composeHero` a busca em `movies`/`series`, antes de qualquer portao.
+  const [filmesElegiveis, seriesElegiveis] =
+    scope === "home"
+      ? await Promise.all([
+          keepRelevant(prisma, filmes.eligible),
+          keepRelevant(prisma, seriados.eligible),
+        ])
+      : [filmes.eligible, seriados.eligible];
+
   const [filmesOrdenados, seriesOrdenadas] = await Promise.all([
-    orderEligible(prisma, "movie", filmes.eligible, now),
-    orderEligible(prisma, "tv", seriados.eligible, now),
+    orderEligible(prisma, "movie", filmesElegiveis, now),
+    orderEligible(prisma, "tv", seriesElegiveis, now),
   ]);
   const automatic =
     scope === "movies"

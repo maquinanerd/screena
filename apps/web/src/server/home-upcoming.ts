@@ -33,6 +33,7 @@ import { pickTrailer, type TrailerRow, type TrailerView } from "../lib/trailer-p
 // Continua sendo a rede de seguranca do teto de 32.767 bind variables: a lista
 // de `tmdb_id` agora e curta, mas o guarda-corpo nao sai por isso.
 import { findManyInChunks } from "../lib/prisma-in-chunks";
+import { relevanceSql } from "./home-relevance";
 
 const LANGUAGE_CODE = "pt-BR";
 
@@ -146,14 +147,17 @@ interface UpcomingRow {
 }
 
 /**
- * `$1` = language_code, `$2` = cutoff (inicio do dia UTC), `$3` = limite.
- * Nenhum literal interpolado; `%s` so troca as colunas da vertical.
+ * `$1` = language_code, `$2` = cutoff (inicio do dia UTC), e o LIMITE no ultimo
+ * parametro (`limitParam`). Nenhum valor interpolado: so as colunas da vertical
+ * e o predicado de relevancia, que traz os proprios `$n`.
  */
 function upcomingSql(
   entityType: "movie" | "tv",
   table: string,
   titleColumn: string,
   dateColumn: string,
+  relevance: string,
+  limitParam: string,
 ): string {
   return `
     SELECT e.id,
@@ -175,21 +179,52 @@ function upcomingSql(
       AND s.is_canonical
       AND e.${dateColumn} > $2
       AND COALESCE(NULLIF(btrim(t.title), ''), NULLIF(btrim(e.${titleColumn}), '')) IS NOT NULL
+      AND ${relevance}
     ORDER BY e.${dateColumn} ASC, e.id ASC
-    LIMIT $3
+    LIMIT ${limitParam}
   `;
 }
 
-const UPCOMING_MOVIE_SQL = upcomingSql("movie", "movies", "title_original", "release_date");
-const UPCOMING_SERIES_SQL = upcomingSql("tv", "tv_shows", "name_original", "first_air_date");
+/** Colunas de cada vertical. */
+const UPCOMING_COLUMNS = {
+  movie: { table: "movies", title: "title_original", date: "release_date" },
+  tv: { table: "tv_shows", title: "name_original", date: "first_air_date" },
+} as const;
+
+/**
+ * Opcoes dos getters. `relevantOnly` liga o PORTAO DE RELEVANCIA (decisao do
+ * dono, 13/10/2026), e so a HOME pede. Medido no ar no mesmo dia: o "Em breve"
+ * da home abria com um documentario turco de 45 minutos e um longa frances sem
+ * sinopse, as duas fichas `noindex, follow` — a estreia mais proxima do catalogo
+ * inteiro e quase sempre um titulo que ninguem procura. O portao entra NO SQL,
+ * antes do `LIMIT`: filtrar depois esvaziaria o trilho.
+ */
+export interface UpcomingOptions {
+  readonly limit?: number;
+  readonly relevantOnly?: boolean;
+}
 
 async function loadUpcomingRows(
-  sql: string,
+  entityType: "movie" | "tv",
   cutoff: Date,
   limit: number,
+  relevantOnly: boolean,
 ): Promise<UpcomingRow[]> {
   const prisma = getPrismaClient();
-  return prisma.$queryRawUnsafe<UpcomingRow[]>(sql, LANGUAGE_CODE, cutoff, limit);
+  const columns = UPCOMING_COLUMNS[entityType];
+  const params: unknown[] = [LANGUAGE_CODE, cutoff];
+  const relevance = relevantOnly ? relevanceSql(entityType, "e", params) : "TRUE";
+  // O LIMITE vai por ULTIMO, depois dos parametros do predicado.
+  params.push(limit);
+  const sql = upcomingSql(
+    entityType,
+    columns.table,
+    columns.title,
+    columns.date,
+    relevance,
+    `$${params.length}`,
+  );
+  return prisma.$queryRawUnsafe<UpcomingRow[]>(sql, ...params);
 }
 
 /**
@@ -198,13 +233,14 @@ async function loadUpcomingRows(
  * (com log, via `SectionBoundary`).
  */
 export const getHomeUpcomingMovies = cache(
-  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
+  async (options?: UpcomingOptions): Promise<HomeUpcomingItem[]> => {
     const now = new Date();
     const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
     const rows = await loadUpcomingRows(
-      UPCOMING_MOVIE_SQL,
+      "movie",
       startOfUtcDay(now),
       limit * UPCOMING_FETCH_MULTIPLIER,
+      options?.relevantOnly === true,
     );
     if (rows.length === 0) return [];
 
@@ -238,13 +274,14 @@ export const getHomeUpcomingMovies = cache(
  * "Em breve" em "próximos episódios", que é outro produto.
  */
 export const getHomeUpcomingSeries = cache(
-  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
+  async (options?: UpcomingOptions): Promise<HomeUpcomingItem[]> => {
     const now = new Date();
     const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
     const rows = await loadUpcomingRows(
-      UPCOMING_SERIES_SQL,
+      "tv",
       startOfUtcDay(now),
       limit * UPCOMING_FETCH_MULTIPLIER,
+      options?.relevantOnly === true,
     );
     if (rows.length === 0) return [];
 
@@ -277,11 +314,12 @@ export const getHomeUpcomingSeries = cache(
  * vagas — e para herdar precisa ter candidatos suficientes carregados.
  */
 export const getHomeUpcomingMixed = cache(
-  async (options?: { limit?: number }): Promise<HomeUpcomingItem[]> => {
+  async (options?: UpcomingOptions): Promise<HomeUpcomingItem[]> => {
     const limit = options?.limit ?? HOME_UPCOMING_LIMIT;
+    const relevantOnly = options?.relevantOnly === true;
     const [movies, series] = await Promise.all([
-      getHomeUpcomingMovies({ limit }),
-      getHomeUpcomingSeries({ limit }),
+      getHomeUpcomingMovies({ limit, relevantOnly }),
+      getHomeUpcomingSeries({ limit, relevantOnly }),
     ]);
     return mergeUpcomingVerticals(movies, series, limit);
   },

@@ -33,19 +33,22 @@ describe('home pública — design canônico (tela 02)', () => {
 
   it('mantém os getters locais e a decisão canônica de indexabilidade', () => {
     for (const getter of [
-      'getHomeCatalogData()',
+      // As vitrines da home pedem o escopo `home`: só título que está no índice
+      // (decisão do dono, 13/10/2026; ver `src/server/home-relevance.ts`).
+      "getHomeCatalogData('home')",
       'getNewsIndexData()',
       // A home é a UNIÃO: ela pede o escopo `home` explicitamente, e é o único
       // lugar do app onde as duas verticais convivem numa seção só.
       "getHomeHeroSlides('home')",
       // A home mistura filme e serie no trilho "Em breve"; as categorias usam
       // os getters de uma vertical so (tests/web/upcoming-rail-by-route).
-      'getHomeUpcomingMixed()',
+      'getHomeUpcomingMixed(HOME_UPCOMING_OPTIONS)',
+      'const HOME_UPCOMING_OPTIONS = { relevantOnly: true } as const',
       // `getSeriesIndexData()` SAIU desta lista em 2026-08-26, e a ausencia e o
       // conserto. O trilho "Series da semana" era alimentado pela LISTAGEM
       // generica de series — sob um rotulo que afirma recorte de tempo, a home
       // exibia o comeco do alfabeto. Agora ele le o trending, que ja vem de
-      // `getHomeCatalogData()` (primeiro item desta lista). Reintroduzir o
+      // `getHomeCatalogData('home')` (primeiro item desta lista). Reintroduzir o
       // getter aqui e o sinal de que o fallback voltou.
       "getHomeTickerItems('home')",
       'getHomeEditorialHighlights()',

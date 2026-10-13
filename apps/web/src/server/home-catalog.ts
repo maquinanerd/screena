@@ -27,6 +27,7 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { resolveEditorialScores, scoreFields } from "./editorial-score";
+import { relevantTitleIds } from "./home-relevance";
 import {
   getTrendingSnapshot,
   orderByTrending,
@@ -123,7 +124,29 @@ export interface HomeCatalogData {
   seriesTrendingAbsence: TrendingAbsenceReason | null;
 }
 
-export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
+/**
+ * Quem pede os trilhos. A HOME (`/pt/`) só destaca título que está no índice —
+ * decisão do dono, 13/10/2026: o trending é GLOBAL, e um título em alta no mundo
+ * pode responder `noindex` aqui pelo portão de relevância. `/pt/filmes` e
+ * `/pt/series` chamam sem argumento e ficam como estavam.
+ */
+export type HomeCatalogScope = "home" | "vertical";
+
+/** Ids do trending que podem ir à vitrine deste escopo, na ordem recebida. */
+async function showcaseIds(
+  prisma: ReturnType<typeof getPrismaClient>,
+  entityType: "movie" | "tv",
+  ids: bigint[],
+  scope: HomeCatalogScope,
+): Promise<bigint[]> {
+  if (scope !== "home") return ids;
+  const relevant = await relevantTitleIds(prisma, entityType, ids);
+  return ids.filter((id) => relevant.has(id.toString()));
+}
+
+export const getHomeCatalogData = cache(async (
+  scope: HomeCatalogScope = "vertical",
+): Promise<HomeCatalogData> => {
   const prisma = getPrismaClient();
   const snapshot = await getTrendingSnapshot("movie", "day");
   // A identidade é pedida SÓ para os ids do trending — ver `canonicalIdentity`.
@@ -131,7 +154,7 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
 
   // A ordem é a do trending, resolvida EM MEMÓRIA: SQL não sabe ordenar por uma
   // lista de ids sem um `CASE` gerado, e o conjunto é um topo de 20.
-  const trendingIds = movieIdentity.ids;
+  const trendingIds = await showcaseIds(prisma, "movie", movieIdentity.ids, scope);
   const rows =
     trendingIds.length === 0
       ? []
@@ -172,7 +195,7 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
   });
   const cards = buildTrendingMovieCards(movieInputs);
 
-  const series = await trendingSeriesCards(prisma);
+  const series = await trendingSeriesCards(prisma, scope);
 
   return {
     movies: cards,
@@ -197,10 +220,11 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
  */
 async function trendingSeriesCards(
   prisma: ReturnType<typeof getPrismaClient>,
+  scope: HomeCatalogScope,
 ): Promise<{ cards: EntityCard[]; absence: TrendingAbsenceReason | null }> {
   const snapshot = await getTrendingSnapshot("tv", "week");
   const identity = await canonicalIdentity("tv", snapshot.entityIds);
-  const trendingIds = identity.ids;
+  const trendingIds = await showcaseIds(prisma, "tv", identity.ids, scope);
   const rows =
     trendingIds.length === 0
       ? []

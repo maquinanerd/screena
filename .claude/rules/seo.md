@@ -58,8 +58,12 @@ sitemap, e temporadas e episodios da serie saem junto. A regra pura e
 com EXISTS correlacionado (nunca CTE). O titulo volta sozinho quando ganha 500
 votos, oferta BR ou pais EUA/BR. A unica chave e a de EMERGENCIA
 `CINERIE_RELEVANCE_GATE=off`, lida em runtime. Nao autoriza apagar nem mexer em
-home, listagens, busca ou no portao de pessoa. Registro:
+listagens, busca ou no portao de pessoa. Registro:
 [`DECISOES-DO-DONO-2026-09-24.md`](../../docs/seo/DECISOES-DO-DONO-2026-09-24.md).
+Desde 13/10/2026 a **home** usa o mesmo portao nas vitrines (so destaca titulo
+que esta no indice), em `apps/web/src/server/home-relevance.ts`; nenhuma pagina
+muda de `index`/`noindex` por isso. Registro:
+[`DECISOES-DO-DONO-2026-10-13.md`](../../docs/seo/DECISOES-DO-DONO-2026-10-13.md).
 
 Os **blocos de valor proprios** deixaram de ser pre-requisito de `index` e
 passaram a ser **alavanca de qualidade e ranqueamento** (E-E-A-T, profundidade,

@@ -438,6 +438,103 @@ async function runChecks(prisma: Raw, seams: Seams): Promise<void> {
       deVolta.pages.get("movie:tailandes-sem-oferta")?.decision === "noindex",
     `OFF=${offMaiusculo.sitemap.size} invalido=${valorInvalido.sitemap.size} religado=${deVolta.sitemap.size}`,
   );
+
+  // Por ULTIMO: mexe nas datas da fixture, e as secoes acima nao podem ver isso.
+  await runHomeShowcaseChecks(prisma, deVolta.pages);
+}
+
+/**
+ * ---- 5. Vitrines da HOME (decisao do dono, 13/10/2026) -----------------------
+ *
+ * A home so destaca titulo que esta no indice. O SQL de `home-relevance.ts` e a
+ * TERCEIRA traducao da regra (depois da funcao pura e do SQL do sitemap), e so o
+ * banco real prova que as tres concordam — e que o SQL das vitrines roda.
+ */
+async function runHomeShowcaseChecks(
+  prisma: Raw,
+  pages: Map<string, SeoOut["seo"] | null>,
+): Promise<void> {
+  const { relevantTitleIds } = (await import("../src/server/home-relevance.ts")) as {
+    relevantTitleIds: (p: unknown, t: "movie" | "tv", ids: bigint[]) => Promise<Set<string>>;
+  };
+  const { getHomeTickerItems } = (await import("../src/server/home-ticker.ts")) as {
+    getHomeTickerItems: (
+      scope: "home" | "movies" | "series",
+    ) => Promise<{ entityType: string; entityId: string }[]>;
+  };
+  const { getHomeUpcomingMixed } = (await import("../src/server/home-upcoming.ts")) as {
+    getHomeUpcomingMixed: (o?: { limit?: number; relevantOnly?: boolean }) => Promise<{ href: string }[]>;
+  };
+
+  // (a) Paridade: o SQL da vitrine aprova EXATAMENTE quem a ficha indexa.
+  const divergentes: string[] = [];
+  for (const kind of ["movie", "tv"] as const) {
+    const titulos = FIXTURE.filter((t) => t.kind === kind);
+    const aprovados = await relevantTitleIds(prisma, kind, titulos.map((t) => BigInt(t.id)));
+    for (const t of titulos) {
+      const ficha = pages.get(`${kind}:${t.slug}`)?.decision === "index";
+      if (aprovados.has(String(t.id)) !== ficha) divergentes.push(`${kind}:${t.slug}`);
+    }
+  }
+  record(
+    "home: o SQL das vitrines aprova exatamente os titulos que a ficha indexa (toda a fixture mista)",
+    divergentes.length === 0,
+    divergentes.length === 0 ? `${FIXTURE.length} titulos` : `divergem: ${divergentes.join(" ")}`,
+  );
+
+  // (b) Faixa de novidades: episodio HOJE para todas as series, estreia de filme
+  // AMANHA. O dia vai em UTC, como a faixa o calcula.
+  const hoje = new Date().toISOString().slice(0, 10);
+  const amanha = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const daquiATres = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  await prisma.$executeRawUnsafe(`UPDATE episodes SET air_date = '${hoje}'::date`);
+  await prisma.$executeRawUnsafe(`UPDATE movies SET release_date = '${amanha}'::date`);
+
+  const fica = new Set(FIXTURE.filter((t) => t.fica).map((t) => `${t.kind}:${t.id}`));
+  const chave = (item: { entityType: string; entityId: string }) => `${item.entityType}:${item.entityId}`;
+  const faixaHome = await getHomeTickerItems("home");
+  const foraDoIndice = faixaHome.map(chave).filter((k) => !fica.has(k));
+  record(
+    "home: a faixa de novidades so anuncia titulo do indice (e anuncia: episodio de hoje das series que ficam)",
+    faixaHome.length > 0 &&
+      foraDoIndice.length === 0 &&
+      faixaHome.some((i) => chave(i) === "tv:22") &&
+      faixaHome.some((i) => chave(i) === "tv:24"),
+    `itens=${faixaHome.map(chave).join(",")} fora=${foraDoIndice.join(",") || "nenhum"}`,
+  );
+  const faixaSeries = await getHomeTickerItems("series");
+  record(
+    "CONTROLE: em /pt/series a faixa continua sem portao (a serie tailandesa aparece)",
+    faixaSeries.some((i) => chave(i) === "tv:21"),
+    `itens=${faixaSeries.map(chave).join(",")}`,
+  );
+  process.env[ENV_VAR] = "off";
+  const faixaOff = await getHomeTickerItems("home");
+  delete process.env[ENV_VAR];
+  record(
+    "CINERIE_RELEVANCE_GATE=off: a faixa da home volta a anunciar a serie tailandesa",
+    faixaOff.some((i) => chave(i) === "tv:21"),
+    `itens=${faixaOff.map(chave).join(",")}`,
+  );
+
+  // (c) "Em breve": estreia futura para todos os titulos.
+  await prisma.$executeRawUnsafe(`UPDATE movies SET release_date = '${daquiATres}'::date`);
+  await prisma.$executeRawUnsafe(`UPDATE tv_shows SET first_air_date = '${daquiATres}'::date`);
+  const urlFica = new Set(
+    FIXTURE.filter((t) => t.fica).map((t) => urlOf(`${t.kind}:${t.slug}`)),
+  );
+  const emBreveHome = await getHomeUpcomingMixed({ limit: 20, relevantOnly: true });
+  const emBreveTodos = await getHomeUpcomingMixed({ limit: 20 });
+  record(
+    "home: 'Em breve' traz SO titulo do indice, e todos eles",
+    emBreveHome.length === urlFica.size && emBreveHome.every((i) => urlFica.has(i.href)),
+    `home=${emBreveHome.length} esperado=${urlFica.size}`,
+  );
+  record(
+    "CONTROLE: sem o portao (como em /pt/explorar), 'Em breve' traz a fixture inteira",
+    emBreveTodos.length === FIXTURE.length,
+    `todos=${emBreveTodos.length} fixture=${FIXTURE.length}`,
+  );
 }
 
 async function main(): Promise<void> {
