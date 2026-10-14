@@ -24,6 +24,7 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { licensedWatchWhere } from "./entity-watch";
+import { keepRelevant } from "./showcase-relevance";
 import {
   readTrendingSnapshot,
   trendingAbsenceFor,
@@ -461,7 +462,15 @@ export async function loadPopularRanking(
       : await rankingCandidates(prisma, slug, now);
 
   const reason = discovered.reason;
-  const candidates = scopedToVertical(discovered.candidates, vertical);
+  // So titulo que esta no indice (decisao do dono, 13/10/2026), nas tres
+  // verticais. O trending e GLOBAL, e "No ar" ordena novela diaria entre as
+  // series: um titulo pode responder `noindex` aqui pelo portao de relevancia, e
+  // a vitrine nao aponta para ele. Os recortes ja vem curtos (topo de 20, teto
+  // de 60), entao filtrar depois nao esvazia o que o banco poderia completar.
+  const candidates = await keepRelevant(
+    prisma,
+    scopedToVertical(discovered.candidates, vertical),
+  );
   const identities = await resolveIdentities(prisma, candidates);
   const inputs: RankedTitleInput[] = [];
   for (const candidate of candidates) {

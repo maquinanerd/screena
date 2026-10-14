@@ -247,12 +247,16 @@ describe('home pública — design canônico (tela 02)', () => {
     ]) {
       expect(tickerServer).toMatch(new RegExp(`['"]${kind}['"]`))
     }
-    // Toda data vem de coluna persistida — nenhuma é estimada.
-    expect(tickerServer).toMatch(/airDate: \{ gte: dayStart, lt: futureEnd \}/)
-    expect(tickerServer).toMatch(/releaseDate: \{ gte: dayStart, lt: futureEnd \}/)
+    // Toda data vem de coluna persistida — nenhuma é estimada. Episódio,
+    // estreia e temporada são SQL desde 13/10/2026 (o portão de relevância tem
+    // um ramo numa tabela polimórfica, sem relação Prisma); a janela é a mesma.
+    expect(tickerServer).toContain('e.air_date >= $1::date AND e.air_date < $2::date')
+    expect(tickerServer).toContain('m.release_date >= $1::date AND m.release_date < $2::date')
+    expect(tickerServer).toContain('s.air_date >= $1::date AND s.air_date < $2::date')
+    expect(tickerServer).toMatch(/relevant(Episode|Movie|Season)Events\(prisma, dayStart, futureEnd\)/)
     expect(tickerServer).toMatch(/availableFrom: \{ gte: arrivalStart, lte: now \}/)
     // `season_number` REAL (nunca deduzido) e "especiais" (0) fora da estreia.
-    expect(tickerServer).toMatch(/seasonNumber: \{ gt: 0 \}/)
+    expect(tickerServer).toContain('AND s.season_number > 0')
     expect(tickerServer).toContain('seasonNumber: season.seasonNumber')
 
     // PROVEDOR: reusa o gate compartilhado (nunca uma segunda regra de licença)
