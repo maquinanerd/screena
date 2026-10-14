@@ -184,6 +184,14 @@ const HOME_WEBSITE_JSONLD = {
   publisher: { '@id': organizationId(SITE_URL) },
 }
 
+/**
+ * A HOME SÓ DESTACA TÍTULO QUE ESTÁ NO ÍNDICE (decisão do dono, 13/10/2026,
+ * depois da recusa do AdSense por "conteúdo de baixo valor"). Toda vitrine de
+ * título desta página — hero, faixa de novidades, "Popular essa semana",
+ * trilhos em alta e "Em breve" — passa pelo MESMO portão de relevância do
+ * sitemap (`src/server/showcase-relevance.ts`). A regra mora nos getters, e vale
+ * igual em `/pt/filmes`, `/pt/series` e `/pt/explorar`.
+ */
 async function getHomeData() {
   const [
     catalog,
@@ -197,8 +205,8 @@ async function getHomeData() {
     getHomeCatalogData(),
     getNewsIndexData(),
     // A home é a UNIÃO: escopo `home` mantém a composição canônica (filmes por
-    // ano desc, depois séries) e as duas bandas ligadas. Nada aqui é filtrado —
-    // e o trilho "Em breve" segue a mesma regra, com o dataset misto.
+    // ano desc, depois séries) e as duas bandas ligadas — e o trilho "Em breve"
+    // segue a mesma regra, com o dataset misto.
     getHomeHeroSlides('home'),
     getHomeUpcomingMixed(),
     getHomeTickerItems('home'),

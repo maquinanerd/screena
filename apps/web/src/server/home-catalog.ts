@@ -27,6 +27,7 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { resolveEditorialScores, scoreFields } from "./editorial-score";
+import { relevantTitleIds } from "./showcase-relevance";
 import {
   getTrendingSnapshot,
   orderByTrending,
@@ -123,6 +124,20 @@ export interface HomeCatalogData {
   seriesTrendingAbsence: TrendingAbsenceReason | null;
 }
 
+/**
+ * Ids do trending que podem ir à vitrine, na ordem recebida: só título que está
+ * no índice (decisão do dono, 13/10/2026). O trending é GLOBAL, e um título em
+ * alta no mundo pode responder `noindex` aqui pelo portão de relevância.
+ */
+async function showcaseIds(
+  prisma: ReturnType<typeof getPrismaClient>,
+  entityType: "movie" | "tv",
+  ids: bigint[],
+): Promise<bigint[]> {
+  const relevant = await relevantTitleIds(prisma, entityType, ids);
+  return ids.filter((id) => relevant.has(id.toString()));
+}
+
 export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
   const prisma = getPrismaClient();
   const snapshot = await getTrendingSnapshot("movie", "day");
@@ -131,7 +146,7 @@ export const getHomeCatalogData = cache(async (): Promise<HomeCatalogData> => {
 
   // A ordem é a do trending, resolvida EM MEMÓRIA: SQL não sabe ordenar por uma
   // lista de ids sem um `CASE` gerado, e o conjunto é um topo de 20.
-  const trendingIds = movieIdentity.ids;
+  const trendingIds = await showcaseIds(prisma, "movie", movieIdentity.ids);
   const rows =
     trendingIds.length === 0
       ? []
@@ -200,7 +215,7 @@ async function trendingSeriesCards(
 ): Promise<{ cards: EntityCard[]; absence: TrendingAbsenceReason | null }> {
   const snapshot = await getTrendingSnapshot("tv", "week");
   const identity = await canonicalIdentity("tv", snapshot.entityIds);
-  const trendingIds = identity.ids;
+  const trendingIds = await showcaseIds(prisma, "tv", identity.ids);
   const rows =
     trendingIds.length === 0
       ? []

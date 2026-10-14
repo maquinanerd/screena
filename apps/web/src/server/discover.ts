@@ -21,6 +21,7 @@ import { cache } from 'react'
 import { getPrismaClient } from '@screena/db/server'
 
 import { licensedWatchWhere } from './entity-watch'
+import { relevantTitleIds } from './showcase-relevance'
 import {
   getTrendingSnapshot,
   orderByTrending,
@@ -202,7 +203,7 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
         }),
   ])
 
-  const raw: RawEntity[] = [
+  const candidatos: RawEntity[] = [
     ...[...movies, ...movieExtra].map(
       (movie): RawEntity => ({
         entityType: 'movie',
@@ -228,6 +229,27 @@ export const getDiscoverData = cache(async (): Promise<DiscoverData> => {
       }),
     ),
   ]
+
+  // SO TITULO QUE ESTA NO INDICE (decisao do dono, 13/10/2026). O destaque, "Em
+  // Alta" e "Populares" saem desta lista — trending e popularidade sao GLOBAIS
+  // no TMDB, e um titulo pode responder `noindex` aqui pelo portao de
+  // relevancia. A lista e curta (24 por tipo + o trending), entao filtrar antes
+  // de montar as vitrines nao esvazia nada que o banco pudesse completar.
+  const [filmesNoIndice, seriesNoIndice] = await Promise.all([
+    relevantTitleIds(
+      prisma,
+      'movie',
+      candidatos.filter((entity) => entity.entityType === 'movie').map((entity) => entity.id),
+    ),
+    relevantTitleIds(
+      prisma,
+      'tv',
+      candidatos.filter((entity) => entity.entityType === 'tv').map((entity) => entity.id),
+    ),
+  ])
+  const raw = candidatos.filter((entity) =>
+    (entity.entityType === 'movie' ? filmesNoIndice : seriesNoIndice).has(entity.id.toString()),
+  )
   if (raw.length === 0)
     return { featured: null, emAlta: [], populares: [], emAltaAbsence: emAltaSnapshotAbsence }
 

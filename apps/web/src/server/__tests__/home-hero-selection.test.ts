@@ -74,10 +74,24 @@ interface FakeOptions {
   readonly trending?: readonly bigint[];
   /** Linhas vigentes de curadoria, já na ordem de `position`. */
   readonly curated?: readonly { entityType: string; entityId: bigint }[];
+  /**
+   * Ids que o PORTÃO DE RELEVÂNCIA aprova (só a home pergunta). Ausente, aprova
+   * todos: os casos acima medem o portão de QUALIDADE, não o de relevância.
+   */
+  readonly relevant?: readonly bigint[];
 }
 
 function fakePrisma(options: FakeOptions = {}): Parameters<typeof loadHeroSlides>[0] {
   const movies = options.movies ?? [DER_LIEBESBRIEF, BLOCKBUSTER, MEDIANO];
+  /** O SQL do portão de relevância (`showcase-relevance.ts`) pergunta por uma lista. */
+  const relevance = (params: unknown[]) => {
+    const pedidos = params[0] as string[];
+    const aprovados =
+      options.relevant === undefined
+        ? pedidos
+        : pedidos.filter((id) => options.relevant!.some((ok) => ok.toString() === id));
+    return aprovados.map((id) => ({ id: BigInt(id) }));
+  };
   return {
     /**
      * O PRE-FILTRO EM SQL, no fake: devolve TODOS os ids da fixture.
@@ -90,13 +104,15 @@ function fakePrisma(options: FakeOptions = {}): Parameters<typeof loadHeroSlides
      * e um portao afrouxado passaria despercebido enquanto a copia continuasse
      * rigorosa.
      */
-    $queryRawUnsafe: (sql: string) =>
+    $queryRawUnsafe: (sql: string, ...params: unknown[]) =>
       Promise.resolve(
-        /count\(\*\)/.test(sql)
-          ? [{ com_slug: 0n }]
-          : sql.includes("tv_shows")
-            ? []
-            : movies.map((m) => ({ id: m.id })),
+        sql.includes("ANY($1::bigint[])")
+          ? relevance(params)
+          : /count\(\*\)/.test(sql)
+            ? [{ com_slug: 0n }]
+            : sql.includes("tv_shows")
+              ? []
+              : movies.map((m) => ({ id: m.id })),
       ),
     slug: {
       findMany: ({ where }: { where: { entityType: "movie" | "tv" } }) =>
@@ -282,5 +298,45 @@ describe("critério de seleção do hero", () => {
 
     expect(slides).toHaveLength(2);
     expect(slides[0]?.imageUrl).toContain("backdrop-2.jpg");
+  });
+});
+
+/**
+ * O DESTAQUE SO APONTA PARA TITULO QUE ESTA NO INDICE (decisao do dono,
+ * 13/10/2026), na home e nas categorias. O piso de votos do hero (200) e mais
+ * baixo que o do indice (500): um titulo de fora dos EUA/Brasil com 300 votos
+ * passava no hero e respondia `noindex` na propria ficha.
+ */
+describe("portao de relevancia no hero", () => {
+  it("(13) titulo fora do indice NAO abre a home nem /pt/filmes", async () => {
+    // O Blockbuster abriria (mais votado), mas so o Mediano esta no indice.
+    const opcoes = { relevant: [3n] } as const;
+
+    for (const scope of ["home", "movies"] as const) {
+      const slides = await loadHeroSlides(fakePrisma(opcoes), scope, NOW);
+      expect(slides.map((s) => s.title), scope).toEqual(["Mediano"]);
+    }
+  });
+
+  it("(13b) CONTROLE: com a chave de emergencia desligando o portao, ele volta", async () => {
+    const previous = process.env.CINERIE_RELEVANCE_GATE;
+    process.env.CINERIE_RELEVANCE_GATE = "off";
+    try {
+      const slides = await loadHeroSlides(fakePrisma({ relevant: [3n] }), "home", NOW);
+      expect(slides.map((s) => s.title)).toEqual(["Blockbuster", "Mediano"]);
+    } finally {
+      if (previous === undefined) delete process.env.CINERIE_RELEVANCE_GATE;
+      else process.env.CINERIE_RELEVANCE_GATE = previous;
+    }
+  });
+
+  it("(14) a curadoria manual NAO passa pelo portao de relevancia", async () => {
+    const slides = await loadHeroSlides(
+      // Nenhum titulo esta no indice; o dono fixou o Blockbuster mesmo assim.
+      fakePrisma({ relevant: [], curated: [{ entityType: "movie", entityId: 2n }] }),
+      "home",
+      NOW,
+    );
+    expect(slides.map((s) => s.title)).toEqual(["Blockbuster"]);
   });
 });
