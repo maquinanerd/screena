@@ -3,7 +3,7 @@
 > Operacional. Cobre backup lógico do PostgreSQL, teste de restore com
 > **fidelidade de dados**, agendamento, alertas e o rollback real de schema
 > (que, sem down-migrations, é o restore de dump). Toda ferramenta citada existe
-> no repositório e é exercitada na CI.
+> no repositório e é exercitada na CI local (`.\scripts\ci.ps1 backup`).
 
 ---
 
@@ -164,10 +164,12 @@ pg_restore --no-owner --no-acl --exit-on-error --dbname="postgresql://.../screen
 
 ---
 
-## 7. Prova automatizada na CI
+## 7. Prova automatizada na CI local
 
-O job **`backup-restore`** (`.github/workflows/ci.yml`) sobe um PostgreSQL 16
-real, aplica migrations + seed, e roda `verify-backup-restore.sh`:
+O job **`backup-restore`** da CI local (`scripts/ci/steps.mjs`; rode com
+`.\scripts\ci.ps1 backup`) sobe um PostgreSQL 16 real num container, aplica
+migrations + seed e roda `verify-backup-restore.sh` dentro do executor Linux
+(`scripts/ci/linux/runner.Dockerfile`, que traz o cliente PostgreSQL 16):
 
 1. `backup.sh` gera dump + checksum;
 2. `restore-test.sh` (script enviado) restaura e **compara** o banco restaurado
@@ -187,5 +189,7 @@ exigindo exit != 0 **com** o diagnóstico correspondente. Sem esse passo, nada
 impediria a comparação de voltar a ser um `echo` de contagens.
 
 Isto é execução **real** de backup+restore — não checagem de sintaxe. Na
-máquina de dev Windows o `pg_dump`/`pg_restore`/`psql` não estão disponíveis
-(e o Docker pode estar desligado); por isso a prova de execução vive na CI.
+máquina de dev Windows o `pg_dump`/`pg_restore`/`psql` não precisam estar
+instalados: o job roda no container Linux da CI local, e só exige o Docker
+Desktop ligado. Até 2026-10 esta prova rodava no GitHub Actions; ver
+[`docs/CI-MIGRATION-LOCAL.md`](../CI-MIGRATION-LOCAL.md).

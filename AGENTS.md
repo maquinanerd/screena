@@ -40,6 +40,8 @@ Use preferencialmente `corepack pnpm ...` para garantir a versão fixada de pnpm
 
 **Antes de abrir qualquer PR, o agente deve rodar e deixar verdes:** `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build`. Mudança que quebra uma invariante **não** vira PR sem revisão humana explícita.
 
+**O GitHub Actions não roda mais (desde 2026-10-14).** Os comandos acima são encadeados pela CI local: `node scripts/ci/pipeline.mjs padrao` (no Windows, `.\scripts\ci.ps1`). Mudança em banco, validador `*-real-postgres`, CMS ou projeção editorial exige o perfil `completo`; em `Dockerfile*`, `scripts/container/` ou `scripts/backup/`, os perfis `docker`/`backup`. Ver `docs/LOCAL-DEVELOPMENT.md` e a seção "CI local" do `CLAUDE.md`.
+
 ---
 
 ## Convenções de código e estrutura

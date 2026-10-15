@@ -1,3 +1,13 @@
+# REFERENCIA HISTORICA - este arquivo NAO e executado.
+#
+# Era o .github/workflows/ci.yml do GitHub Actions ate 2026-10-14. Saiu de
+# .github/workflows/ para o GitHub nao rodar mais nada: a CI passou a rodar na
+# maquina local. Os passos vivem agora em scripts/ci/steps.mjs (fonte unica),
+# executados por scripts/ci/pipeline.mjs (.\scripts\ci.ps1). O mapa passo a
+# passo esta em docs/CI-MIGRATION-LOCAL.md.
+#
+# Mantido para auditar a equivalencia. Nao o edite: mude scripts/ci/steps.mjs.
+
 name: CI
 
 on:
