@@ -1,0 +1,5 @@
+#!/bin/sh
+# pre-commit versionado da Cinerie: eslint so nos arquivos staged (segundos).
+# Liga com `corepack pnpm run hooks:install`. Pular uma vez: `git commit --no-verify`.
+[ "${CINERIE_SKIP_HOOKS:-}" = "1" ] && { echo "pre-commit: CINERIE_SKIP_HOOKS=1, pulando"; exit 0; }
+exec node scripts/ci/pipeline.mjs pre-commit

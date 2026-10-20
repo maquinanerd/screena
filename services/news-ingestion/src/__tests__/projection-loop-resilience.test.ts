@@ -45,6 +45,24 @@ const POLL_MS = 1_000 // piso aceito por `resolveProjectionWorkerConfig`
 const REQUEST_TIMEOUT_MS = 1_000
 const CYCLES_REQUIRED = 3
 
+/**
+ * SUBIDA A FRIO e MEDIDA DOS CICLOS sao janelas SEPARADAS.
+ *
+ * Ate 2026-10-14 as janelas de 20-25 s contavam desde o `spawn`, entao incluiam
+ * o `node --import tsx` compilando o grafo de imports do entrypoint. Numa
+ * maquina Windows dividida com outros processos isso estourava sozinho: "so
+ * houve 0 ciclo(s)" — o worker nem tinha subido. Reproduzido com o cache do tsx
+ * frio e 32 processos ocupando a CPU: 5 de 8 casos falhavam; isolados, passam.
+ *
+ * Agora cada caso espera a porta de saude abrir (o health server sobe ANTES do
+ * loop, em `bin/project-editorial.ts`) e so entao mede os ciclos, com as mesmas
+ * janelas de antes. A prova nao muda: um worker que morresse no primeiro ciclo
+ * continua reprovando — ele abre a porta, faz um `claim` e nao chega ao terceiro.
+ * Numa maquina folgada a subida leva poucos segundos; o teto so e gasto quando
+ * ela esta lenta.
+ */
+const STARTUP_TIMEOUT_MS = 90_000
+
 /* ------------------------------------------------------------------ */
 /* Harness                                                             */
 /* ------------------------------------------------------------------ */
@@ -193,6 +211,34 @@ async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
   return false
 }
 
+/**
+ * Sobe o worker e espera a porta de saude: e o fim da subida a frio. Para cedo
+ * se o processo morrer antes, e a mensagem diz que o problema foi a SUBIDA, nao
+ * o loop.
+ */
+async function startWorkerUp(options: {
+  readonly cmsPort: number
+  readonly healthPort: number
+}): Promise<RunningWorker> {
+  const started = await startWorker(options)
+  // Registrado ANTES de esperar: se a subida reprovar, o afterEach ainda mata o filho.
+  worker = started
+  const deadline = Date.now() + STARTUP_TIMEOUT_MS
+  let up = false
+  while (!up && started.isAlive() && Date.now() < deadline) {
+    up = await waitForPort(started.healthPort, 500)
+  }
+  expect(
+    up,
+    started.isAlive()
+      ? `o worker nao abriu a porta de saude em ${String(STARTUP_TIMEOUT_MS / 1000)} s ` +
+          `(subida a frio, antes de qualquer ciclo):\n${started.output()}`
+      : `o worker MORREU antes de a porta de saude responder ` +
+          `(exit ${String(started.child.exitCode)}):\n${started.output()}`,
+  ).toBe(true)
+  return started
+}
+
 /* ------------------------------------------------------------------ */
 /* Os testes                                                           */
 /* ------------------------------------------------------------------ */
@@ -218,7 +264,7 @@ describe('o loop de projecao sobrevive a fila vazia', () => {
       // Este teste fixa isso como contrato para que ninguem o transforme em
       // erro fatal ao "endurecer" o worker depois.
       cms = await startFakeCms('empty')
-      worker = await startWorker({ cmsPort: cms.port, healthPort: await freePort() })
+      worker = await startWorkerUp({ cmsPort: cms.port, healthPort: await freePort() })
 
       const ciclos = await waitFor(
         () => (cms?.claims() ?? 0) >= CYCLES_REQUIRED,
@@ -232,7 +278,7 @@ describe('o loop de projecao sobrevive a fila vazia', () => {
       expect(worker.output()).not.toContain('ciclo FALHOU')
       expect(worker.output()).not.toContain('erro fatal')
     },
-    30_000,
+    STARTUP_TIMEOUT_MS + 30_000,
   )
 
   it(
@@ -240,9 +286,7 @@ describe('o loop de projecao sobrevive a fila vazia', () => {
     async () => {
       cms = await startFakeCms('empty')
       const healthPort = await freePort()
-      worker = await startWorker({ cmsPort: cms.port, healthPort })
-
-      expect(await waitForPort(healthPort, 20_000)).toBe(true)
+      worker = await startWorkerUp({ cmsPort: cms.port, healthPort })
       await waitFor(() => (cms?.claims() ?? 0) >= 1, 10_000)
 
       const loop = (await readyzChecks(healthPort)).find(
@@ -251,7 +295,7 @@ describe('o loop de projecao sobrevive a fila vazia', () => {
       expect(loop, 'o /readyz nao reporta o loop').toBeDefined()
       expect(loop?.status).toBe('ok')
     },
-    30_000,
+    STARTUP_TIMEOUT_MS + 30_000,
   )
 })
 
@@ -268,7 +312,7 @@ describe('o loop de projecao sobrevive a falha do CMS', () => {
       `${modo.nome}: falha em ${String(CYCLES_REQUIRED)} ciclos e o processo continua vivo`,
       async () => {
         cms = await startFakeCms(modo.behavior)
-        worker = await startWorker({ cmsPort: cms.port, healthPort: await freePort() })
+        worker = await startWorkerUp({ cmsPort: cms.port, healthPort: await freePort() })
 
         const ciclos = await waitFor(() => (cms?.claims() ?? 0) >= CYCLES_REQUIRED, 25_000)
 
@@ -281,7 +325,7 @@ describe('o loop de projecao sobrevive a falha do CMS', () => {
         expect(worker.output()).toContain(modo.codigo)
         expect(worker.output()).not.toContain('erro fatal')
       },
-      40_000,
+      STARTUP_TIMEOUT_MS + 40_000,
     )
   }
 
@@ -291,7 +335,7 @@ describe('o loop de projecao sobrevive a falha do CMS', () => {
       // Sem CMS nenhum: e o cenario de deploy, quando o worker sobe antes do
       // CMS. Era ele que produzia o crash-loop logo apos cada publicacao.
       const portaMorta = await freePort()
-      worker = await startWorker({ cmsPort: portaMorta, healthPort: await freePort() })
+      worker = await startWorkerUp({ cmsPort: portaMorta, healthPort: await freePort() })
 
       const falhas = await waitFor(
         () =>
@@ -303,7 +347,7 @@ describe('o loop de projecao sobrevive a falha do CMS', () => {
       expect(worker.isAlive(), `o processo morreu:\n${worker.output()}`).toBe(true)
       expect(worker.output()).toContain('cms_unreachable_econnrefused')
     },
-    40_000,
+    STARTUP_TIMEOUT_MS + 40_000,
   )
 })
 
@@ -315,9 +359,7 @@ describe('falha persistente aparece no /readyz em vez de matar o processo', () =
       // silencio". O worker sobrevive, mas DECLARA que nao esta projetando.
       cms = await startFakeCms('http500')
       const healthPort = await freePort()
-      worker = await startWorker({ cmsPort: cms.port, healthPort })
-
-      expect(await waitForPort(healthPort, 20_000)).toBe(true)
+      worker = await startWorkerUp({ cmsPort: cms.port, healthPort })
       await waitFor(() => (cms?.claims() ?? 0) >= 4, 25_000)
 
       const loop = (await readyzChecks(healthPort)).find(
@@ -332,7 +374,7 @@ describe('falha persistente aparece no /readyz em vez de matar o processo', () =
       expect(await healthzStatus(healthPort)).toBe(200)
       expect(worker.isAlive()).toBe(true)
     },
-    45_000,
+    STARTUP_TIMEOUT_MS + 45_000,
   )
 
   it(
@@ -340,9 +382,7 @@ describe('falha persistente aparece no /readyz em vez de matar o processo', () =
     async () => {
       cms = await startFakeCms('http500')
       const healthPort = await freePort()
-      worker = await startWorker({ cmsPort: cms.port, healthPort })
-
-      expect(await waitForPort(healthPort, 20_000)).toBe(true)
+      worker = await startWorkerUp({ cmsPort: cms.port, healthPort })
       await waitFor(() => (cms?.claims() ?? 0) >= 2, 20_000)
 
       const body = JSON.stringify(await readyzChecks(healthPort))
@@ -351,6 +391,6 @@ describe('falha persistente aparece no /readyz em vez de matar o processo', () =
       }
       expect(body).toContain('projection_loop') // controle positivo
     },
-    40_000,
+    STARTUP_TIMEOUT_MS + 40_000,
   )
 })

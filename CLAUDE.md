@@ -171,10 +171,29 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 
 - **Fases pequenas**: uma issue -> uma branch -> um PR pequeno e revisavel. Nada de PR gigante.
 - **Branches**: parta da branch base; nomeie por escopo (ex.: `feat/seo-indexability`, `chore/schemas-ratings`).
-- **Testes**: cada utilitario puro chega com teste (Vitest). As invariantes tem testes em `tests/governance/`. Rode `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build` antes de abrir PR.
+- **Testes**: cada utilitario puro chega com teste (Vitest). As invariantes tem testes em `tests/governance/`. Antes de abrir PR, rode a CI local (abaixo): ela encadeia `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm audit:invariants`, `pnpm audit:render` e `pnpm build`, entre outros.
 - **Commits/PRs**: descreva o "porque". Aponte qual invariante o codigo respeita ou protege.
 - **Revisao HUMANA obrigatoria** para: decisoes de **licenca** (o que pode ou nao aparecer), **indexacao em massa** (mudar muitas paginas para index/noindex) e **publicacao** de conteudo (`published`). Agente nunca decide isso sozinho.
-- Nao chame APIs externas, nao rode Gemini real e nao publique conteudo automaticamente. Builds/testes locais sao esperados quando a tarefa pedir validacao.
+- Nao chame APIs externas, nao rode Gemini real e nao publique conteudo automaticamente. Builds/testes locais sao esperados em toda tarefa que mude codigo (ver CI local abaixo).
+
+### CI local — obrigatoria antes de dar uma tarefa por concluida _(desde 2026-10-14)_
+
+**O GitHub nao roda mais CI.** Nao existe arquivo em `.github/workflows/`; o antigo workflow esta em `docs/ci-legacy/` so como referencia. Nenhuma validacao depende do GitHub: ela roda nesta maquina. Fonte unica dos passos: `scripts/ci/steps.mjs`. Guia: [`docs/LOCAL-DEVELOPMENT.md`](docs/LOCAL-DEVELOPMENT.md).
+
+Antes de considerar qualquer tarefa que mude codigo como concluida:
+
+1. Rode a CI local: `.\scripts\ci.ps1` (perfil `padrao`) ou `node scripts/ci/pipeline.mjs padrao`.
+2. Se falhar, corrija e rode de novo (`-From <passo>` retoma do passo que falhou).
+3. So declare concluido com lint, typecheck, testes e build **verdes**, e cite o perfil e o resultado na resposta e na descricao do PR.
+
+Escolha do perfil:
+
+- `rapido` — o minimo (typecheck, lint, test, auditorias, build do web). E o hook pre-push.
+- `padrao` — o default para qualquer mudanca de codigo.
+- `completo` — obrigatorio quando a mudanca toca banco, migration, validador `*-real-postgres`, CMS, projecao editorial, sitemap/indexabilidade com SQL, ou rotas que esses validadores cobrem. Roda no container Linux (Docker Desktop).
+- `backup` / `docker` — quando a mudanca toca `scripts/backup/`, `Dockerfile*`, `scripts/container/`, healthcheck ou o comando de start de um servico. `tudo` roda os tres jobs do antigo workflow.
+
+Nao considere codigo pronto se lint, typecheck, testes ou build falharem. Falha de AMBIENTE (Docker desligado, ferramenta ausente) nao vira "passou": diga qual perfil nao rodou e por que, e rode `.\scripts\doctor.ps1`. Docs-only pode pular a CI, desde que isso seja dito.
 
 ## 7. Ponteiros (regras, skills, agentes)
 

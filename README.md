@@ -149,6 +149,32 @@ Parar o banco: `docker compose -f docker-compose.dev.yml down` · Resetar e apag
 
 ---
 
+## Local CI
+
+O GitHub não roda CI neste repositório: ele guarda o código, as branches e os
+pull requests. Lint, typecheck, testes, build, validadores com PostgreSQL efêmero,
+backup/restore e as provas das imagens Docker rodam **na sua máquina**.
+
+```powershell
+.\scripts\doctor.ps1        # confere o ambiente (Node, pnpm, Git, Docker...)
+.\scripts\ci.ps1            # CI local, perfil padrao: para no primeiro erro, sai 0/1
+```
+
+| Perfil | Comando | Quando |
+| --- | --- | --- |
+| `rapido` | `.\scripts\ci.ps1 rapido` · `corepack pnpm run prepush` | antes de todo push (é o hook pre-push) |
+| `padrao` | `.\scripts\ci.ps1` · `corepack pnpm run ci` | qualquer mudança de código |
+| `completo` | `.\scripts\ci.ps1 completo` · `corepack pnpm run ci:full` | banco, migrations, CMS, validadores PostgreSQL (container Linux) |
+| `tudo` | `.\scripts\ci.ps1 tudo` · `corepack pnpm run ci:all` | antes de deploy: os três jobs do antigo workflow |
+
+Também: `backup`, `docker`, `-List`, `-Only`, `-From`, `-Skip`, `-Container`,
+hooks de git opcionais (`corepack pnpm run hooks:install`) e limpeza manual
+(`.\scripts\clean.ps1`). Guia completo em
+[`docs/LOCAL-DEVELOPMENT.md`](docs/LOCAL-DEVELOPMENT.md); o diagnóstico da
+migração do GitHub Actions em [`docs/CI-MIGRATION-LOCAL.md`](docs/CI-MIGRATION-LOCAL.md).
+
+---
+
 ## Invariantes
 
 As invariantes inegociáveis que governam o produto. A íntegra vive em `CLAUDE.md` e `.claude/rules`. Duas mudaram de política e estão marcadas abaixo.

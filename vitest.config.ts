@@ -31,6 +31,19 @@ export default defineConfig({
       '**/*.integration.test.ts',
     ],
     environment: 'node',
+    // TIMEOUTS PARA PEGAR TRAVAMENTO, NAO PARA MEDIR VELOCIDADE. Os padroes do
+    // vitest (5 s por teste, 10 s por hook) eram um teto de desempenho
+    // disfarcado: medido em 2026-10-14, numa maquina Windows dividida com outros
+    // processos (12 processos ocupando 8 nucleos), a suite inteira levou 22 min e
+    // reprovou SEIS guardas que varrem a arvore de arquivos
+    // (`no-write-endpoints`, `readonly-guard`, `qa-page`,
+    // `admin-visibility-mirror`, `ingestion-person-slug`, `seed-filter-scope`) e
+    // `editorial-bulk-actions-guard`/`raw-store-contract` por estouro de tempo —
+    // isolados, todos passam em menos de 1,5 s. Nenhum teste afirma rapidez pelo
+    // timeout padrao; um teste que TRAVA continua reprovando, so que depois.
+    // Quem precisa de outra janela declara a propria (os de integracao declaram).
+    testTimeout: 30_000,
+    hookTimeout: 60_000,
   },
   // JSX pelo runtime AUTOMATICO — o mesmo do Next. Sem isto o esbuild usa o
   // transform classico e emite `React.createElement` em arquivos que (como todo
