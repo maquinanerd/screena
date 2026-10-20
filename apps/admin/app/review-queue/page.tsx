@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { BulkActionPanel, type BulkBoundAction } from "../../src/components/bulk-action-panel";
+import { ContentBlockWarningsInline } from "../../src/components/content-block-warnings";
 import {
   EditorialActionsDisabledNotice,
   EditorialFeedbackBanner,
@@ -23,6 +24,10 @@ import { getReviewQueueData, type QueueItem, type QueueSection } from "../../src
  * Server Actions allowlisted, ate 20 itens, atras da flag
  * ADMIN_EDITORIAL_ACTIONS_ENABLED. Demais seccoes seguem read-only. Sem `<form>`/
  * `<input>` cru na pagina (ficam no `BulkActionPanel`). `force-dynamic`.
+ *
+ * Cada content_block mostra, abaixo da linha, os avisos que o Entity Writer gravou
+ * em `warnings_json` — num bloco pendente, o motivo de ele ter caido em
+ * `needs_review`. So exibicao: nao entra no formulario nem muda status.
  */
 export const dynamic = "force-dynamic";
 
@@ -39,6 +44,7 @@ function toBulkItems(items: readonly QueueItem[]) {
     statusLabel: item.levelLabel,
     primaryIssue: item.primaryIssue,
     href: item.href,
+    warnings: item.warnings,
   }));
 }
 
@@ -60,6 +66,7 @@ function ReadOnlyList({ items }: { items: readonly QueueItem[] }): ReactNode {
           <a className="admin-link-action" href={item.href}>
             Revisar
           </a>
+          <ContentBlockWarningsInline warnings={item.warnings} />
         </li>
       ))}
     </ul>

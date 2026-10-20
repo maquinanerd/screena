@@ -61,9 +61,16 @@ Estas 13 invariantes sao a lei do projeto. Nao reescreva o sentido delas; cite-a
      pagina (`evaluateRelevanceGate`) e no SQL do sitemap. Volta sozinho ao
      indice quando o titulo ganha 500 votos, oferta BR ou pais EUA/BR. So a
      chave de EMERGENCIA `CINERIE_RELEVANCE_GATE=off` (runtime, nunca
-     build-arg) desliga. Nao autoriza apagar nem mexer em home, listagens,
-     busca ou no portao de pessoa. Registro:
+     build-arg) desliga. Nao autoriza apagar nem mexer em listagens, busca ou
+     no portao de pessoa. Registro:
      [`DECISOES-DO-DONO-2026-09-24.md`](docs/seo/DECISOES-DO-DONO-2026-09-24.md).
+     **Desde 13/10/2026 as VITRINES usam o mesmo portao** (hero, faixa de
+     novidades, rankings, trilhos em alta, "Em breve", "Mais aguardados") na
+     home, em `/pt/filmes`, `/pt/series`, `/pt/explorar` e `/pt/em-breve`: so
+     destacam titulo que esta no indice (`apps/web/src/server/showcase-relevance.ts`).
+     Nao muda `index`/`noindex` de pagina nenhuma. Registro, com a decisao de
+     manter os episodios no indice:
+     [`DECISOES-DO-DONO-2026-10-13.md`](docs/seo/DECISOES-DO-DONO-2026-10-13.md).
 6. **Dados sem licenca clara** (`license_status` unknown/blocked ou `display_allowed=false`) nao aparecem em pagina indexavel.
 7. **pt-BR publica primeiro** — `en` e `es` sao publicados e indexados quando completos (dado + i18n de UI + hreflang), controlados por **PUBLISHED_LOCALES**; nao nascem mais permanentemente noindex. _(politica atualizada 2026-07)_
 8. **Sem pirataria** — nada de torrent, IPTV, player ilegal, link de download ou embed pirata.

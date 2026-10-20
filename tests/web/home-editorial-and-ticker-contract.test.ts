@@ -222,9 +222,11 @@ describe('faixa amarela — carrossel de novidades reais', () => {
   })
 
   it('o loader agrega QUATRO fontes reais e nenhuma delas é inventada', () => {
-    expect(server).toContain('prisma.episode.findMany')
-    expect(server).toContain('prisma.movie.findMany')
-    expect(server).toContain('prisma.season.findMany')
+    // Episódio, estreia e temporada são SQL desde 13/10/2026 (portão de
+    // relevância, decisão do dono): as tabelas de origem continuam as mesmas.
+    expect(server).toMatch(/FROM episodes e\s+JOIN seasons s/)
+    expect(server).toMatch(/FROM movies m\s+WHERE m\.release_date/)
+    expect(server).toMatch(/FROM seasons s\s+JOIN tv_shows t/)
     expect(server).toContain('prisma.watchAvailability.findMany')
   })
 

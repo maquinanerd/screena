@@ -31,6 +31,7 @@ import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
 import { licensedWatchWhere } from "./entity-watch";
+import { relevanceSql } from "./showcase-relevance";
 import {
   formatEventDate,
   HOME_TICKER_ARRIVAL_WINDOW_DAYS,
@@ -123,6 +124,144 @@ function entityKey(entityType: HomeTickerEntityType, entityId: bigint | string):
 /** `YYYY-MM-DD` em UTC — a coluna é `@db.Date`; não alegamos hora. */
 function toDateIso(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/** Linha de episódio na forma que a montagem lê (a mesma do `select` Prisma). */
+interface EpisodeEventRow {
+  tvShowId: bigint;
+  episodeNumber: number;
+  name: string | null;
+  airDate: Date | null;
+  season: { seasonNumber: number; tvShow: { nameOriginal: string } };
+}
+
+/** Linha de estreia de filme na forma que a montagem lê. */
+interface MovieEventRow {
+  id: bigint;
+  titleOriginal: string;
+  releaseDate: Date | null;
+}
+
+/** Linha de estreia de temporada na forma que a montagem lê. */
+interface SeasonEventRow {
+  tvShowId: bigint;
+  seasonNumber: number;
+  airDate: Date | null;
+  tvShow: { nameOriginal: string };
+}
+
+/**
+ * ============================================================================
+ * A FAIXA SÓ ANUNCIA TÍTULO QUE ESTÁ NO ÍNDICE (decisão do dono, 13/10/2026)
+ * ============================================================================
+ * Medido no ar em 13/10/2026: o "NOVO" da home era "Ukryta prawda · T29 · E32 ·
+ * novo episódio hoje" — novela polonesa cuja ficha responde `noindex, follow`
+ * pelo portão de relevância de 24/09 — e o de `/pt/filmes` era um filme japonês
+ * sem título em português. A descoberta ordena por data e depois por id, então
+ * quem exibe episódio TODO DIA (novela, talk show) ocupava a faixa por
+ * frequência, e não por interesse. Vale para os três escopos (home, filmes,
+ * séries).
+ *
+ * O portão entra NA CONSULTA, e não num `.filter()` depois: o teto
+ * (`EVENT_FETCH_LIMIT`) corta antes, e filtrar a saída devolveria uma faixa
+ * vazia num dia de muitas novelas. Por isso estas três consultas são SQL — o
+ * ramo "oferta no Brasil" do portão é uma tabela polimórfica, sem relação
+ * Prisma que o `where` alcance. A ordem e as janelas são as de antes; a data vai
+ * como `YYYY-MM-DD` para que o fuso da sessão nunca desloque o dia. A chegada ao
+ * streaming não precisa disto: ela já exige oferta licenciada no Brasil, que é
+ * um dos ramos do portão.
+ */
+async function relevantEpisodeEvents(
+  prisma: PrismaClient,
+  from: Date,
+  to: Date,
+): Promise<EpisodeEventRow[]> {
+  const params: unknown[] = [toDateIso(from), toDateIso(to)];
+  const relevance = relevanceSql("tv", "t", params);
+  params.push(EVENT_FETCH_LIMIT);
+  const rows = await prisma.$queryRawUnsafe<
+    {
+      tv_show_id: bigint;
+      episode_number: number;
+      name: string | null;
+      air_date: Date | null;
+      season_number: number;
+      name_original: string;
+    }[]
+  >(
+    `SELECT e.tv_show_id, e.episode_number, e.name, e.air_date, s.season_number, t.name_original
+       FROM episodes e
+       JOIN seasons s ON s.id = e.season_id
+       JOIN tv_shows t ON t.id = e.tv_show_id
+      WHERE e.air_date >= $1::date AND e.air_date < $2::date
+        AND ${relevance}
+      ORDER BY e.air_date ASC, e.tv_show_id ASC, e.episode_number ASC
+      LIMIT $${params.length}`,
+    ...params,
+  );
+  return rows.map((row) => ({
+    tvShowId: row.tv_show_id,
+    episodeNumber: row.episode_number,
+    name: row.name,
+    airDate: row.air_date,
+    season: { seasonNumber: row.season_number, tvShow: { nameOriginal: row.name_original } },
+  }));
+}
+
+async function relevantMovieEvents(
+  prisma: PrismaClient,
+  from: Date,
+  to: Date,
+): Promise<MovieEventRow[]> {
+  const params: unknown[] = [toDateIso(from), toDateIso(to)];
+  const relevance = relevanceSql("movie", "m", params);
+  params.push(EVENT_FETCH_LIMIT);
+  const rows = await prisma.$queryRawUnsafe<
+    { id: bigint; title_original: string; release_date: Date | null }[]
+  >(
+    `SELECT m.id, m.title_original, m.release_date
+       FROM movies m
+      WHERE m.release_date >= $1::date AND m.release_date < $2::date
+        AND ${relevance}
+      ORDER BY m.release_date ASC, m.id ASC
+      LIMIT $${params.length}`,
+    ...params,
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    titleOriginal: row.title_original,
+    releaseDate: row.release_date,
+  }));
+}
+
+async function relevantSeasonEvents(
+  prisma: PrismaClient,
+  from: Date,
+  to: Date,
+): Promise<SeasonEventRow[]> {
+  const params: unknown[] = [toDateIso(from), toDateIso(to)];
+  const relevance = relevanceSql("tv", "t", params);
+  params.push(EVENT_FETCH_LIMIT);
+  const rows = await prisma.$queryRawUnsafe<
+    { tv_show_id: bigint; season_number: number; air_date: Date | null; name_original: string }[]
+  >(
+    // `season_number = 0` é "especiais" no TMDB: não é estreia de temporada.
+    `SELECT s.tv_show_id, s.season_number, s.air_date, t.name_original
+       FROM seasons s
+       JOIN tv_shows t ON t.id = s.tv_show_id
+      WHERE s.air_date >= $1::date AND s.air_date < $2::date
+        AND s.season_number > 0
+        AND ${relevance}
+      ORDER BY s.air_date ASC, s.tv_show_id ASC, s.season_number ASC
+      LIMIT $${params.length}`,
+    ...params,
+  );
+  return rows.map((row) => ({
+    tvShowId: row.tv_show_id,
+    seasonNumber: row.season_number,
+    airDate: row.air_date,
+    tvShow: { nameOriginal: row.name_original },
+  }));
 }
 
 const WATCH_OFFER_SELECT = {
@@ -336,37 +475,11 @@ export const getHomeTickerItems = cache(async (
   ];
 
   const [episodes, movies, seasons, arrivals] = await Promise.all([
-    !wantsSeries ? Promise.resolve([]) : prisma.episode.findMany({
-      where: { airDate: { gte: dayStart, lt: futureEnd } },
-      take: EVENT_FETCH_LIMIT,
-      orderBy: [{ airDate: "asc" }, { tvShowId: "asc" }, { episodeNumber: "asc" }],
-      select: {
-        tvShowId: true,
-        episodeNumber: true,
-        name: true,
-        airDate: true,
-        // `season_number` é DERIVADO de seasons (o episódio não o armazena).
-        season: { select: { seasonNumber: true, tvShow: { select: { nameOriginal: true } } } },
-      },
-    }),
-    !wantsMovies ? Promise.resolve([]) : prisma.movie.findMany({
-      where: { releaseDate: { gte: dayStart, lt: futureEnd } },
-      take: EVENT_FETCH_LIMIT,
-      orderBy: [{ releaseDate: "asc" }, { id: "asc" }],
-      select: { id: true, titleOriginal: true, releaseDate: true },
-    }),
-    !wantsSeries ? Promise.resolve([]) : prisma.season.findMany({
-      // `season_number = 0` é "especiais" no TMDB: não é estreia de temporada.
-      where: { airDate: { gte: dayStart, lt: futureEnd }, seasonNumber: { gt: 0 } },
-      take: EVENT_FETCH_LIMIT,
-      orderBy: [{ airDate: "asc" }, { tvShowId: "asc" }, { seasonNumber: "asc" }],
-      select: {
-        tvShowId: true,
-        seasonNumber: true,
-        airDate: true,
-        tvShow: { select: { nameOriginal: true } },
-      },
-    }),
+    // Episódio, estreia e temporada passam pelo portão de relevância no SQL
+    // (ver `relevantEpisodeEvents`); a chegada ao streaming já é oferta BR.
+    wantsSeries ? relevantEpisodeEvents(prisma, dayStart, futureEnd) : Promise.resolve([]),
+    wantsMovies ? relevantMovieEvents(prisma, dayStart, futureEnd) : Promise.resolve([]),
+    wantsSeries ? relevantSeasonEvents(prisma, dayStart, futureEnd) : Promise.resolve([]),
     arrivalTypes.length === 0 ? Promise.resolve([]) : prisma.watchAvailability.findMany({
       where: {
         AND: [

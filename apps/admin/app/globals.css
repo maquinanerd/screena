@@ -895,6 +895,35 @@ code {
   border-top: 1px solid var(--admin-border);
 }
 
+/* Avisos de geracao do content_block (warnings_json), em linha propria abaixo
+   do item da fila (.admin-queue-item / .admin-bulk-row sao flex com wrap). */
+
+.admin-warnings-inline {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--admin-warn-text);
+}
+
+.admin-warnings-inline__title {
+  font-weight: 700;
+}
+
+.admin-warnings-inline__list {
+  margin: 4px 0 0;
+  padding: 0 0 0 18px;
+}
+
+.admin-warnings-inline__item {
+  word-break: break-word;
+}
+
+.admin-warnings-inline__more {
+  display: block;
+  margin-top: 2px;
+  color: var(--admin-muted);
+}
+
 /* ------------------------------------------------------------------ */
 /* Fase 7D — QA editorial dashboard                                    */
 /* ------------------------------------------------------------------ */

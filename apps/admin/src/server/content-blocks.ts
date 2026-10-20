@@ -12,6 +12,7 @@
 import { cache } from "react";
 import { getPrismaClient } from "@screena/db/server";
 
+import { parseContentBlockWarnings } from "../lib/content-block-warnings";
 import {
   ADMIN_LIST_LIMIT,
   classifyContentBlock,
@@ -38,6 +39,8 @@ export interface ContentBlockListRow {
   reviewStatus: string;
   updatedAtIso: string | null;
   status: ContentBlockAdminStatus;
+  /** Quantos avisos de geracao o bloco carrega (`warnings_json`, lido defensivamente). */
+  warningCount: number;
 }
 
 export interface ContentBlockListData {
@@ -62,6 +65,11 @@ export interface ContentBlockDetail {
   preview: string;
   /** Tamanho total do conteudo em caracteres. */
   contentChars: number;
+  /**
+   * Avisos gravados pelo Entity Writer em `warnings_json` (do proprio modelo +
+   * anti-alucinacao). Vazio quando nao ha aviso OU a coluna tem forma inesperada.
+   */
+  warnings: string[];
 }
 
 /** Forma minima do `where` — so campos validados, nunca arbitrario. */
@@ -114,6 +122,7 @@ export const getContentBlockListData = cache(
           blockType: true,
           reviewStatus: true,
           updatedAt: true,
+          warningsJson: true,
         },
       }),
     ]);
@@ -129,6 +138,7 @@ export const getContentBlockListData = cache(
         reviewStatus,
         updatedAtIso: isoOrNull(row.updatedAt),
         status: classifyContentBlock(reviewStatus),
+        warningCount: parseContentBlockWarnings(row.warningsJson).length,
       };
     });
 
@@ -156,6 +166,7 @@ export const getContentBlockDetail = cache(
         reviewStatus: true,
         content: true,
         updatedAt: true,
+        warningsJson: true,
       },
     });
 
@@ -175,6 +186,7 @@ export const getContentBlockDetail = cache(
       status: classifyContentBlock(reviewStatus),
       preview: previewOf(content),
       contentChars: content.length,
+      warnings: parseContentBlockWarnings(row.warningsJson),
     };
   },
 );
