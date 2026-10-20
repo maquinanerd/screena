@@ -68,6 +68,12 @@ scripts/ci.ps1 · doctor.ps1 · clean.ps1   wrappers PowerShell (5.1 e 7)
 - Perfis Linux (`completo`, `backup`, `docker`, ou `-Container`): no Windows, o
   job roda num container local criado a partir de `runner.Dockerfile`. Não é
   self-hosted runner: nada se registra no GitHub e nada fala com ele.
+- O executor fixa `LANG=C.UTF-8`/`LC_ALL=C.UTF-8`, como o `ubuntu-latest`. A
+  imagem `node:22-bookworm` vem sem locale, e aí o `initdb` do embedded-postgres
+  cria o cluster em SQL_ASCII: em 2026-10-20 o `validate:entity-resolve`
+  reprovou por isso (`invalid byte sequence for encoding "UTF8"`) enquanto no
+  GitHub passava. "Um Linux qualquer" não é o runner — a diferença tem de estar
+  escrita no Dockerfile.
 - O container recebe um **snapshot LF** do working tree. Motivo: com
   `core.autocrlf=true` o disco do Windows está em CRLF, e um `docker build` dali
   copiaria `scripts/container/pid1-shell.sh` (o `/bin/sh` das imagens) com `\r` —

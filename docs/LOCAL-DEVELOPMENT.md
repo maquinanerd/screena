@@ -143,7 +143,14 @@ cache do Docker.
   em dia leva segundos e continua no pipeline porque prova que o lockfile bate
   com os `package.json`.
 - A primeira execução de um perfil Linux constrói a imagem do executor (alguns
-  minutos, quase só download); as seguintes levam segundos nesse passo.
+  minutos, quase só download); as seguintes levam segundos nesse passo — ela só
+  é reconstruída quando `runner.Dockerfile` ou a versão do Playwright mudam.
+- O perfil `docker` é o mais lento no Windows: no Docker Desktop, desempacotar
+  cada imagem (~1,2 GB em arquivos pequenos) e o `chown -R` dos Dockerfiles
+  passam pelo disco virtual da VM e levam muitos minutos cada — no runner do
+  GitHub eram segundos. Rode-o antes de deploy, não a cada mudança. O cache de
+  build do Docker cresce (36 GB medidos em 2026-10-20); `docker builder prune`
+  o libera quando você quiser.
 
 ## 7. Hooks de git (opcional)
 

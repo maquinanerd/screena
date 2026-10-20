@@ -76,14 +76,16 @@ export const SHELL_SCRIPTS = {
  * @property {string[]} [bash]   argumentos de `bash` (so dentro do container Linux)
  * @property {string} [special]  passo implementado no proprio pipeline.mjs
  * @property {Record<string,string>} [env]
+ * @property {boolean} [setup]  preparo (install, prisma): no container, que nasce
+ *   vazio, roda SEMPRE, mesmo com --from/--only/--skip
  */
 
 /** @type {Step[]} */
 export const STEPS = [
   // ---------------------------------------------------------------- job build
-  { id: 'install', job: 'build', layer: 'rapido', title: 'Instalar dependencias (lockfile congelado)', pnpm: ['install', '--frozen-lockfile'] },
+  { id: 'install', setup: true, job: 'build', layer: 'rapido', title: 'Instalar dependencias (lockfile congelado)', pnpm: ['install', '--frozen-lockfile'] },
   { id: 'shell', job: 'build', layer: 'padrao', title: 'Sintaxe dos scripts .sh/.awk operacionais', special: 'shell-syntax' },
-  { id: 'prisma', job: 'build', layer: 'rapido', title: 'Gerar Prisma Client', ...filter('@screena/db', 'db:generate'), env: { DATABASE_URL: DUMMY_DATABASE_URL } },
+  { id: 'prisma', setup: true, job: 'build', layer: 'rapido', title: 'Gerar Prisma Client', ...filter('@screena/db', 'db:generate'), env: { DATABASE_URL: DUMMY_DATABASE_URL } },
   // `pnpm typecheck` ja encadeia `typecheck:catalog-runtime` (persistence/, bin/, composition).
   { id: 'typecheck', job: 'build', layer: 'rapido', title: 'Typecheck (pacotes, servicos, testes e wiring operacional)', ...run('typecheck') },
   { id: 'typecheck-web', job: 'build', layer: 'rapido', title: 'Typecheck do app publico (web)', ...run('typecheck:web') },
@@ -143,8 +145,8 @@ export const STEPS = [
   // ------------------------------------------------------- job backup-restore
   // Rodam no container Linux, com o PostgreSQL 16 do job como servico `pg`
   // (ver JOBS abaixo). O cliente pg_dump/pg_restore/psql 16 vem da imagem.
-  { id: 'backup-install', job: 'backup-restore', title: 'Instalar dependencias (lockfile congelado)', pnpm: ['install', '--frozen-lockfile'] },
-  { id: 'backup-prisma', job: 'backup-restore', title: 'Gerar Prisma Client', ...filter('@screena/db', 'db:generate') },
+  { id: 'backup-install', setup: true, job: 'backup-restore', title: 'Instalar dependencias (lockfile congelado)', pnpm: ['install', '--frozen-lockfile'] },
+  { id: 'backup-prisma', setup: true, job: 'backup-restore', title: 'Gerar Prisma Client', ...filter('@screena/db', 'db:generate') },
   { id: 'backup-migrate', job: 'backup-restore', title: 'Aplicar migrations na origem', ...filter('@screena/db', 'db:migrate:deploy') },
   { id: 'backup-seed', job: 'backup-restore', title: 'Seed na origem', ...filter('@screena/db', 'db:seed') },
   { id: 'backup-verify', job: 'backup-restore', title: 'Verificar backup + restore com fidelidade de dados', bash: ['scripts/backup/verify-backup-restore.sh'] },

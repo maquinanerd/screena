@@ -35,7 +35,13 @@ RUN set -eux; \
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 
+# LANG/LC_ALL em C.UTF-8 como no `ubuntu-latest` do GitHub. Sem isto o locale e
+# POSIX e o `initdb` do embedded-postgres cria o cluster em SQL_ASCII: o
+# validador `validate:entity-resolve` reprovou com `invalid byte sequence for
+# encoding "UTF8": 0xc2 0x20` (medido em 2026-10-20) — no runner ele passava.
 ENV CI=true \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
     COREPACK_HOME=/opt/corepack \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     PLAYWRIGHT_BROWSERS_PATH=/cache/ms-playwright \

@@ -128,7 +128,11 @@ function selectSteps(steps, opts) {
   if (opts.only) out = out.filter((s) => opts.only.includes(s.id))
   const skip = new Set(opts.skip)
   if (opts.skipInstall) for (const s of STEPS) if (s.pnpm?.[0] === 'install') skip.add(s.id)
-  return out.filter((s) => !skip.has(s.id))
+  const chosen = out.filter((s) => !skip.has(s.id))
+  // No container o workspace nasce sem node_modules e sem Prisma Client: sem o
+  // preparo, `--from`/`--only` rodariam passos que morrem por falta de pacote.
+  if (!opts.inside || chosen.length === 0) return chosen
+  return steps.filter((s) => s.setup || chosen.includes(s))
 }
 
 /** Os jobs do perfil e onde cada um roda: no host ou num container Linux. */
