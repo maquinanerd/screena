@@ -252,9 +252,16 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
      * pelo caminho do bruto: o escritor (que nasce `display_allowed=false`,
      * invariante 6, e hidrata credito pela licenca vigente) e o resolvedor
      * tmdbId -> id interno (necessario no short-circuit de cache).
+     *
+     * `autoDisplay`: decisao do dono de 2026-10-29 — a oferta com licenca e
+     * decisao de exibicao vigentes acende sozinha depois do snapshot, como a
+     * nota externa desde 2026-08-11 (`watch-display-policy.ts`).
      */
     watch: {
-      store: createPrismaTmdbWatchOfferStore(prisma),
+      store: createPrismaTmdbWatchOfferStore(prisma, {
+        autoDisplay: true,
+        log: (message) => console.warn(message),
+      }),
       resolver: createPrismaWatchEntityResolver(prisma),
       territories: watchTerritories,
       staleAfterMs: watchStaleWindowMs,

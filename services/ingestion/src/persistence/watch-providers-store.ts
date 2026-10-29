@@ -50,6 +50,7 @@
 import type { PrismaClient } from '@screena/db/server'
 import { TMDB_PROVIDER_API, TMDB_WATCH_ATTRIBUTION_URL } from '@screena/tmdb-client'
 
+import { AUTO_DISPLAY_COUNTRY, applyWatchDisplayPolicy } from './watch-display-policy.js'
 import type { RawPayloadRead, RawPayloadReader } from '../raw-store/payload-reader.js'
 import type { CountryRegistry } from '../watch-providers/territories.js'
 import type {
@@ -165,18 +166,34 @@ export function createPrismaWatchEntityResolver(prisma: PrismaClient): WatchEnti
   }
 }
 
+/** Opcoes do escritor de ofertas TMDB. */
+export interface TmdbWatchOfferStoreOptions {
+  /** Aplica a politica de exibicao depois de cada snapshot BR. Default: nao. */
+  readonly autoDisplay?: boolean
+  /** Para onde vai a recusa nomeada do trigger (nunca descartada calada). */
+  readonly log?: (message: string) => void
+}
+
 /**
  * Escreve o snapshot de ofertas de (entidade, pais) para `provider_api='tmdb'`.
  *
  * Escopo reafirmado em TODO `WHERE`: linhas de outro `provider_api` (RapidAPI,
  * seed demo, curadoria) ficam intactas.
+ *
+ * Com `autoDisplay`, depois de gravar o snapshot a politica de exibicao
+ * (`watch-display-policy.ts`, decisao do dono de 2026-10-29) acende as ofertas
+ * da entidade que ja tem licenca e decisao vigentes. A linha continua NASCENDO
+ * apagada; acender e um segundo passo, fora da transacao do snapshot.
  */
-export function createPrismaTmdbWatchOfferStore(prisma: PrismaClient): WatchOfferStore {
+export function createPrismaTmdbWatchOfferStore(
+  prisma: PrismaClient,
+  options: TmdbWatchOfferStoreOptions = {},
+): WatchOfferStore {
   return {
     async replaceSnapshot(input): Promise<WatchSnapshotOutcome> {
       const entityId = BigInt(input.entityId)
 
-      return prisma.$transaction(async (tx) => {
+      const written = await prisma.$transaction(async (tx) => {
         let upserted = 0
         for (const offer of input.offers) {
           const affected = await tx.$executeRaw`
@@ -316,6 +333,30 @@ export function createPrismaTmdbWatchOfferStore(prisma: PrismaClient): WatchOffe
 
         return { upserted, revoked: Number(revoked) }
       })
+
+      if (!options.autoDisplay || input.countryCode !== AUTO_DISPLAY_COUNTRY) return written
+
+      // DEPOIS do commit, nunca dentro dele: uma recusa do trigger de exibicao
+      // nao pode derrubar o snapshot recem-gravado. Falhou, a linha fica como
+      // nasceu (apagada) e o motivo e dito — ver `watch-display-policy.ts`.
+      try {
+        const policy = await applyWatchDisplayPolicy(prisma, {
+          entity: { entityType: input.entityType, entityId: input.entityId },
+          limit: AUTO_DISPLAY_PER_ENTITY_LIMIT,
+        })
+        for (const refusal of policy.refusals) {
+          options.log?.(`[watch] oferta ${refusal.id} nao acendeu: ${refusal.message}`)
+        }
+        return { ...written, displayed: policy.displayed }
+      } catch (error) {
+        options.log?.(
+          `[watch] politica de exibicao falhou para ${input.entityType}:${input.entityId} — ${String(error)}`,
+        )
+        return written
+      }
     },
   }
 }
+
+/** Teto de ofertas acendidas por entidade numa passada do sync (folga larga). */
+const AUTO_DISPLAY_PER_ENTITY_LIMIT = 200

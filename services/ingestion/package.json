@@ -32,7 +32,9 @@
     "validate:catalog-integrity": "tsx scripts/validate-catalog-integrity-real-postgres.ts",
     "validate:text-recovery": "tsx scripts/validate-text-recovery-real-postgres.ts",
     "validate:language-cutdown": "tsx scripts/validate-language-cutdown-real-postgres.ts",
-    "validate:country-backfill": "tsx scripts/validate-country-backfill-real-postgres.ts"
+    "validate:country-backfill": "tsx scripts/validate-country-backfill-real-postgres.ts",
+    "apply-watch-display-policy": "tsx bin/apply-watch-display-policy.ts",
+    "validate:watch-display-policy": "tsx scripts/validate-watch-display-policy-real-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",

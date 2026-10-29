@@ -2,9 +2,9 @@
 
 > Documento operacional. Explica **por que** o `catalog sync` não trazia
 > disponibilidade, **o que mudou**, e **como recuperar** as entidades que já
-> existem sem oferta. Não trata de licença, crédito nem acendimento de exibição:
-> toda linha escrita aqui nasce `display_allowed = false` (invariante 6) e
-> acender continua sendo decisão humana, por outro comando.
+> existem sem oferta. Toda linha escrita aqui nasce `display_allowed = false`
+> (invariante 6). Desde 2026-10-29 (decisão do dono) o sync acende, num segundo
+> passo, a oferta que já tem licença e decisão de exibição vigentes: ver a seção 6.
 
 ---
 
@@ -208,3 +208,55 @@ rede. As duas cadeias são complementares e não se atropelam:
 
 Relacionado: [`docs/backend/streaming-platform.md`](../backend/streaming-platform.md),
 [`.claude/rules/ingestion.md`](../../.claude/rules/ingestion.md).
+
+---
+
+## 6. Acendimento por política (decisão do dono, 2026-10-29)
+
+Medido em produção em 29/10/2026: 15.993 filmes tinham oferta BR gravada e só
+**106** apareciam. 58.823 linhas de filme já tinham alias de provedor e decisão
+de licença aprovada; faltava só o clique da CLI humana
+(`services/streaming/bin/promote-watch-availability.ts`, lotes de até 500).
+
+O dono decidiu que a oferta passa a acender sozinha, como a nota externa desde
+2026-08-11. A autoridade continua humana: a licença de cada provedor e a decisão
+`watch_offer_display` são registradas por pessoa. O que muda é quem carimba a
+linha: `reviewed_by = automation:watch-sync/display-policy-v1`.
+
+**Onde mora:** `services/ingestion/src/persistence/watch-display-policy.ts`. O
+escritor TMDB (`createPrismaTmdbWatchOfferStore`) aplica a política depois do
+snapshot BR quando recebe `autoDisplay: true`. Só o import de detalhe
+(`catalog-services.ts`) liga a opção; o reprocessamento do bruto continua só
+gravando.
+
+**As travas** são as da CLI (país BR, modalidade promovível, provedor canônico,
+link http(s) sem pirataria, crédito exigido, validade), mais duas:
+
+- **só o snapshot atual**: a oferta que sumiu do TMDB e foi revogada não reacende;
+- **só oferta coletada nos últimos 30 dias** (`AUTO_DISPLAY_MAX_OFFER_AGE_DAYS`):
+  o título que perde toda oferta BR não é revogado pelo caminho do detalhe, e a
+  idade impede acender o que pode ter saído.
+
+O trigger `watch_availability_display_guard` continua sendo a última palavra. Se
+ele recusar, a linha fica apagada e o motivo vai para o log
+(`[watch] oferta N nao acendeu`).
+
+### O acervo que já está no banco
+
+O sync só alcança o título que sincronizar de novo. Para acender o que já foi
+gravado, depois de implantar, rode no container do `screen-catalog-worker`:
+
+```bash
+pnpm --filter @screena/ingestion apply-watch-display-policy
+```
+
+Sem `--confirm` ele só conta. Com `--confirm` acende em lotes de 500. A saída 4
+significa que houve recusa do trigger; as 20 primeiras são listadas pelo motivo.
+
+**Como desfazer:** a CLI humana revoga por id (`--revoke`). Retirar a licença ou
+a decisão do provedor (`pnpm legal sources apply`) apaga a oferta na leitura, sem
+escrever na linha. Para separar o que a política acendeu:
+`WHERE reviewed_by LIKE 'automation:%'`.
+
+**Validação:** `pnpm --filter @screena/ingestion validate:watch-display-policy`
+(Postgres real, 10 checagens, 2 delas controles negativos).

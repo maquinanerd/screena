@@ -85,6 +85,11 @@ export interface WatchSnapshotOutcome {
   readonly upserted: number
   /** Ofertas que sumiram do snapshot: revogadas + marcadas stale, nunca apagadas. */
   readonly revoked: number
+  /**
+   * Ofertas que a politica de exibicao acendeu depois do snapshot. Ausente
+   * quando o escritor roda sem politica (o reprocessamento, os testes).
+   */
+  readonly displayed?: number
 }
 
 /**
