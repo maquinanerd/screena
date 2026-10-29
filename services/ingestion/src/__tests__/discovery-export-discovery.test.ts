@@ -10,7 +10,14 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { discoverIdsFromExportText } from '../discovery/export-discovery.js'
+import { filterAdult } from '../discovery/adult-filter.js'
+import {
+  EXPORT_LINES_PER_YIELD,
+  discoverIdsFromExportBatches,
+  discoverIdsFromExportText,
+} from '../discovery/export-discovery.js'
+import { parseIdExport } from '../discovery/id-exports.js'
+import { buildSyncQueue } from '../discovery/sync-queue.js'
 
 /** Monta um export JSONL a partir de objetos (uma linha por registro). */
 function jsonl(records: readonly Record<string, unknown>[]): string {
@@ -135,5 +142,151 @@ describe('discoverIdsFromExportText', () => {
     expect(outcome.duplicate).toBe(1)
     // Dedup deterministico mantem a MAIOR popularidade, entao 7 fica na frente.
     expect(outcome.ids).toEqual([7, 8])
+  })
+})
+
+/**
+ * O pipeline ANTERIOR a 29/10/2026, literal: texto inteiro -> `parseIdExport`
+ * -> `filterAdult` -> `buildSyncQueue` -> corte. E a referencia de semantica:
+ * a troca para streaming nao pode mudar um id, uma posicao ou uma contagem.
+ */
+function referencePipeline(text: string, hasAdultField: boolean, limit: number | null) {
+  const records = parseIdExport(text)
+  const filtered = filterAdult(records, { adultFieldRequired: hasAdultField })
+  const queue = buildSyncQueue([{ kind: 'movie', records: filtered.kept }])
+  const ordered = limit === null ? queue : queue.slice(0, limit)
+  return {
+    discovered: records.length,
+    accepted: ordered.length,
+    rejectedAdult: filtered.adultDropped + filtered.unsafeDropped,
+    duplicate: filtered.kept.length - queue.length,
+    ids: ordered.map((item) => item.tmdbId),
+  }
+}
+
+/** PRNG deterministico (mulberry32): o mesmo caso em toda execucao. */
+function prng(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0
+    let t = state
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Export sintetico com empates, repetidos, adulto, malformado e id invalido. */
+function randomExport(random: () => number, lines: number): string {
+  const pick = <T>(values: readonly T[]): T => values[Math.floor(random() * values.length)]!
+  const ids: readonly unknown[] = [0, -3, 1.5, 'x', ...Array.from({ length: 40 }, (_, i) => i + 1)]
+  const adults: readonly unknown[] = [false, false, false, false, true, 'false', null, undefined]
+  const pops: readonly unknown[] = [undefined, 0, 1, 1, 2.5, 7, 7, 30.25, '9']
+  const out: string[] = []
+  for (let i = 0; i < lines; i += 1) {
+    if (random() < 0.03) {
+      out.push(pick(['', '   ', '{nao e json', '[1,2]', 'null']))
+      continue
+    }
+    const record: Record<string, unknown> = { id: pick(ids) }
+    const adult = pick(adults)
+    if (adult !== undefined) record.adult = adult
+    const popularity = pick(pops)
+    if (popularity !== undefined) record.popularity = popularity
+    out.push(JSON.stringify(record))
+  }
+  return out.join('\n')
+}
+
+/** Fonte em lotes SEM IO real: so microtarefas, nunca devolve a thread sozinha. */
+async function* inBatches(text: string, size: number): AsyncGenerator<readonly string[]> {
+  const lines = text.split('\n')
+  for (let i = 0; i < lines.length; i += size) yield lines.slice(i, i + size)
+}
+
+describe('discoverIdsFromExportBatches — o caminho da fila (29/10/2026)', () => {
+  it('e o MESMO desfecho do pipeline anterior em 400 exports aleatorios', async () => {
+    const random = prng(20261029)
+    for (let round = 0; round < 400; round += 1) {
+      const text = randomExport(random, 1 + Math.floor(random() * 120))
+      const hasAdultField = random() < 0.5
+      const limit = [null, 0, 1, 2, 3, 10, 500][Math.floor(random() * 7)]!
+      const expected = referencePipeline(text, hasAdultField, limit)
+      const options = { kind: 'movie' as const, hasAdultField, limit }
+
+      expect(discoverIdsFromExportText({ ...options, text })).toEqual(expected)
+      const batchSize = 1 + Math.floor(random() * 9)
+      expect(
+        await discoverIdsFromExportBatches({ ...options, batches: inBatches(text, batchSize) }),
+      ).toEqual(expected)
+    }
+  })
+
+  it('repetido mais popular que chega DEPOIS, com teto, toma o lugar do anterior', async () => {
+    // 7 entra na fila com 1; 9 e 8 o expulsam; 7 volta com 50 e tem de ser o 1o.
+    // Manter a primeira ocorrencia (o sampler antes de 29/10) deixaria 7 de fora.
+    const text = jsonl([
+      { id: 7, adult: false, popularity: 1 },
+      { id: 9, adult: false, popularity: 20 },
+      { id: 8, adult: false, popularity: 10 },
+      { id: 7, adult: false, popularity: 50 },
+      { id: 9, adult: false, popularity: 2 },
+    ])
+    const outcome = await discoverIdsFromExportBatches({
+      batches: inBatches(text, 1),
+      kind: 'movie',
+      hasAdultField: true,
+      limit: 2,
+    })
+    expect(outcome.ids).toEqual([7, 9])
+    expect(outcome.duplicate).toBe(2)
+  })
+
+  it('REGRESSAO: devolve o event loop no meio do export, mesmo de uma fonte sem IO', async () => {
+    // O defeito de 29/10: o export inteiro num trecho sincrono — sem `/healthz`
+    // e sem heartbeat do job ate o fim. Aqui a fonte so usa microtarefas; quem
+    // abre espaco para o timer e a propria descoberta.
+    const lines = EXPORT_LINES_PER_YIELD * 5
+    const text = Array.from({ length: lines }, (_, i) =>
+      JSON.stringify({ id: i + 1, adult: false, popularity: i % 97 }),
+    ).join('\n')
+
+    for (const batchSize of [500, lines]) {
+      let turns = 0
+      let running = true
+      const spin = (): void => {
+        if (!running) return
+        turns += 1
+        setImmediate(spin)
+      }
+      setImmediate(spin)
+      const outcome = await discoverIdsFromExportBatches({
+        batches: inBatches(text, batchSize),
+        kind: 'person',
+        hasAdultField: true,
+        limit: 3,
+      })
+      running = false
+      expect(outcome.discovered).toBe(lines)
+      // Um lote do tamanho do arquivo nao pode virar de novo o trecho unico.
+      expect(turns).toBeGreaterThanOrEqual(4)
+    }
+  })
+
+  it('para entre dois lotes quando o job e abortado (shutdown ou timeout)', async () => {
+    const text = Array.from({ length: EXPORT_LINES_PER_YIELD * 3 }, (_, i) =>
+      JSON.stringify({ id: i + 1, adult: false, popularity: 1 }),
+    ).join('\n')
+    const controller = new AbortController()
+    setImmediate(() => controller.abort())
+    await expect(
+      discoverIdsFromExportBatches({
+        batches: inBatches(text, 1_000),
+        kind: 'movie',
+        hasAdultField: true,
+        limit: 10,
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

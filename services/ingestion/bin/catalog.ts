@@ -28,7 +28,6 @@
  *   node "<caminho-do-tsx-cli>" services/ingestion/bin/catalog.ts --help
  */
 
-import { gunzipSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
 import { createTmdbClient } from '@screena/tmdb-client'
 import { createTmdbCatalogEndpoints } from '@screena/tmdb-client'
@@ -62,6 +61,7 @@ import {
   type DiscoveryCost,
   type PlannedTitle,
 } from '../src/planning/index.js'
+import { streamExportLines } from '../src/discovery/export-stream.js'
 import { createCatalogServices } from '../src/persistence/catalog-services.js'
 import { createPrismaAuditReader } from '../src/persistence/audit-reader.js'
 import {
@@ -323,18 +323,9 @@ function createRuntime() {
     tmdb: client.endpoints,
     catalogEndpoints,
     cacheTtlMs: client.config.cacheTtlMs,
-    fetchText: async (url: string) => {
-      const response = await fetch(url)
-      if (!response.ok) throw new Error(`export HTTP ${response.status}`)
-      // Os Daily ID Exports sao arquivos .json.gz SERVIDOS COMO CORPO BINARIO —
-      // nao ha `content-encoding: gzip`, entao `fetch` NAO descompacta e
-      // `response.text()` devolveria bytes gzip interpretados como UTF-8. O
-      // parser entao descartaria toda linha como JSON invalido e a descoberta
-      // reportaria "0 ids" com sucesso — silenciosamente, na estrategia DEFAULT.
-      const buffer = Buffer.from(await response.arrayBuffer())
-      const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b
-      return isGzip ? gunzipSync(buffer).toString('utf8') : buffer.toString('utf8')
-    },
+    // O MESMO adapter do servico (`discovery/export-stream.ts`): streaming, e o
+    // gzip decidido pelos bytes — os exports chegam sem `content-encoding`.
+    fetchExportLines: (url, signal) => streamExportLines(url, { signal }),
   })
   const registry = createCatalogHandlerRegistry(services)
   return { client, catalogEndpoints, services, registry }

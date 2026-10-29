@@ -110,3 +110,36 @@ describe('as duas camadas anti-adulto continuam FAIL-CLOSED na amostra', () => {
     expect(result.counts.duplicate).toBe(1)
   })
 })
+
+describe('o mesmo contrato da fila (filterAdult + buildSyncQueue), desde 29/10/2026', () => {
+  it('id repetido mantem a MAIOR popularidade, com e sem teto', () => {
+    const records: IdExportRecord[] = [
+      { id: 5, adult: false, popularity: 1 },
+      { id: 6, adult: false, popularity: 4 },
+      { id: 5, adult: false, popularity: 9 },
+      { id: 5, adult: false, popularity: 2 },
+    ]
+    for (const limit of [null, 1, 2, 5]) {
+      const result = sample(records, limit)
+      expect(result.kept[0]).toEqual({ id: 5, adult: false, popularity: 9 })
+      expect(result.counts.duplicate).toBe(2)
+    }
+  })
+
+  it('id invalido e descartado ANTES do adulto, na ordem de filterAdult', () => {
+    const result = sample(
+      [
+        { id: 0, adult: true, popularity: 9 },
+        { id: -1, adult: 'x' as unknown as boolean, popularity: 9 },
+        { id: 2, adult: true, popularity: 9 },
+      ],
+      5,
+    )
+    expect(result.counts).toEqual({
+      adultDropped: 1,
+      unsafeDropped: 0,
+      invalidDropped: 2,
+      duplicate: 0,
+    })
+  })
+})

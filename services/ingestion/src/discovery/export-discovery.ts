@@ -9,9 +9,9 @@
  * que define o que o site mostra nos primeiros dias de um espelho — era
  * exatamente a parte sem cobertura.
  *
- * Aqui nao ha rede, banco nem relogio: o chamador entrega o texto do export ja
- * baixado e recebe o desfecho. O IO (montar a URL do dia, baixar, logar) fica no
- * adapter.
+ * Aqui nao ha rede, banco nem relogio: o chamador entrega as linhas do export ja
+ * descomprimido e recebe o desfecho. O IO (montar a URL do dia, baixar,
+ * descomprimir, logar) fica no adapter (`export-stream.ts`).
  *
  * ORDEM: POPULARIDADE DECRESCENTE, NUNCA ORDEM DE ARQUIVO
  * -------------------------------------------------------
@@ -27,13 +27,32 @@
  *
  * DUAS CAMADAS ANTI-ADULTO (regra de ingestao) — as duas continuam valendo:
  *  1. arquivos `adult_*` nunca sao baixados (fica em `id-exports.ts`);
- *  2. o campo `adult` e classificado FAIL-CLOSED por linha (`filterAdult`), e
- *     `buildSyncQueue` reaplica `classifyAdult` como rede secundaria.
+ *  2. o campo `adult` e classificado FAIL-CLOSED por linha (`classifyAdult`,
+ *     dentro do sampler), ANTES de a linha concorrer a um lugar na fila.
+ *
+ * NUNCA O ARQUIVO INTEIRO NA MEMORIA (medido em 29/10/2026)
+ * ---------------------------------------------------------
+ * Ate aqui o adapter baixava o `.json.gz` num Buffer, descomprimia com
+ * `gunzipSync`, fazia `toString` e este modulo partia o texto, parseava TODAS as
+ * linhas, filtrava, deduplicava num Map de chave string e ordenava o universo
+ * para devolver 2.000 ids. No export de pessoas de 28/10/2026 (5.016.908 linhas,
+ * 362.777.514 caracteres), junto com os de filmes e series, isso foi um trecho
+ * SINCRONO unico de 13 a 16,5 s numa maquina de mesa e 3,0 GB de RSS de pico
+ * (2,1 GB de heap) — e, durante o trecho, nem `/healthz` responde nem o
+ * heartbeat do job anda. Na mesma janela, em producao, o `screen-catalog-worker`
+ * renascia ~5 vezes por madrugada e os tres `discover_ids` iam para dead-letter
+ * com `worker_heartbeat_timeout`. Medicao e ressalvas em
+ * `docs/operations/descoberta-diaria-segura-o-worker-2026-10-29.md`.
+ *
+ * Agora o caminho da fila e `discoverIdsFromExportBatches`: as linhas chegam em
+ * lotes conforme o gunzip ASSINCRONO as produz, cada linha vai direto ao sampler
+ * de top-N (memoria O(N) + o conjunto de ids vistos), e o event loop e
+ * devolvido a cada `EXPORT_LINES_PER_YIELD` linhas mesmo que a fonte nunca
+ * espere IO.
  */
 
-import { filterAdult } from './adult-filter.js'
-import { parseIdExport } from './id-exports.js'
-import { buildSyncQueue } from './sync-queue.js'
+import { createTopRecordSampler } from './export-sample.js'
+import { parseIdExportLine } from './id-exports.js'
 import type { TmdbDiscoveryKind } from './id-exports.js'
 
 /** Desfecho de uma descoberta por export (mesma forma de `DiscoverIdsOutcome`). */
@@ -50,10 +69,8 @@ export interface ExportDiscoveryOutcome {
   readonly ids: readonly number[]
 }
 
-/** Entrada da descoberta pura. */
-export interface ExportDiscoveryInput {
-  /** Texto do export ja baixado e descomprimido (JSONL). */
-  readonly text: string
+/** O que a descoberta precisa saber do export, alem das linhas. */
+export interface ExportDiscoveryOptions {
   /** Tipo de entidade do arquivo. */
   readonly kind: TmdbDiscoveryKind
   /**
@@ -66,36 +83,112 @@ export interface ExportDiscoveryInput {
   readonly limit: number | null
 }
 
+/** Entrada da descoberta pura sobre o texto inteiro (testes e chamadores pequenos). */
+export interface ExportDiscoveryInput extends ExportDiscoveryOptions {
+  /** Texto do export ja baixado e descomprimido (JSONL). */
+  readonly text: string
+}
+
+/** Entrada da descoberta em streaming — o caminho da fila. */
+export interface ExportBatchDiscoveryInput extends ExportDiscoveryOptions {
+  /** Linhas do export ja descomprimido, em lotes, na ordem do arquivo. */
+  readonly batches: AsyncIterable<readonly string[]>
+  /** Shutdown ou timeout do job: interrompe entre dois lotes. */
+  readonly signal?: AbortSignal
+}
+
 /**
- * Descobre ids a partir do texto de um Daily ID Export.
+ * Linhas processadas entre duas devolucoes do event loop.
  *
+ * Parse + sampler custam ~1-3 us por linha; 10.000 linhas ficam na casa das
+ * dezenas de ms mesmo numa CPU disputada — muito abaixo do timeout de 5 s do
+ * HEALTHCHECK e do intervalo de 15 s do heartbeat do job.
+ */
+export const EXPORT_LINES_PER_YIELD = 10_000
+
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+interface DiscoveryAccumulator {
+  addLine(line: string): void
+  finish(): ExportDiscoveryOutcome
+}
+
+/**
  * Ordem do pipeline (a ordem importa): parse -> filtro anti-adulto -> dedup +
  * ordenacao por popularidade -> corte pelo `limit`. O corte e SEMPRE o ultimo
- * passo: cortar antes de ordenar seria o defeito que este modulo existe para
- * impedir.
+ * passo: o sampler so decide depois da ultima linha, e cortar antes de ordenar
+ * seria o defeito que este modulo existe para impedir.
  *
- * Deterministico: o mesmo texto produz exatamente a mesma lista, na mesma ordem
- * (`buildSyncQueue` ordena por popularidade desc com desempate por `tmdbId`
- * asc — ordem TOTAL, sem empate residual).
+ * Deterministico: as mesmas linhas produzem exatamente a mesma lista, na mesma
+ * ordem (popularidade desc com desempate por `tmdbId` asc — ordem TOTAL, sem
+ * empate residual; id repetido mantem a maior popularidade).
  */
-export function discoverIdsFromExportText(input: ExportDiscoveryInput): ExportDiscoveryOutcome {
-  const records = parseIdExport(input.text)
-  const filtered = filterAdult(records, { adultFieldRequired: input.hasAdultField })
-
-  // Dedup + ordenacao ANTES do corte.
-  const queue = buildSyncQueue([{ kind: input.kind, records: filtered.kept }])
-  // O que `buildSyncQueue` removeu alem do que `filterAdult` ja havia descartado
-  // e id repetido dentro do proprio export.
-  const duplicate = filtered.kept.length - queue.length
-  const ordered = input.limit === null ? queue : queue.slice(0, input.limit)
+function createDiscoveryAccumulator(options: ExportDiscoveryOptions): DiscoveryAccumulator {
+  // `limit: 0` e teto ZERO na fila (contrato de sempre: nada e enfileirado). O
+  // sampler le 0 como "sem teto" — e guardaria o universo inteiro so para
+  // devolver nada. Pede 1 e descarta.
+  const sampler = createTopRecordSampler({
+    limit: options.limit === 0 ? 1 : options.limit,
+    adultFieldRequired: options.hasAdultField,
+  })
+  let discovered = 0
 
   return {
-    discovered: records.length,
-    accepted: ordered.length,
-    // Adulto explicito e valor malformado somam: os dois sao o filtro protegendo
-    // a fila, e o total e o numero que o operador precisa vigiar.
-    rejectedAdult: filtered.adultDropped + filtered.unsafeDropped,
-    duplicate,
-    ids: ordered.map((item) => item.tmdbId),
+    addLine(line: string): void {
+      const record = parseIdExportLine(line)
+      if (record === null) return
+      discovered += 1
+      sampler.offer(record)
+    },
+    finish(): ExportDiscoveryOutcome {
+      const sample = sampler.finish()
+      const ids = options.limit === 0 ? [] : sample.kept.map((record) => record.id)
+      return {
+        discovered,
+        accepted: ids.length,
+        // Adulto explicito e valor malformado somam: os dois sao o filtro
+        // protegendo a fila, e o total e o numero que o operador precisa vigiar.
+        rejectedAdult: sample.counts.adultDropped + sample.counts.unsafeDropped,
+        duplicate: sample.counts.duplicate,
+        ids,
+      }
+    },
   }
+}
+
+/** Descobre ids a partir do texto inteiro de um Daily ID Export. */
+export function discoverIdsFromExportText(input: ExportDiscoveryInput): ExportDiscoveryOutcome {
+  const accumulator = createDiscoveryAccumulator(input)
+  for (const line of input.text.split('\n')) accumulator.addLine(line)
+  return accumulator.finish()
+}
+
+/**
+ * Descobre ids a partir das linhas de um Daily ID Export, em lotes.
+ *
+ * Mesmo desfecho de `discoverIdsFromExportText` sobre as mesmas linhas, sem
+ * nunca segurar o event loop por mais de `EXPORT_LINES_PER_YIELD` linhas: o
+ * worker continua respondendo `/healthz` e renovando o heartbeat do job
+ * enquanto o export de pessoas (5 milhoes de linhas) passa.
+ */
+export async function discoverIdsFromExportBatches(
+  input: ExportBatchDiscoveryInput,
+): Promise<ExportDiscoveryOutcome> {
+  const accumulator = createDiscoveryAccumulator(input)
+  let sinceYield = 0
+  for await (const batch of input.batches) {
+    // A devolucao conta LINHAS, nao lotes: um lote enorme (fonte que entregue
+    // o arquivo de uma vez) seria de novo um trecho sincrono sem fim.
+    for (const line of batch) {
+      accumulator.addLine(line)
+      sinceYield += 1
+      if (sinceYield === EXPORT_LINES_PER_YIELD) {
+        sinceYield = 0
+        await yieldToEventLoop()
+        input.signal?.throwIfAborted()
+      }
+    }
+  }
+  input.signal?.throwIfAborted()
+  return accumulator.finish()
 }
