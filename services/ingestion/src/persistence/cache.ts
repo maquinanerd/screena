@@ -3,8 +3,9 @@
  * (`pnpm typecheck` encadeia os dois).
  *
  * `getOrFetch`: dentro do TTL devolve o bruto do cache (sem ir a rede); fora do
- * TTL busca via `fetcher`, grava o bruto e compara o `payload_hash` com o
- * anterior (`changed`). O render NUNCA le daqui — quem le e o worker.
+ * TTL — ou com `bypassFresh` — busca via `fetcher`, grava o bruto e compara o
+ * `payload_hash` com o anterior (`changed`). O render NUNCA le daqui — quem le
+ * e o worker.
  */
 
 import { TMDB_PROVIDER_API } from '@screena/tmdb-client'
@@ -35,7 +36,13 @@ export function createPrismaCache(prisma: PrismaClient, options: CacheAdapterOpt
       const nowDate = options.now()
       const nowMs = nowDate.getTime()
 
-      if (existing && (existing.expiresAt === null || existing.expiresAt.getTime() > nowMs)) {
+      // `bypassFresh`: o chamador sabe que a copia pode ser de ANTES da mudanca
+      // no upstream. A copia continua servindo de base para `changed`.
+      if (
+        input.bypassFresh !== true &&
+        existing &&
+        (existing.expiresAt === null || existing.expiresAt.getTime() > nowMs)
+      ) {
         return {
           data: existing.payload as T,
           fromCache: true,

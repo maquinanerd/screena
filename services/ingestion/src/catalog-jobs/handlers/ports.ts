@@ -46,6 +46,12 @@ export interface DetailSyncInput {
   readonly tmdbId: number
   readonly locale: string
   readonly signal: AbortSignal
+  /**
+   * Ignora a copia de `api_cache` ainda dentro do TTL e vai a rede. Quem pede
+   * sabe que o upstream mudou (`changes`) ou que uma pessoa quer dado novo
+   * (`on_demand`). Ver `COVERAGE_REFRESHES_CACHE`.
+   */
+  readonly refreshCache?: boolean
 }
 
 /** Sync do detalhe de uma entidade: fetch -> cache -> raw -> normalize -> store. */

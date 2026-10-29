@@ -11,6 +11,7 @@
  * enfileiramento sao deterministicas — reexecutar o job nao duplica trabalho.
  */
 
+import { coverageRefreshesCache } from '../../entity-coverage/entry.js'
 import { CATALOG_METRIC_NAMES } from '../../metrics/index.js'
 import type { CatalogJobContext, CatalogJobHandler } from '../handler.js'
 import { buildIdempotencyKey, scopedChildDiscriminator } from '../idempotency.js'
@@ -79,6 +80,8 @@ export class SyncDetailsHandler implements CatalogJobHandler<SyncDetailsInput, S
         tmdbId: input.tmdbId,
         locale: input.locale,
         signal: context.signal,
+        // `changes`/`on_demand` nao aceitam a copia de antes da mudanca.
+        refreshCache: coverageRefreshesCache(input.reason),
       })
     } catch (error) {
       context.metrics.increment(CATALOG_METRIC_NAMES.jobsFailedTotal, 1, {
