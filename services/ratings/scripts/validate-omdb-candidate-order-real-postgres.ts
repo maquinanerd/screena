@@ -34,6 +34,10 @@
  *      a ordem antiga de pe em metade dos cenarios.
  *   6. `coverage` IGNORA a janela de frescor (era o defeito: um titulo nunca
  *      perguntado sendo filtrado por uma coleta que nao existe).
+ *   7. `coverage` PULA quem a OMDb respondeu sem nota ha menos de
+ *      `OMDB_COVERAGE_RETRY_AFTER_DAYS`, conta o pulado em `skippedFresh`, e
+ *      devolve quem foi perguntado ANTES da janela (controle negativo: a
+ *      repergunta adia, nunca exclui para sempre).
  *
  * Motor: `embedded-postgres` (PostgreSQL 16 real, binario portatil, EFEMERO),
  * mesmo padrao dos demais `validate:*-real-postgres`.
@@ -56,7 +60,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
+import { OMDB_COVERAGE_RETRY_AFTER_DAYS } from '@screena/config'
 import { runChild } from '@screena/db/async-child-process'
+import { buildOmdbByImdbIdRequest } from '@screena/omdb-client'
 
 import { createPrismaStaleEntityCandidates } from '../src/persistence/stale-entity-candidates.js'
 
@@ -397,6 +403,71 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
     covKeys.length === MOVIES.length - 2,
     `${String(covKeys.length)} candidatos de ${String(MOVIES.length - 2)} sem nota — o cutoff nao os filtrou`,
   )
+
+  // ------------------------------------------ REPERGUNTA (2026-10-29)
+  // O defeito medido em producao: quem a OMDb respondeu "N/A" continua sem nota
+  // e voltava ao topo todo dia. Duas tentativas plantadas com a chave do
+  // CLIENTE real: uma recente (dentro da janela) e uma antiga (fora dela).
+  await recordOmdbAttempt(prisma, 'estreia-proxima', 3)
+  await recordOmdbAttempt(prisma, 'sem-data', OMDB_COVERAGE_RETRY_AFTER_DAYS + 16)
+
+  const cov3 = await port.selectStaleByType({
+    entityType: 'movie',
+    limit: 20,
+    providerApi: PROVIDER,
+    cutoff,
+    mode: 'coverage',
+    now: NOW,
+  })
+  const cov3Keys = await keysOf(
+    prisma,
+    'movies',
+    cov3.candidates.map((c) => c.entityId),
+  )
+  console.log(`    cobertura com tentativas: ${cov3Keys.join(', ')}`)
+
+  record(
+    17,
+    'cobertura PULA quem a OMDb respondeu sem nota ha menos da janela',
+    !cov3Keys.includes('estreia-proxima'),
+    `"estreia-proxima" (perguntado ha 3 dias, sem nota) na cobertura? ${String(cov3Keys.includes('estreia-proxima'))}`,
+  )
+  record(
+    18,
+    'o pulado por repergunta aparece em `skippedFresh` da cobertura',
+    cov3.skippedFresh === 1,
+    `coverage.skippedFresh=${String(cov3.skippedFresh)} (esperado 1)`,
+  )
+  record(
+    19,
+    'CONTROLE NEGATIVO: tentativa ANTIGA nao exclui para sempre',
+    cov3Keys.includes('sem-data') && cov3Keys.length === covKeys.length - 1,
+    `"sem-data" (perguntado ha ${String(OMDB_COVERAGE_RETRY_AFTER_DAYS + 16)} dias) voltou? ${String(
+      cov3Keys.includes('sem-data'),
+    )} · ${String(cov3Keys.length)} de ${String(covKeys.length)}`,
+  )
+}
+
+/**
+ * Grava em `api_cache` a resposta "N/A" da OMDb para um filme, como o worker
+ * grava: chave do construtor REAL do cliente, `fetched_at` em UTC.
+ */
+async function recordOmdbAttempt(prisma: PrismaLike, key: string, daysAgo: number): Promise<void> {
+  const rows = await prisma.$queryRawUnsafe<{ imdb_id: string }[]>(
+    `SELECT imdb_id FROM movies WHERE title_original = ${lit(key)}`,
+  )
+  const imdbId = rows[0]?.imdb_id
+  if (imdbId === undefined) throw new Error(`filme do cenario sem imdb_id: ${key}`)
+  const { cacheKey } = buildOmdbByImdbIdRequest(imdbId)
+  const fetchedAt = new Date(NOW.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString()
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO api_cache (provider_api, endpoint, request_key, params_hash, payload, payload_hash,
+                            fetched_at, expires_at, created_at)
+     VALUES (${lit(PROVIDER)}, '/', ${lit(cacheKey.requestKey)}, ${lit(cacheKey.paramsHash)},
+             '{"Response":"True","imdbRating":"N/A","Ratings":[]}'::jsonb, 'hash-na',
+             ${lit(fetchedAt)}::timestamptz AT TIME ZONE 'UTC',
+             ${lit(fetchedAt)}::timestamptz AT TIME ZONE 'UTC' + interval '1 day', now())`,
+  )
 }
 
 async function main(): Promise<void> {
@@ -469,7 +540,7 @@ async function main(): Promise<void> {
   console.log(`\nRESUMO: ${String(results.length - failed.length)}/${String(results.length)} checks OK.`)
   // Um numero de checks MENOR que o esperado significa que o validador morreu no
   // meio — e morrer no meio nao e passar.
-  const EXPECTED_CHECKS = 16
+  const EXPECTED_CHECKS = 19
   if (results.length < EXPECTED_CHECKS) {
     console.error(
       `FALHA: apenas ${String(results.length)} checks executados (esperados ${String(EXPECTED_CHECKS)}) — o validador morreu no meio.`,
@@ -482,7 +553,8 @@ async function main(): Promise<void> {
   }
   console.log(
     'Resultado: PASSOU. A ordem e editorial (estreia > proxima > no ar > popularidade > id), ' +
-      'cobertura e atualizacao sao disjuntas, e a cobertura ignora a janela de frescor.',
+      'cobertura e atualizacao sao disjuntas, a cobertura ignora a janela de frescor ' +
+      'e nao repergunta quem a OMDb respondeu sem nota ha pouco.',
   )
 }
 
