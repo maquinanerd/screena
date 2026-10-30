@@ -15,7 +15,9 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DetailWatchSink } from '@screena/ingestion/runtime'
+import { TmdbHttpError } from '@screena/tmdb-client'
 
+import { classifyRun } from '../run-outcome.js'
 import { QUEUE_RUNNERS, watchProvidersEndpoint, type RunnerDeps } from '../runtime/runners.js'
 
 const NOW = new Date('2026-10-30T12:00:00.000Z')
@@ -134,6 +136,39 @@ describe('fila watch_offers', () => {
     expect(w.written).toHaveLength(0)
     expect(tally.processed).toBe(0)
     expect(tally.skipped).toBe(1)
+  })
+
+  it('404 do TMDB e pulado, nao falha: o ciclo fecha `success` e nao roda de novo a cada tique', async () => {
+    const w = world({ payload: BR_OFFER })
+    const deps: RunnerDeps = {
+      ...w.deps,
+      catalogEndpoints: {
+        getMovieWatchProviders: async () => {
+          throw new TmdbHttpError(404, '{"status_message":"not found"}', true)
+        },
+        getTvWatchProviders: async () => ({ results: {} }),
+      },
+    }
+    const tally = await QUEUE_RUNNERS.watch_offers(deps)
+    expect(tally.failed).toBe(0)
+    expect(tally.skipped).toBe(1)
+    expect(classifyRun(tally).status).toBe('success')
+  })
+
+  it('CONTROLE NEGATIVO: erro transitorio (5xx) continua FALHA', async () => {
+    const w = world({ payload: BR_OFFER })
+    const deps: RunnerDeps = {
+      ...w.deps,
+      catalogEndpoints: {
+        getMovieWatchProviders: async () => {
+          throw new TmdbHttpError(503, 'indisponivel', false)
+        },
+        getTvWatchProviders: async () => ({ results: {} }),
+      },
+    }
+    const tally = await QUEUE_RUNNERS.watch_offers(deps)
+    expect(tally.failed).toBe(1)
+    expect(classifyRun(tally).status).not.toBe('success')
   })
 
   it('desligamento pedido: nenhuma busca, titulo contado como nao conferido', async () => {

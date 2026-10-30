@@ -47,6 +47,7 @@ import { fileURLToPath } from 'node:url'
 
 import type { PrismaClient } from '@screena/db/server'
 import { checkOmdbBudget, planOmdbRotation } from '@screena/config'
+import { TmdbHttpError } from '@screena/tmdb-client'
 import {
   buildCoverageJob,
   buildDailyDiscoveryJob,
@@ -724,6 +725,16 @@ const runWatchOffers: QueueRunner = async (deps) => {
         countReason(reasons, `watch_${report.outcome}`, `desfecho de oferta: ${report.outcome}`)
       }
     } catch (error) {
+      // 404 do TMDB e PERMANENTE: o titulo foi apagado la e nao ha oferta a
+      // conferir. Contar como falha deixava o ciclo `partial` — que nao avanca o
+      // ultimo sucesso —, e a fila rodava de novo a CADA tique (visto em
+      // 30/10/2026: 1.999/2.000 com um unico 404, e outro ciclo cinco minutos
+      // depois). Pulado, com o motivo nomeado.
+      if (error instanceof TmdbHttpError && error.status === 404) {
+        skipped += 1
+        countReason(reasons, 'tmdb_not_found', 'titulo removido do TMDB (404): nada a conferir')
+        continue
+      }
       failed += 1
       countReason(reasons, 'watch_fetch_failed', String(error))
     }
