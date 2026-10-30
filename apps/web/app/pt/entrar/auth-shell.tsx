@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { AdSlot } from '../../_components/ad-slot'
+import { AdSlot } from '../../_components/opapreco/ad-slot'
 import { CINERIE_AREA_LOGOS } from '../../../src/lib/brand-logos'
 
 /**
@@ -63,7 +63,8 @@ export function AuthShell({
         </p>
       </div>
       <div className="auth-side">
-        <AdSlot format="skyscraper" slotId="auth-side" />
+        {/* OpaPreço · auth-sidebar — product_card_v1 de 300px, só >= 1024px. */}
+        <AdSlot id="auth-sidebar" />
       </div>
     </div>
   )

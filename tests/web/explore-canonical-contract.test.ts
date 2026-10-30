@@ -17,7 +17,7 @@ describe('contrato canônico da rota Explorar (tela 11)', () => {
   it('segue a ordem canônica: busca → ad → rails filtráveis com seções fixas', () => {
     const order = [
       'className="disc-search"',
-      '<AdSlot format="leaderboard" slotId="explore-top" />',
+      'id="discover-top"',
       '<DiscoverFilterableRails',
       'className="disc-feature disc-section"',
       '<ContinueWatching route=',

@@ -16,8 +16,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   brandAreaOf,
+  brandHeaderBoxRatio,
   brandLogoScale,
   CINERIE_AREA_LOGOS,
+  CINERIE_HEADER_LOGO_BOX,
   CINERIE_ORGANIZATION_LOGO,
   CINERIE_SCORE_LOGO,
   CINERIE_SOCIAL_CARD,
@@ -132,6 +134,24 @@ describe("a palavra 'cinérie' tem o mesmo tamanho em toda área", () => {
     for (const logo of Object.values(CINERIE_AREA_LOGOS)) {
       expect(logo.inverse.width).toBe(logo.solid.width);
       expect(logo.inverse.height).toBe(logo.solid.height);
+    }
+  });
+});
+
+describe("a caixa da marca no header é a do canônico (LOGO_W, altura 26)", () => {
+  it("108 · 200 · 208 · 176 px de largura, 26 px de altura", () => {
+    expect(CINERIE_HEADER_LOGO_BOX.height).toBe(26);
+    expect(CINERIE_HEADER_LOGO_BOX.width).toEqual({ neutral: 108, movie: 200, series: 208, news: 176 });
+    expect(brandHeaderBoxRatio("movie")).toBeCloseTo(200 / 26, 3);
+  });
+
+  it("a arte em `contain` nunca é cortada: cabe inteira na caixa, limitada pela altura", () => {
+    for (const area of ["neutral", "movie", "series", "news"] as const) {
+      const art = CINERIE_AREA_LOGOS[area].solid;
+      const widthAtBoxHeight = (art.width / art.height) * CINERIE_HEADER_LOGO_BOX.height;
+      expect(widthAtBoxHeight).toBeLessThanOrEqual(CINERIE_HEADER_LOGO_BOX.width[area]);
+      // ...e a folga é de no máximo 3 px: a caixa descreve a arte, não um espaço vazio.
+      expect(CINERIE_HEADER_LOGO_BOX.width[area] - widthAtBoxHeight).toBeLessThan(3);
     }
   });
 });

@@ -1,0 +1,28 @@
+{
+  "_note": "Datas relativas: o teste deve substituir checkedAt por (agora - checkedMinutesAgo). Imagens são null ou URLs de placeholder; trocar por imagens reais de produto nos testes visuais.",
+  "offers": {
+    "withDiscount": { "offerId": "ssd-kingston-1tb", "productTitle": "SSD NVMe Kingston Fury Renegade 1TB com Dissipador, PCIe 4.0, compatível com PS5", "productImage": "https://placehold.co/600x600/png", "imageRatio": "square", "currentPrice": 549.9, "referencePrice": 699.9, "discountPercent": 21, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 12, "href": "https://example.com/aff/ssd" },
+    "noDiscount": { "offerId": "pulse-3d", "productTitle": "Headset Gamer sem Fio Sony Pulse 3D Midnight Black", "productImage": "https://placehold.co/600x600/png", "imageRatio": "square", "currentPrice": 499.9, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 5, "href": "https://example.com/aff/pulse" },
+    "noImage": { "offerId": "cabo-usbc", "productTitle": "Cabo USB-C trançado 3 m para controle DualSense", "productImage": null, "currentPrice": 39.9, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 20, "href": "https://example.com/aff/cabo" },
+    "longTitle": { "offerId": "dualsense-edge-long", "productTitle": "Controle sem Fio Sony DualSense Edge para PlayStation 5 com Gatilhos Ajustáveis, Botões Traseiros Remapeáveis, Estojo e Cabo", "productImage": "https://placehold.co/800x450/png", "imageRatio": "horizontal", "currentPrice": 1199, "referencePrice": 1499, "discountPercent": 20, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 0, "href": "https://example.com/aff/edge" },
+    "verticalImage": { "offerId": "spiderman2", "productTitle": "Marvel's Spider-Man 2 para PS5, mídia física", "productImage": "https://placehold.co/450x600/png", "imageRatio": "vertical", "currentPrice": 199.9, "referencePrice": 299.9, "discountPercent": 33, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 15, "href": "https://example.com/aff/spiderman" },
+    "horizontalImage": { "offerId": "base-dualsense", "productTitle": "Base de carregamento dupla para controles DualSense", "productImage": "https://placehold.co/800x450/png", "imageRatio": "horizontal", "currentPrice": 89.9, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 3, "href": "https://example.com/aff/base" },
+    "hero": { "offerId": "ps5-slim-digital", "productTitle": "Console PlayStation 5 Slim Edição Digital 825GB", "productImage": "https://placehold.co/800x450/png", "imageRatio": "horizontal", "currentPrice": 3299, "referencePrice": 3799, "discountPercent": 13, "currency": "BRL", "merchant": "Shopee", "isOfficialStore": true, "historicalPrice": { "lowest30d": 3299 }, "checkedMinutesAgo": 12, "href": "https://example.com/aff/ps5" },
+    "priceDrop": { "offerId": "cloud-stinger-2", "productTitle": "Headset Gamer HyperX Cloud Stinger 2 Core para PS5", "productImage": "https://placehold.co/600x600/png", "imageRatio": "square", "currentPrice": 329.9, "currency": "BRL", "merchant": "Shopee", "priceDrop": { "from": 399.9, "percent": 18, "since": "nas últimas 24 h" }, "checkedMinutesAgo": 8, "href": "https://example.com/aff/stinger" }
+  },
+  "mustNotRender": {
+    "_note": "Backend deve devolver 204 e o frontend deve colapsar o slot para cada um destes.",
+    "stale": { "offerId": "stale", "productTitle": "Oferta antiga", "currentPrice": 100, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 400, "href": "https://example.com/aff/x" },
+    "noTitle": { "offerId": "no-title", "productTitle": "", "currentPrice": 100, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 1, "href": "https://example.com/aff/x" },
+    "fakeDrop": { "offerId": "fake-drop", "productTitle": "Queda falsa", "currentPrice": 100, "currency": "BRL", "merchant": "Shopee", "priceDrop": { "from": 102, "percent": 2 }, "checkedMinutesAgo": 1, "href": "https://example.com/aff/x" }
+  },
+  "mustHideDiscount": {
+    "_note": "Renderiza, mas só com o preço atual.",
+    "tinyDiscount": { "offerId": "tiny", "productTitle": "Desconto de 3%", "currentPrice": 97, "referencePrice": 100, "discountPercent": 3, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 1, "href": "https://example.com/aff/x" },
+    "refBelowCurrent": { "offerId": "ref-low", "productTitle": "Referência menor que o preço", "currentPrice": 120, "referencePrice": 100, "discountPercent": 20, "currency": "BRL", "merchant": "Shopee", "checkedMinutesAgo": 1, "href": "https://example.com/aff/x" }
+  },
+  "slots": {
+    "contextual": { "component": "contextual_recommendation_v1", "props": { "offer": "withDiscount", "context": "Se você está procurando um SSD para PS5", "contextNote": "Modelo NVMe PCIe 4.0 com dissipador, formato que encaixa no slot de expansão do console." } },
+    "grid": { "component": "product_grid_v1", "props": { "heading": "Ofertas para o seu PS5", "offers": ["longTitle", "noDiscount", "verticalImage", "horizontalImage"] } }
+  }
+}

@@ -1,9 +1,10 @@
 import type { Metadata } from 'next'
+import { Fragment } from 'react'
 
 import { serializeJsonLd, websiteId } from '@screena/seo'
 
-import { AdSlot } from '../../_components/ad-slot'
 import { EmptyState } from '../../_components/ds'
+import { AdSlot } from '../../_components/opapreco/ad-slot'
 import type { NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
@@ -22,6 +23,12 @@ import './news.css'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Notícias'
+
+/** Tags da página para o ad server OpaPreço: a vertical de notícias. */
+const NEWS_AD_TAGS = { vertical: 'news' } as const
+
+/** A grade OpaPreço do meio do feed entra depois deste card (`adAfter` do canônico). */
+const FEED_INLINE_AFTER = 3
 // O <title> diz o que a pagina tem; o H1 e a trilha continuam "Notícias" (ver a
 // nota gemea em /pt/filmes/).
 const META_TITLE = 'Notícias de cinema e séries'
@@ -111,7 +118,10 @@ export default async function NewsIndexPage() {
       <h1 className="visually-hidden">{TITLE}</h1>
 
       <div className="container">
-        {/* Header: tabs + leaderboard à direita + divisor */}
+        {/* Header: tabs + faixa OpaPreço 728×90 à direita + divisor. A faixa é
+            um product_compact_v1 (nunca uma grade) com `flex: 0 1 728px;
+            min-width: 0`: encolhe com a coluna e, abaixo de 1024px, desce
+            para uma linha própria sob as abas. */}
         <div className="nws-header">
           <nav aria-label="Categorias de notícias" className="nws-tabs">
             <a aria-current="true" href="/pt/noticias/">
@@ -123,9 +133,7 @@ export default async function NewsIndexPage() {
               </a>
             ))}
           </nav>
-          <div className="nws-header__ad">
-            <AdSlot format="leaderboard" slotId="news-header" />
-          </div>
+          <AdSlot className="nws-header__ad" id="news-top" tags={NEWS_AD_TAGS} />
         </div>
         <div className="nws-divider" />
 
@@ -205,14 +213,16 @@ export default async function NewsIndexPage() {
           </div>
         )}
 
-        <AdSlot format="leaderboard" slotId="news-mid" />
+        {/* OpaPreço · news-feed-01 — grade antes do feed (margem 56/0). */}
+        <AdSlot className="op-slot--news-feed" id="news-feed-01" tags={NEWS_AD_TAGS} />
 
         {/* Feed + rail */}
         {feed.length > 0 ? (
           <div className="nws-feed section">
             <ul className="nws-feed__list">
-              {feed.map((card) => (
-                <li key={card.href}>
+              {feed.map((card, index) => (
+                <Fragment key={card.href}>
+                <li>
                   <a className="nws-feed__item" href={card.href}>
                     <span className="nws-feed__thumb">
                       {card.image !== null ? (
@@ -233,10 +243,20 @@ export default async function NewsIndexPage() {
                     </span>
                   </a>
                 </li>
+                {/* OpaPreço · news-feed-inline — uma grade depois do 3º card do
+                    feed (o `adAfter` do canônico), só se houver feed depois
+                    dela: dois slots nunca ficam colados sem editorial entre. */}
+                {index === FEED_INLINE_AFTER - 1 && feed.length > FEED_INLINE_AFTER ? (
+                  <li className="nws-feed__ad">
+                    <AdSlot id="news-feed-inline" tags={NEWS_AD_TAGS} />
+                  </li>
+                ) : null}
+                </Fragment>
               ))}
             </ul>
-            <div>
-              <AdSlot format="skyscraper" slotId="news-feed-rail" />
+            {/* OpaPreço · news-sidebar — product_card_v1 sticky, só >= 1024px. */}
+            <div className="nws-feed__rail">
+              <AdSlot id="news-sidebar" tags={NEWS_AD_TAGS} />
             </div>
           </div>
         ) : null}

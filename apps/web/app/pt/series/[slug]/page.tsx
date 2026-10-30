@@ -18,8 +18,10 @@ import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
 import { SectionHead } from '../../../_components/section-head'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { AwardsBand } from '../../../_components/awards-band'
+import { AdSlot } from '../../../_components/opapreco/ad-slot'
 import { SectionBoundary } from '../../../_components/section-boundary'
-import { RatingsPanel } from '../../../_components/ratings-panel'
+import { RatingsLine } from '../../../_components/ratings-panel'
+import { TitleTopCast, type TitleTopPerson } from '../../../_components/title-top-cast'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { entityPageImageUrls } from '../../../../src/lib/entity-page-images'
@@ -48,27 +50,28 @@ import '../../../_components/detail-hero.css'
 import '../../../_components/detail.css'
 
 /**
- * Detalhe de série — tela 07 do canônico, na ESTRUTURA EXATA do HTML:
- * hero editorial CLARO (verde = série) → Sinopse ("A obra") → Guia crítica
- * (overlay verde) → EPISÓDIOS (catálogo assistível: eyebrow "Catálogo",
- * tabs de temporada à direita, linha de info da temporada, rows com still
- * 288px + badge de número + título 19/750 + sinopse 66ch + chevron) →
- * Elenco (faixa 6 col) → Notícias relacionadas → Detalhes (ficha 320px).
- * A tela 08 (mobile) é ESTE MESMO template no breakpoint 390 (media queries).
+ * Detalhe de série — tela 07 do canônico (revisão de 2026-10-30): a MESMA barra
+ * superior branca do filme (título com o ano + gêneros + sinopse | Cinerie
+ * Score + notas externas | Elenco e Equipe) → mosaico de mídia → tira de ações
+ * (Minha lista · Avaliar | Onde assistir) → Prêmios → A obra → EPISÓDIOS
+ * (catálogo assistível: eyebrow "Catálogo", tabs de temporada à direita, rows
+ * com still + número + título + sinopse + chevron) → OpaPreço `title-mid` →
+ * Elenco → Notícias relacionadas → Detalhes + Mais como este → OpaPreço
+ * `title-bottom`. A tela 08 (mobile) é ESTE MESMO template no breakpoint 390
+ * (media queries). A seção "Guia Cinerie · Crítica" saiu no canônico novo.
  *
  * Série de ~21k episódios nunca vira 20k nós: só a temporada SELECIONADA
  * renderiza (paginação por temporada já vem do getter).
  *
  * A PALETA É A ÚNICA DIFERENÇA VISUAL para o filme, e ela vive em CSS
- * (`[data-vertical='series']`), não duplicada aqui: selo verde, links
- * `--c-vertical-link`, kicker `--c-vertical-kicker`, overlay da crítica em
- * `rgba(16,32,22,…)`. A diferenciação NUNCA depende só da cor (invariante 11):
- * label "Série" + badge + breadcrumb + schema `TVSeries` + URL `/pt/series/`.
+ * (`[data-vertical='series']`), não duplicada aqui. A diferenciação NUNCA
+ * depende só da cor (invariante 11): label "Série" + badge + breadcrumb +
+ * schema `TVSeries` + URL `/pt/series/`.
  *
- * O botão "Ver no celular" do canônico é ferramenta de protótipo e NÃO é
- * portado. As mesmas ausências da página de filme valem aqui (Cinerie Score,
- * prêmios, "Original Screen") — ver o cabeçalho de `filmes/[slug]/page.tsx` e
- * docs/frontend/DESIGN-DELTA-detalhe.md.
+ * O botão "Ver no celular" saiu do próprio canônico. As mesmas ausências e
+ * divergências da página de filme valem aqui (Cinerie Score, "Original
+ * Screen", selo mantido, marcas de nota pela licença) — ver o cabeçalho de
+ * `filmes/[slug]/page.tsx` e docs/frontend/DESIGN-DELTA-detalhe.md.
  */
 
 /**
@@ -115,7 +118,6 @@ import '../../../_components/detail.css'
 export const dynamic = 'force-dynamic'
 
 const SERIES_INDEX_PATH = '/pt/series/'
-const REVIEW_BLOCK_TYPE = 'review_summary'
 const WORK_BLOCK_TYPES: ReadonlySet<string> = new Set([
   'editorial_intro',
   'summary_without_spoilers',
@@ -260,13 +262,10 @@ export default async function SeriesPage({
   // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
   // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
   const isUnderReview = isEditorialReviewPending(seo)
-  const metaText = [view.periodLabel, view.seasonsCountLabel, view.episodesCountLabel]
-    .filter((item): item is string => item !== null)
-    .join(' · ')
-  const genreChips = heroGenreChips(genres)
+  // A linha de gêneros do topo (canônico: "DRAMA · MISTÉRIO · SUSPENSE").
+  const genreLine = heroGenreChips(genres).join(' · ')
   const scoreDecision = decideCinerieScore(score)
 
-  const critiqueBlock = view.blocks.find((block) => block.blockType === REVIEW_BLOCK_TYPE) ?? null
   const editorialBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
   const episodeContextBlocks = view.blocks.filter((block) =>
     EPISODE_BLOCK_TYPES.has(block.blockType),
@@ -282,6 +281,15 @@ export default async function SeriesPage({
     view.seasons.find((season) => season.seasonNumber === data.activeSeasonNumber) ?? null
   const visibleCast = cast.slice(0, 6)
   const visibleNews = relatedNews.slice(0, 3)
+  // "Elenco e Equipe" do topo: os três primeiros do elenco, com o personagem
+  // como papel (o canônico da série não escreve "como"). A criação não está na
+  // projeção desta página — nada de nome inventado no terceiro círculo.
+  const topPeople: TitleTopPerson[] = visibleCast.slice(0, 3).map((member) => ({
+    name: member.name,
+    role: member.character,
+    href: member.href,
+    profile: member.profile,
+  }))
 
   // A BANDA DE MIDIA. Os tres cartoes do canonico voltam porque as rotas de
   // galeria passaram a existir; cada um so entra com destino E com conteudo.
@@ -343,11 +351,6 @@ export default async function SeriesPage({
     // sobre a obra. Os dois sao identicos na tela, e so o log separa.
     // O `??` nunca e usado: `awardsAbsence` so e null quando ha faixa.
     reason: awardsAbsence ?? 'no_awards_source',
-  })
-  const critiqueSection = decideSection(critiqueBlock, {
-    ...entityRef,
-    section: 'guia-critica',
-    reason: 'no_editorial_review',
   })
   const castSection = decideSection(visibleCast, {
     ...entityRef,
@@ -439,8 +442,10 @@ export default async function SeriesPage({
 
   return (
     <main data-vertical="series">
-      {/* ===== HERO editorial claro (canônico: verde = série) ===== */}
-      <div className="detail-hero">
+      {/* ===== Barra superior BRANCA (canônico de 2026-10-30: verde = série) =====
+          A mesma composição do filme. Os botões e "Onde assistir" desceram
+          para a tira logo abaixo do mosaico. */}
+      <div className="detail-hero detail-hero--title">
         <div className="detail-container">
           <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
             <ol>
@@ -451,75 +456,50 @@ export default async function SeriesPage({
             </ol>
           </nav>
 
-          <div className="detail-hero__grid">
-            <div className="detail-hero__main">
-              <div className="detail-badge-row">
+          <div className="title-top">
+            <div className="title-top__main">
+              <h1 className="title-top__title">
+                {view.title}
+                {view.firstAirYear !== null ? ` (${view.firstAirYear})` : null}
+              </h1>
+              <div className="detail-badge-row title-top__kicker">
+                {/* O selo da vertical FICA, compacto (invariante 11), mesmo
+                    sem estar no canônico novo; o estado da série vai junto. */}
                 <span className="detail-badge" data-entity-badge="series">
                   Série
                 </span>
                 {view.statusLabel !== null ? (
                   <span className="season-info__status">{view.statusLabel}</span>
                 ) : null}
+                {genreLine !== '' ? <span className="title-top__genres">{genreLine}</span> : null}
               </div>
-              <h1 className="detail-hero__title">{view.title}</h1>
-              <ul className="detail-hero__chips">
-                {genreChips.map((genre) => (
-                  <li className="detail-hero__genre-chip" key={genre}>
-                    {genre}
-                  </li>
-                ))}
-                {metaText !== '' ? (
-                  <li className="detail-hero__meta-text">{metaText}</li>
-                ) : null}
-              </ul>
               {/* Sem guarda por `metaDescription`: ela e `pt-BR`-only, e usa-la
                   como condicao mataria justamente a sinopse em idioma de
-                  origem. Quem decide omitir e o proprio componente. Tres
-                  linhas: o texto completo vive em "A OBRA". */}
-              <EntitySynopsis maxChars={HERO_SYNOPSIS_MAX_CHARS} synopsis={view.synopsis} />
-              <div className="detail-actions">
-                {/* DOIS botoes, exatamente: Minha lista + Avaliar (C8). */}
-                <EntityActions entityType="tv" entityId={entityId} />
-              </div>
+                  origem. Quem decide omitir e o proprio componente. O texto
+                  completo vive em "A OBRA". */}
+              <EntitySynopsis
+                maxChars={HERO_SYNOPSIS_MAX_CHARS}
+                readMoreHref="#series-work-title"
+                synopsis={view.synopsis}
+                variant="top"
+              />
             </div>
 
-            <aside aria-label="Notas e disponibilidade" className="detail-hero__aside">
-              {/* O CARTAO da coluna direita, na ordem do canonico:
-                  CINERIE SCORE -> AVALIACOES -> ONDE ASSISTIR. O Score so
-                  renderiza com >= 2 fontes contadas e decisao vigente; abaixo
-                  do piso, "Avaliacoes" sobe e ocupa o topo do cartao. */}
+            <div className="title-top__score">
+              {/* O Score so renderiza com >= 2 fontes contadas e decisao
+                  vigente; abaixo do piso a linha de notas ocupa a coluna. */}
               <SectionBoundary decision={scoreSection}>
-                {(scoreView) => (
-                  <div className="detail-aside-block detail-aside-block--first">
-                    <CinerieScoreCard view={scoreView} />
-                  </div>
-                )}
+                {(scoreView) => <CinerieScoreCard view={scoreView} />}
               </SectionBoundary>
               <SectionBoundary decision={ratingsSection} speak>
-                {(view) => (
-                  <div
-                    className={
-                      scoreDecision.rendered
-                        ? 'detail-aside-block'
-                        : 'detail-aside-block detail-aside-block--first'
-                    }
-                  >
-                    <p className="detail-aside-block__label">Avaliações</p>
-                    <RatingsPanel view={view} />
-                  </div>
-                )}
+                {(view) => <RatingsLine view={view} />}
               </SectionBoundary>
-              <SectionBoundary decision={watchSection} speak>
-                {(view) => (
-                  <div className="detail-aside-block">
-                    <p className="detail-aside-block__label">Onde assistir</p>
-                    {/* Marcas em linha (canonico), com a MODALIDADE visivel
-                        (decisao de 2026-08-13). */}
-                    <WatchBrandsRow brands={watchBrandsRow(view)} />
-                  </div>
-                )}
-              </SectionBoundary>
-            </aside>
+            </div>
+
+            <TitleTopCast
+              people={topPeople}
+              seeAllHref={castSection.rendered ? '#series-cast-title' : null}
+            />
           </div>
         </div>
       </div>
@@ -611,6 +591,23 @@ export default async function SeriesPage({
         </div>
       ) : null}
 
+      {/* ===== Ações + onde assistir (canônico de 2026-10-30) =====
+          DOIS botões (Minha lista + Avaliar) e as marcas licenciadas com a
+          MODALIDADE visível (decisão de 2026-08-13). */}
+      <div className="detail-container title-actions">
+        <div className="title-actions__bar">
+          <div className="detail-actions">
+            <EntityActions entityType="tv" entityId={entityId} />
+          </div>
+          <div className="title-actions__watch">
+            <p className="title-actions__label">Onde assistir</p>
+            <SectionBoundary decision={watchSection} speak>
+              {(view) => <WatchBrandsRow brands={watchBrandsRow(view)} />}
+            </SectionBoundary>
+          </div>
+        </div>
+      </div>
+
       {/* ===== Prêmios — a faixa desceu do topo (decisao do dono): vive abaixo
           da banda de mídia. NÃO há mais card dela na banda: ele só ancorava
           aqui, duplicando dentro da faixa uma seção que a página mostra
@@ -630,7 +627,8 @@ export default async function SeriesPage({
           catálogo (rodapé global). */}
       {(synopsisLead !== null || synopsisRest.length > 0 || view.synopsis !== null) ? (
         <section aria-labelledby="series-work-title" className="detail-container" style={{ paddingTop: 60 }}>
-          <div className="eyebrow-bar">
+          {/* Sem o filete de 16x2 antes do rótulo (canônico de 2026-10-30). */}
+          <div className="eyebrow-bar eyebrow-bar--plain">
             <span id="series-work-title">A obra</span>
           </div>
           {synopsisLead !== null ? (
@@ -649,39 +647,13 @@ export default async function SeriesPage({
         </section>
       ) : null}
 
-      {/* ===== Guia Cinerie · crítica (overlay verde) =====
-          O kicker verde vem do token da vertical em CSS
-          (`[data-vertical='series'] .critic-band__eyebrow`), não de um hex
-          inline: cor de marca hardcoded em componente é o que faz filme e série
-          divergirem em silêncio quando um dos dois é editado. */}
-      <SectionBoundary decision={critiqueSection}>
-        {(block) => (
-          <section aria-label="Crítica da redação" className="critic-band">
-            {view.media.backdrop !== null ? (
-              <img alt="" className="critic-band__img" loading="lazy" src={view.media.backdrop.src} />
-            ) : null}
-            <div className="critic-band__scrim-h" />
-            <div className="critic-band__scrim-v" />
-            <div className="critic-band__inner">
-              <div className="critic-band__content">
-                <span className="critic-band__eyebrow">Guia Cinerie · Crítica da redação</span>
-                <p className="critic-band__quote" data-block-type={block.blockType}>
-                  {block.content}
-                </p>
-                <p className="critic-band__byline">Redação Cinerie</p>
-              </div>
-            </div>
-          </section>
-        )}
-      </SectionBoundary>
-
       {/* ===== Episódios (catálogo assistível) ===== */}
       {view.seasons.length > 0 ? (
         <section aria-labelledby="series-episodes-title" className="detail-container" id="episodios" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            {/* O kicker "Catálogo" FICA: diz a natureza da secao, que o
-                titulo nao diz — a regra so barra repeticao. */}
-            <SectionHead headingId="series-episodes-title" kicker="Catálogo" title="Episódios" />
+            {/* Sem o kicker "Catálogo": o canônico de 2026-10-30 deixou só o
+                título. */}
+            <SectionHead headingId="series-episodes-title" title="Episódios" />
             {/* Tabs de temporada: links REAIS (rotas dedicadas de temporada,
                 com fallback por query) — overflow horizontal no mobile. */}
             {view.seasons.length > 1 ? (
@@ -715,14 +687,22 @@ export default async function SeriesPage({
         </section>
       ) : null}
 
+      {/* ===== OpaPreço · title-mid — depois dos episódios, onde o canônico
+          de 2026-10-30 o põe na série. A margem vive na classe do PRÓPRIO slot:
+          desligado ou vazio, ele não renderiza e o respiro some junto. ===== */}
+      <AdSlot
+        className="title-ad title-ad--mid"
+        id="title-mid"
+        tags={{ vertical: 'series', entity: slug, genres }}
+      />
+
       {/* ===== Elenco · faixa visual ===== */}
       <SectionBoundary decision={castSection}>
         {(members) => (
         <section aria-labelledby="series-cast-title" className="detail-container" style={{ paddingTop: 60 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
-            {/* Sem sobrancelha: "— ELENCO" acima de "ELENCO PRINCIPAL" so
-                repetia o titulo (decisao do dono; regra em SectionHead). */}
-            <SectionHead headingId="series-cast-title" kicker="Elenco" thin="principal" title="Elenco" />
+            {/* Sem sobrancelha: o canônico de 2026-10-30 deixou só o título. */}
+            <SectionHead headingId="series-cast-title" thin="principal" title="Elenco" />
             <a className="detail-see-all" href="/pt/pessoas/">
               Ver elenco completo →
             </a>
@@ -786,7 +766,8 @@ export default async function SeriesPage({
         {(articles) => (
         <section aria-labelledby="series-news-title" className="detail-container" style={{ paddingTop: 64 }}>
           <div className="section-head" style={{ alignItems: 'flex-end', marginBottom: 26 }}>
-            <SectionHead headingId="series-news-title" kicker="Editorial" thin="relacionadas" title="Notícias" />
+            {/* Sem o kicker "Editorial" (canônico de 2026-10-30). */}
+            <SectionHead headingId="series-news-title" thin="relacionadas" title="Notícias" />
             <a className="see-all" href={NEWS_INDEX_PATH}>
               Ver tudo
             </a>
@@ -826,7 +807,7 @@ export default async function SeriesPage({
         <section aria-labelledby="series-details-title" className="detail-container" style={{ paddingTop: 64, paddingBottom: 72 }}>
           <div className={similarSection.rendered ? 'ficha-grid' : 'ficha-grid ficha-grid--solo'}>
             <div>
-              <div className="eyebrow-bar">
+              <div className="eyebrow-bar eyebrow-bar--plain">
                 <span id="series-details-title">Detalhes</span>
               </div>
               <dl className="ficha-rows">
@@ -865,6 +846,13 @@ export default async function SeriesPage({
           </div>
         </section>
       ) : null}
+
+      {/* ===== OpaPreço · title-bottom — depois de "Mais como este" ===== */}
+      <AdSlot
+        className="title-ad title-ad--bottom"
+        id="title-bottom"
+        tags={{ vertical: 'series', entity: slug, genres }}
+      />
 
       <div className="detail-container">
         {isUnderReview ? (

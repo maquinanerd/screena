@@ -49,7 +49,7 @@ daqui depois de comparação visual ou de contrato.
   superfície, sem campo ou botão falsamente funcionais.
 - **Impacto visual:** produção tem menos conteúdo dentro da faixa branca.
 
-## D-005 — Runtime publicitário ausente
+## D-005 — Runtime publicitário ausente _(SUBSTITUÍDO em 30/10/2026 — ver D-200)_
 
 - **Canônico:** 23 posições descritas como Google AdSense.
 - **Produto:** não há unidade nem autorização para carregar script publicitário
@@ -318,9 +318,62 @@ privacidade, acessibilidade ou arquitetura real — nunca por conveniência.
 - **D-112 — Breadcrumb e atribuição TMDB.** Páginas reais carregam breadcrumb
   (invariante 11) e o rodapé mantém a atribuição TMDB exigida; o protótipo não
   os traz.
-- **D-113 — Inventário de AdSlots: 19 de 21 montados.** O canônico declara 21
+- **D-113 — Inventário de AdSlots: 19 de 21 montados.** _(Substituído por D-200 em 30/10/2026.)_ O canônico declara 21
   slots (verificado por contagem no HTML 6936a341…). A implementação monta 19
   (17 em página + 2 nas superfícies modais 17/18); os 2 restantes pertencem a
   posições dentro de seções omitidas por falta de produto (rail adicional de
   Notícias e do guia de streaming). Slots são omitidos em produção por padrão
   (sem ad server) — nenhum impacto visual real.
+
+## D-200 — Handoff de 30/10/2026: canônico `13993b29…` + OpaPreço Ads
+
+Revisão do canônico entregue em `handoff-cinerie-frontend` (sha-256
+`13993b293a548e8ee4b5d54ed7389e34858827b2b033717dbf7066e462090525`, 391.902
+bytes), comparada linha a linha com a anterior (`6936a341…`): 80 trechos
+mudaram. O Google AdSense saiu por inteiro e os 21 `AdSlot` viraram slots
+OpaPreço (`docs/opapreco/`, `OPAPRECO-SLOT-MAP.md`). Divergências que a
+implementação PRECISOU introduzir:
+
+- **D-201 — Criativo sem SSR.** O handoff pede o anúncio renderizado no
+  servidor. A invariante 3 proíbe API externa no render: a página renderiza só a
+  reserva de altura + skeleton, e o navegador pede a decisão a
+  `/api/opapreco/ad` (mesma origem), que chama o ad server com timeout de 1,5 s.
+  É o caminho "sem SSR" da própria spec (§14.2). Imagem e impressão passam pela
+  origem da Cinerie (`/api/opapreco/img`, `/api/opapreco/track`): o navegador
+  do leitor não fala com terceiros antes do clique — a Política de Privacidade
+  (item 6) continua verdadeira e o CSP não muda.
+- **D-202 — Desligado por padrão.** Sem `OPAPRECO_AD_SERVER_URL` +
+  `OPAPRECO_PUBLISHER_ID` o `<AdSlot>` não renderiza nada (nem reserva). Ligar em
+  produção exige: o ad server aceitar os ids de slot da Cinerie (o contrato v1
+  só enumera os 5 de matéria — ver `docs/opapreco/contracts/CHANGELOG.md`) e
+  revisão humana da Política de Privacidade.
+- **D-203 — Verificação do AdSense removida.** A metatag
+  `google-adsense-account` e o `/ads.txt` saíram junto com o resto do AdSense
+  (pedido explícito do handoff). A conta `ca-pub-9994816010226342` perde a
+  prova de propriedade do site.
+- **D-204 — Slots omitidos por falta da seção vizinha.** O slot map proíbe dois
+  slots OpaPreço colados sem editorial entre eles. `browse-02` (depois de "Para
+  você", que não renderiza), `lists-collection` e `lists-bottom` (em volta de
+  "Listas em destaque", D-106) e os de categoria de notícias (`news-cat-*`,
+  D-014) não são montados. `article-mid` foi removido por regra (máx. 4 por
+  matéria).
+- **D-205 — Logo do header pela caixa do canônico.** `LOGO_W` (108 · 200 · 208 ·
+  176 × 26 px) substitui a regra anterior de altura fixa da palavra. Os PNGs do
+  handoff são idênticos pixel a pixel aos WEBP já servidos; não foram copiados.
+- **D-206 — Créditos de dados do rodapé seguem a licença.** Os SVGs de
+  `assets/data-credits/` são provisórios (texto desenhado) e logo de fonte é
+  decisão de licença (`services/legal`, `logoAllowed`). O rodapé continua com o
+  crédito textual governado (FOOTER-SPEC §10.1/§10.3); Wikidata segue sem
+  licença registrada.
+- **D-207 — Fichas de filme/série.** Detalhadas em
+  `docs/frontend/DESIGN-DELTA-detalhe.md` §5bis: badge "Filme"/"Série" mantido
+  (invariante 11); marcas IMDb/TMDB/RT pela licença, não pelos SVG monocromáticos
+  redesenhados do canônico; escala da fonte junto da nota; caixa do Score sem
+  contagem de avaliações inventada; onde o texto do prompt ("pill sólida",
+  "borda 2px", "avatares 56px") diverge do arquivo canônico (linha de texto,
+  1px, 62px), vale o arquivo.
+- **D-208 — Capa da matéria.** Tela cheia (`min-height` 100vh/100svh, piso de
+  560/420px) e linha fina de 16px, como o canônico. A grade do texto continua a
+  do header (`--container-nav` + `--pad-page`, PR #113) em vez de `1240px + 40px`,
+  e a manchete mantém a escala amarrada à altura da tela (contraste em tela
+  larga e baixa).

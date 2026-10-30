@@ -134,6 +134,7 @@ Fluxo mental: **API externa -> worker (offline, com log) -> PostgreSQL -> [Entit
 | `services/streaming` | `@screena/streaming` — disponibilidade de streaming via RapidAPI (gateado por licenca). |
 | `services/legal` | `@screena/legal` — registro de autorizacao de fontes e atribuicao. |
 | `services/user-platform` | `@screena/user-platform` — identidade, credencial, sessao, tokens, e-mail transacional (runtime de auth WIRED nas rotas `/api/auth/**`). |
+| `services/opapreco` | `@screena/opapreco` — cliente HTTP SERVER-ONLY do ad server OpaPreço (ofertas afiliadas que substituem o Google AdSense, removido em 2026-10-30). Só as rotas `apps/web/app/api/opapreco/**` o alcançam: a página renderiza a reserva do slot e o navegador pede a oferta à mesma origem (invariante 3). Desligado sem `OPAPRECO_AD_SERVER_URL` + `OPAPRECO_PUBLISHER_ID`. Contrato e decisões em `docs/opapreco/`. |
 | `services/news-ingestion` | `@screena/news-ingestion` — **workspace ATIVO e real** (nao e placeholder). Plataforma editorial: identidade de item, deduplicacao determinista, ciclo de vida do artigo, slug/redirect, projecao de busca/indexabilidade, metricas e portas. Nucleo PURO em `src/` (sem Prisma), adapters Prisma em `src/persistence/`, CLI de desenvolvimento em `bin/editorial.ts` (com barreira anti-producao) e testes proprios. **Nao reconstroi RSS Prime nem MN26**: implementa o contrato de entrada e a projecao publica governada. Desde a FASE 2C tambem hospeda o **worker de projecao editorial** (`bin/project-editorial.ts`): consome a outbox do CMS por HTTP e projeta no banco publico. E o UNICO processo que fala com os DOIS LADOS — e a ponte e assimetrica: **API do Payload** (HTTP autenticado) de um lado, **banco publico do Screen-App** (Prisma) do outro. Ele NAO abre conexao com o banco do CMS; a proibicao e travada por `tests/governance/editorial-worker-boundary.test.ts`. |
 | `api-clients/imdb`, `api-clients/kaso`, `api-clients/rotten_tomatoes` | Placeholders de roadmap (apenas `README.md`, sem `package.json` nem codigo). Nao sao workspaces ativos. |
 | ~~`api-clients/film_show_ratings`~~, ~~`api-clients/streaming_availability`~~ | **REMOVIDOS em 2026-09-02.** Clients RapidAPI de um fornecedor que o dono aposentou. A IDENTIDADE de cada um sobrevive onde precisa sobreviver — `streaming_availability` e chave viva em `api_providers`, com linhas de `watch_availability` apontando por FK, e vive em `services/streaming/src/provider-identity.ts`. O que morreu foi o caminho EXECUTAVEL: client HTTP, config, worker e cota. |
@@ -161,6 +162,7 @@ Cada pacote em `packages/*` tem: `package.json` (com `"main": "./src/index.ts"` 
 @screena/cinerie-score              -> packages/cinerie-score/src/index.ts
 @screena/legal                      -> services/legal/src/index.ts
 @screena/news-ingestion             -> services/news-ingestion/src/index.ts
+@screena/opapreco                   -> services/opapreco/src/index.ts
 @screena/tmdb-client                -> api-clients/tmdb/src/index.ts
 @screena/rapidapi-core              -> api-clients/rapidapi-core/src/index.ts
 @screena/film-show-ratings-client   -> api-clients/film_show_ratings/src/index.ts

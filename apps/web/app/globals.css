@@ -443,16 +443,19 @@ dl {
      aos icones de 44px em vez de empurra-los para fora da barra. */
   flex-shrink: 1;
   min-width: 0;
-  /* Altura da PALAVRA "cinerie", igual em todas as areas. Cada arte escala por
-     `--logo-scale` (altura do arquivo / 163 — ver src/lib/brand-logos.ts). */
-  --brand-word-h: 28px;
+  /* Altura da CAIXA da marca: 26px no canonico (handoff 30/10/2026), a mesma
+     para todas as areas. A largura sai de `--logo-box-ratio` (LOGO_W / 26:
+     108 · 200 · 208 · 176 — ver CINERIE_HEADER_LOGO_BOX em brand-logos.ts) e a
+     arte entra por `contain`, ancorada a esquerda, como o `background` do
+     canonico. */
+  --brand-h: 26px;
 }
 
 .site-header__logo {
   display: block;
-  width: auto;
-  height: calc(var(--brand-word-h) * var(--logo-scale, 1));
-  max-width: 80%;
+  height: var(--brand-h);
+  width: calc(var(--brand-h) * var(--logo-box-ratio, 4.1538));
+  max-width: 100%;
   object-fit: contain;
   object-position: left center;
 }
@@ -603,14 +606,14 @@ dl {
     padding-inline: var(--pad-page-mobile);
   }
   .site-header__brand {
-    --brand-word-h: 24px;
+    --brand-h: 24px;
   }
 }
 
 /* Telefone: a marca de area mais larga ("cinerie /serie e tv") precisa caber ao
    lado dos tres alvos de toque de 44px. A 375px sobram ~183px com os vaos
-   abaixo; a arte de serie a 20px de palavra ocupa ~175px. Abaixo disso a marca
-   encolhe (object-fit), nunca empurra os icones. */
+   abaixo; a caixa de serie a 22px de altura mede 208/26 x 22 = 176px. Abaixo
+   disso a marca encolhe (max-width + object-fit), nunca empurra os icones. */
 @media (max-width: 480px) {
   .site-header__inner {
     gap: 12px;
@@ -619,7 +622,7 @@ dl {
     gap: 4px;
   }
   .site-header__brand {
-    --brand-word-h: 20px;
+    --brand-h: 22px;
   }
 }
 
@@ -2068,6 +2071,13 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   background: var(--c-accent-series-dark);
 }
 
+/* --- Rotulo de secao SEM o filete de 16x2 ("A obra", "Ficha tecnica"),
+   como no canonico de 2026-10-30. So nas fichas: as outras telas que usam
+   `.eyebrow-bar` nao mudaram. --------------------------------------------- */
+.eyebrow-bar--plain::before {
+  content: none;
+}
+
 .eyebrow-bar span {
   font-size: 11px;
   font-weight: 800;
@@ -2118,8 +2128,11 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 .art-hero[data-hero-media='true'] {
   display: flex;
   flex-direction: column;
-  min-height: clamp(560px, 88vh, 1000px);
-  min-height: clamp(560px, 88svh, 1000px);
+  /* Tela cheia (canonico de 30/10/2026: a altura do viewport inteiro). Piso
+     e nao altura fixa, para manchete longa poder crescer o hero em vez de
+     vazar; os 560px protegem janela muito baixa. */
+  min-height: max(560px, 100vh);
+  min-height: max(560px, 100svh);
   background: var(--c-bg-hero);
   color: #fff;
 }
@@ -2354,18 +2367,17 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 }
 
 @media (max-width: 599px) {
-  /* No celular a capa continua sendo o assunto da dobra — reduzi-la a uma faixa
-     de 62vh era "encolher tudo proporcionalmente", nao adaptar. Em 78svh ela
-     mantem a presenca cinematografica e ainda deixa corpo visivel abaixo:
-     ~186px num 390x844, ~141px num 360x640. Teto de 640px para o hero nao
-     acompanhar celular alto ate virar duas telas; piso de 420px para o proprio
-     texto nao se espremer.
+  /* No celular a capa tambem e TELA CHEIA (canonico de 30/10/2026: a imagem
+     de destaque ocupa a tela e o texto fica ancorado embaixo). Ate entao ela
+     tinha 78svh com teto de 640px para deixar corpo visivel na dobra; o
+     canonico trocou isso pela capa inteira. Piso de 420px para o proprio texto
+     nao se espremer.
      `svh` importa MAIS aqui que no desktop: com `vh` o hero cresceria no
      instante em que a barra de URL recolhe, empurrando o texto e reflowando a
      pagina no meio do scroll. */
   .art-hero[data-hero-media='true'] {
-    min-height: clamp(420px, 78vh, 640px);
-    min-height: clamp(420px, 78svh, 640px);
+    min-height: max(420px, 100vh);
+    min-height: max(420px, 100svh);
   }
 
   /* `env()` para o texto nao cair sob o entalhe/cantos arredondados em paisagem;
@@ -2418,67 +2430,6 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   font-size: 24px;
 }
 
-/* ------------------------------------------------------------------ */
-/* AdSlot — espaco reservado + rotulo obrigatorio, sem CLS             */
-/* ------------------------------------------------------------------ */
-
-.ad-slot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin-top: var(--section-rhythm);
-}
-
-.ad-slot__label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--c-text-muted-aa);
-}
-
-.ad-slot__box {
-  width: 100%;
-  border: 1px dashed var(--c-border);
-  border-radius: var(--r-sm);
-  background: var(--c-bg-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--c-text-muted-aa);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.ad-slot--leaderboard .ad-slot__box {
-  max-width: 728px;
-  height: 90px;
-}
-
-.ad-slot--billboard .ad-slot__box {
-  max-width: 970px;
-  height: 250px;
-}
-
-.ad-slot--rectangle .ad-slot__box {
-  max-width: 300px;
-  height: 250px;
-}
-
-.ad-slot--skyscraper .ad-slot__box {
-  max-width: 160px;
-  height: 600px;
-}
-
-@media (max-width: 767px) {
-  .ad-slot--leaderboard .ad-slot__box {
-    height: 60px;
-  }
-  .ad-slot--billboard .ad-slot__box {
-    height: 120px;
-  }
-}
 
 /* Superficies de anuncio (pop-up / interstitial) */
 
@@ -2861,12 +2812,6 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 /* ------------------------------------------------------------------ */
 /* Telas 17/18 — superfícies de anúncio (valores exatos do canônico)   */
 /* ------------------------------------------------------------------ */
-/* O resto das telas 17/18 vive em app/dev/ad-preview/ad-preview.css. Fica aqui a
-   regra cujo sujeito e o `.ad-slot` global. */
-
-.ad-tela__media .ad-slot {
-  margin: 0;
-}
 
 /* ------------------------------------------------------------------ */
 /* Tela 08 — estado MOBILE da página de série (e detalhe em geral).    */

@@ -37,10 +37,11 @@ export function truncateAtWord(
 }
 
 /**
- * Quantos chips de gênero o topo mostra. O canônico desenha dois; mais que
- * isso disputa a linha com o meta e a classificação.
+ * Quantos gêneros a linha do topo mostra. O canônico de 2026-10-30 trocou os
+ * dois chips por uma linha de texto com três ("DRAMA · SUSPENSE · MISTÉRIO");
+ * o meta e a classificação saíram do topo (seguem na ficha técnica).
  */
-export const HERO_GENRE_CHIP_COUNT = 2;
+export const HERO_GENRE_CHIP_COUNT = 3;
 
 export function heroGenreChips(genres: readonly string[]): readonly string[] {
   return genres.slice(0, HERO_GENRE_CHIP_COUNT);

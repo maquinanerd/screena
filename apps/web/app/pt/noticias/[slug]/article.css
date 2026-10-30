@@ -68,10 +68,9 @@
    paragrafo de tres linhas encurtaria todas elas sem motivo. */
 .art-hero[data-hero-media='true'] .art-deck {
   color: rgba(255, 255, 255, 0.82);
-  /* Mesma razao da manchete: em tela baixa o resumo tambem precisa ceder
-     altura, senao devolve por baixo o que o titulo economizou por cima. */
-  font-size: clamp(16px, min(1.35vw, 2.4vh), 21px);
-  font-size: clamp(16px, min(1.35vw, 2.4svh), 21px);
+  /* 16px fixo: a linha fina do canonico de 30/10/2026 (era uma escala de 16 a
+     21px). Fixo tambem resolve a tela baixa: o resumo nao cresce com a largura. */
+  font-size: 16px;
   line-height: 1.5;
   max-width: min(660px, 100%);
   margin-top: 18px;
@@ -178,8 +177,12 @@
   line-height: 1.5;
 }
 
-.art-ad {
-  margin: 44px 0;
+/* Coluna do slot OpaPreço `article-bottom`: a mesma de 720px do corpo, com o
+   mesmo recuo de 20px — a grade alinha com o texto da materia. */
+.art-bottom-ad {
+  max-width: var(--container-reading);
+  margin: 0 auto;
+  padding: 0 20px;
 }
 
 /* Ficha do título — quebra o limite da coluna de leitura (720 → 880) */

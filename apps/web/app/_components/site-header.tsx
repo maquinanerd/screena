@@ -31,9 +31,9 @@ import type { CSSProperties, ReactNode } from 'react'
 
 import {
   brandAreaOf,
-  brandLogoScale,
+  brandHeaderBoxRatio,
   CINERIE_AREA_LOGOS,
-  type BrandLogoFile,
+  type BrandArea,
 } from '../../src/lib/brand-logos'
 import {
   HOME_HREF,
@@ -71,12 +71,13 @@ const ARTICLE_HERO_SELECTOR = '.art-hero[data-hero-media="true"]'
 const NAV_HEIGHT_PX = 72
 
 /**
- * A arte escala pela altura da PALAVRA "cinérie" (`--brand-word-h`, no CSS):
- * as artes de área são mais altas que a marca-mãe só por causa da barra "/",
- * e sem o fator a palavra encolheria ao trocar de seção. Ver `brand-logos.ts`.
+ * A caixa da marca segue o canônico: 26 px de altura e a largura da área
+ * (`LOGO_W`: 108 · 200 · 208 · 176). O CSS fixa a ALTURA (`--brand-h`, menor em
+ * tablet e telefone) e a largura sai desta razão, então a proporção da caixa é
+ * a mesma em qualquer tela. Ver `CINERIE_HEADER_LOGO_BOX` em `brand-logos.ts`.
  */
-function logoStyle(file: BrandLogoFile): CSSProperties {
-  return { '--logo-scale': brandLogoScale(file) } as CSSProperties
+function logoStyle(area: BrandArea): CSSProperties {
+  return { '--logo-box-ratio': brandHeaderBoxRatio(area) } as CSSProperties
 }
 
 export function SiteHeader(): ReactNode {
@@ -189,7 +190,7 @@ export function SiteHeader(): ReactNode {
               data-logo-area={context}
               height={logos.solid.height}
               src={logos.solid.src}
-              style={logoStyle(logos.solid)}
+              style={logoStyle(context)}
               width={logos.solid.width}
             />
             <img
@@ -198,7 +199,7 @@ export function SiteHeader(): ReactNode {
               data-logo-area={context}
               height={logos.inverse.height}
               src={logos.inverse.src}
-              style={logoStyle(logos.inverse)}
+              style={logoStyle(context)}
               width={logos.inverse.width}
             />
           </a>

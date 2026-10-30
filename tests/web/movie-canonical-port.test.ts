@@ -73,8 +73,11 @@ describe('shell público mínimo · detalhe de filme', () => {
 
   it('mantém somente blocos revisados e dados reais da ficha', () => {
     expect(code).toContain('WORK_BLOCK_TYPES.has(block.blockType)')
-    expect(code).toContain('const REVIEW_BLOCK_TYPE = "review_summary"')
-    expect(code).toContain('block.blockType === REVIEW_BLOCK_TYPE')
+    // A faixa "Guia Cinerie · Crítica" (que lia `review_summary`) SAIU no
+    // canônico de 2026-10-30 — das duas fichas. Nenhuma sobra dela na página.
+    expect(code).not.toContain('critic-band')
+    expect(code).not.toContain('REVIEW_BLOCK_TYPE')
+    expect(code).not.toContain('Guia Cinerie')
     // `where_to_watch_text` SAIU do cartao com o topo canonico (20/08/2026):
     // o cartao e "marcas em linha e mais nada". O bloco editorial segue valido
     // no schema e sem superficie nas paginas de detalhe — registrado em
@@ -101,16 +104,21 @@ describe('shell público mínimo · detalhe de filme', () => {
   })
 
   it('design canônico (tela 06): estrutura EXATA do handoff, sem dado inventado', () => {
-    // Ordem canônica: hero editorial claro → mídia full-bleed → A obra →
-    // Guia crítica → Elenco (faixa 3/4) → Notícias e bastidores → Ficha.
+    // Ordem canônica (revisão de 2026-10-30): barra superior branca (título |
+    // Score + notas | Elenco e Equipe) → mosaico de mídia → tira de ações e
+    // onde assistir → A obra → OpaPreço title-mid → Elenco → Notícias e
+    // bastidores → Ficha + Mais como este → OpaPreço title-bottom.
     const order = [
       'detail-hero',
+      'title-top',
       'media-strip',
+      'title-actions',
       'synopsis-lead',
-      'critic-band',
+      'title-ad--mid',
       'cast-strip',
       'mnews-grid',
       'ficha-grid',
+      'title-ad--bottom',
     ]
     let cursor = -1
     for (const cls of order) {
@@ -139,5 +147,10 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).not.toMatch(/score-line__value/)
     expect(code).not.toMatch(/Ainda não calculado/)
     expect(code).not.toMatch(/Cinerie Score/)
+    // OpaPreço: os dois slots do slot map, com as tags da página.
+    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-mid"/)
+    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-bottom"/)
+    expect(code.match(/<AdSlot\b/g)).toHaveLength(2)
+    expect(code).toContain('tags={{ vertical: "movie", entity: slug, genres }}')
   })
 })

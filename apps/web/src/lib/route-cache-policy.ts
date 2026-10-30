@@ -248,6 +248,15 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     "rota interna autenticada por credencial de maquina (ADR 0019)",
   ),
   "/api/newsletter": priv("recebe dado pessoal (e-mail) por POST"),
+  // Anuncios OpaPreco (ofertas afiliadas). Pedidos pelo navegador depois do
+  // render: a pagina nunca chama o ad server (invariante 3).
+  "/api/opapreco/ad": priv(
+    "decisao de anuncio por pagina e viewport: guardada, serviria oferta de outra pagina ou verificada ha mais de 6 h",
+  ),
+  "/api/opapreco/img": publicDynamic(
+    "proxy de imagem de produto (hosts da lista); a propria rota declara max-age=3600",
+  ),
+  "/api/opapreco/track": priv("dispara a impressao do anuncio (POST): nada a guardar"),
   "/api/seo/redirect": priv(
     "consulta de redirect chamada pelo middleware a cada requisicao; cache aqui congelaria a tabela `redirects`",
   ),
@@ -270,15 +279,6 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   // A MESMA chave de ambiente do robots.txt, lida por request: um arquivo assado
   // no build ignoraria o kill switch de indexacao (auditoria de SEO, 2026-09-11).
   "/llms.txt": publicDynamic("indice do site para ferramentas de IA; gate de indexacao por ambiente"),
-
-  // ------------------------------------------------------- conta do AdSense
-  // Sem a chave de ambiente do robots.txt/llms.txt: anunciar vendedor nao e pedir
-  // indexacao (ver `app/ads.txt/route.ts`). Constante — o build sem
-  // `DATABASE_URL` a alcanca.
-  "/ads.txt": publicStatic(
-    BUILD_PRERENDERED,
-    "vendedores autorizados (linha da conta AdSense): constante, sem banco nem env",
-  ),
 
   // ----------------------------------------------------- aliases de entrada
   "/filmes": publicStatic(BUILD_PRERENDERED, "alias que redireciona para /pt/filmes/"),

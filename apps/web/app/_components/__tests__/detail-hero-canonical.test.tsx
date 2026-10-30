@@ -12,8 +12,14 @@
  *     conteúdo renderizado do cartão, reprova.
  *  2. Exatamente DOIS botões de ação no topo.
  *  3. Sinopse do topo: corte em palavra inteira, dentro do orçamento.
- *  4. O Cinerie Score nos DOIS arranjos: com >= 2 fontes o card abre o
- *     cartão; abaixo do piso ele NÃO existe e "Avaliações" sobe.
+ *  4. O Cinerie Score nos DOIS arranjos: com >= 2 fontes o card abre a
+ *     coluna; abaixo do piso ele NÃO existe e a linha de notas a ocupa.
+ *
+ * DESDE O CANÔNICO DE 2026-10-30 o "cartão" deixou de ser uma coluna só: o
+ * Score e a linha de notas externas ficam na barra superior, e "Onde assistir"
+ * desceu para a tira de ações sob o mosaico. `renderAsideCard` monta as duas
+ * partes EXATAMENTE como as páginas montam; as remoções continuam valendo nas
+ * duas.
  */
 
 import { readFileSync } from "node:fs";
@@ -26,7 +32,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CinerieScoreCard } from "../cinerie-score-card";
 import { EntityActions } from "../entity-actions";
 import { EntitySynopsis } from "../entity-synopsis";
-import { RatingsPanel } from "../ratings-panel";
+import { RatingsLine } from "../ratings-panel";
 import { SectionBoundary } from "../section-boundary";
 import { WatchBrandsRow } from "../watch-brands-row";
 import {
@@ -140,33 +146,24 @@ const SCORE_ONE_SOURCE: CinerieScoreInputView = {
 };
 
 /**
- * O CARTÃO da coluna direita, montado EXATAMENTE como as duas páginas o
- * montam (score → avaliações → onde assistir, com o `--first` migrando).
+ * A coluna do Score da barra superior + a parte "Onde assistir" da tira de
+ * ações, montadas EXATAMENTE como as duas páginas as montam (canônico de
+ * 2026-10-30): Score (quando renderiza) → linha de notas; e, na tira, o rótulo
+ * seguido das marcas.
  */
 function renderAsideCard(score: CinerieScoreInputView): string {
   const decision = decideCinerieScore(score);
   return renderToStaticMarkup(
-    <aside>
-      {decision.rendered ? (
-        <div className="detail-aside-block detail-aside-block--first">
-          <CinerieScoreCard view={decision.view} />
-        </div>
-      ) : null}
-      <div
-        className={
-          decision.rendered
-            ? "detail-aside-block"
-            : "detail-aside-block detail-aside-block--first"
-        }
-      >
-        <p className="detail-aside-block__label">Avaliações</p>
-        <RatingsPanel view={ratingsView()} />
+    <div>
+      <div className="title-top__score">
+        {decision.rendered ? <CinerieScoreCard view={decision.view} /> : null}
+        <RatingsLine view={ratingsView()} />
       </div>
-      <div className="detail-aside-block">
-        <p className="detail-aside-block__label">Onde assistir</p>
+      <div className="title-actions__watch">
+        <p className="title-actions__label">Onde assistir</p>
         <WatchBrandsRow brands={watchBrands()} />
       </div>
-    </aside>,
+    </div>,
   );
 }
 
@@ -189,8 +186,8 @@ describe("as sete remoções do topo — nenhuma volta ao conteúdo renderizado"
     expect(texto).not.toContain("Cada nota está na escala");
     // A escala continua visível DO JEITO CANÔNICO: no sufixo do valor.
     expect(texto).toContain("8,4");
-    expect(card).toContain('rating-chip__suffix">/10<');
-    expect(card).toContain('rating-chip__suffix">%<');
+    expect(card).toContain('rating-line__suffix">/10<');
+    expect(card).toContain('rating-line__suffix">%<');
   });
 
   it("3. 'Atualizado em' saiu do cartão (vive no title/data-* do chip)", () => {
@@ -301,25 +298,31 @@ describe("sinopse do topo: palavra inteira, dentro do orçamento", () => {
 /* ------------------------------------------------------------------ */
 
 describe("o Cinerie Score no cartão — os dois arranjos", () => {
-  it("com duas fontes o Score abre o cartão, nomeando as fontes", () => {
+  it("com duas fontes o Score abre a coluna, nomeando as fontes", () => {
     const card = renderAsideCard(SCORE_TWO_SOURCES);
     const texto = visibleText(card);
     expect(texto).toContain("86");
-    // O rótulo virou a MARCA "cinérie score" (arte do proprietário,
-    // 2026-09-11): o nome continua no documento pelo `alt`.
+    // A MARCA "cinérie score" (arte do proprietário, 2026-09-11): o nome
+    // continua no documento pelo `alt`.
     expect(card).toContain('alt="Cinerie Score"');
     expect(card).toContain('src="/brand/cinerie-score.webp"');
-    expect(texto).toContain("de 100 · crítica + público");
+    // Canônico de 2026-10-30: "(crítica + público)" ao lado da marca e "/100"
+    // junto do número.
+    expect(texto).toContain("(crítica + público)");
+    expect(texto).toContain("86 /100");
     expect(texto).toContain("Composto de 2 fontes: IMDb e Rotten Tomatoes.");
-    // O card é o PRIMEIRO bloco; "Avaliações" vem depois, sem `--first`.
+    expect(texto).toContain("Como é calculado");
+    // NÃO há contagem de avaliações inventada: o Score é composto de notas
+    // externas, não de votos (o canônico escreve "de 12.480 avaliações.").
+    expect(texto).not.toMatch(/de [0-9.]+ avaliações/);
+    // O Score vem ANTES da linha de notas na coluna.
     const scoreIdx = card.indexOf("score-card__value");
-    const ratingsIdx = card.indexOf("Avaliações");
+    const ratingsIdx = card.indexOf("rating-line");
     expect(scoreIdx).toBeGreaterThan(-1);
     expect(scoreIdx).toBeLessThan(ratingsIdx);
-    expect(card.indexOf('detail-aside-block detail-aside-block--first')).toBeLessThan(scoreIdx);
   });
 
-  it("com UMA fonte o Score NÃO renderiza e 'Avaliações' sobe para o topo do cartão", () => {
+  it("com UMA fonte o Score NÃO renderiza e a linha de notas ocupa a coluna", () => {
     const decision = decideCinerieScore(SCORE_ONE_SOURCE);
     expect(decision.rendered).toBe(false);
     if (!decision.rendered) expect(decision.reason).toBe("single_source_insufficient");
@@ -329,11 +332,9 @@ describe("o Cinerie Score no cartão — os dois arranjos", () => {
     expect(texto).not.toContain("Cinerie Score");
     // A marca é imagem: o texto visível sozinho não provaria a ausência dela.
     expect(card).not.toContain('alt="Cinerie Score"');
-    expect(card).not.toContain("score-card__value");
-    // "Avaliações" assume o topo: o bloco dela carrega o `--first` e nada de
-    // filete pendurado acima (não fica buraco no cartão).
-    const firstBlock = card.slice(0, card.indexOf("Avaliações") + 20);
-    expect(firstBlock).toContain("detail-aside-block detail-aside-block--first");
+    expect(card).not.toContain("score-card");
+    // A linha de notas é o PRIMEIRO filho da coluna — nada de caixa vazia acima.
+    expect(card).toContain('<div class="title-top__score"><div class="rating-line">');
   });
 
   it("sem decisão vigente, a ausência tem o motivo próprio (não 'sem nota')", () => {
@@ -345,7 +346,9 @@ describe("o Cinerie Score no cartão — os dois arranjos", () => {
   it("o painel de notas individuais continua INTACTO ao lado do Score", () => {
     const card = renderAsideCard(SCORE_TWO_SOURCES);
     // As duas notas, cada uma na própria escala — o Score não substitui nem
-    // esconde nenhuma.
+    // esconde nenhuma. A marca de cada fonte é a da LICENÇA (arquivo ou nome
+    // em texto), nunca o redesenho monocromático em SVG do canônico.
+    expect(card).not.toContain("<svg");
     expect(card).toContain('data-rating-source="imdb"');
     expect(card).toContain('data-rating-source="rotten_tomatoes"');
   });

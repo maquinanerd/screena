@@ -21,15 +21,16 @@
  * aponta, e ali o formato mais aceito pelos buscadores é o que conta.
  *
  * ============================================================================
- * A PALAVRA "cinérie" TEM O MESMO TAMANHO EM TODAS AS ÁREAS
+ * NO HEADER, A CAIXA DO CANÔNICO: 26 px DE ALTURA, LARGURA POR ÁREA
  * ============================================================================
- * Medido nos arquivos: a palavra ocupa 672 × 163 px em TODAS as artes. As de
+ * Medido nos arquivos: a palavra ocupa 672 × 163 px em TODAS as artes; as de
  * área têm 181 px de altura porque a barra "/" passa 2 px acima e 16 px abaixo
- * da palavra. Se o header fixasse a mesma ALTURA para todas, a palavra
- * encolheria ~10% nas páginas de filme, série e notícia — a marca mudaria de
- * tamanho ao trocar de seção. Por isso o CSS fixa a altura da PALAVRA
- * (`--brand-word-h`) e cada arte escala por `brandLogoScale` (altura do
- * arquivo ÷ 163). Travado por `__tests__/brand-logos.test.ts`, que lê os bytes.
+ * da palavra. Até 30/10/2026 o header fixava a altura da PALAVRA para ela não
+ * mudar de tamanho entre seções. O handoff de 30/10/2026 fixou outra regra, a
+ * do canônico (`LOGO_W`): a ARTE inteira mede 26 px e a caixa tem 108 · 200 ·
+ * 208 · 176 px de largura (`CINERIE_HEADER_LOGO_BOX`). Nas áreas a palavra
+ * fica ~10% menor — é o desenho aprovado. Travado por
+ * `__tests__/brand-logos.test.ts`, que lê os bytes.
  *
  * A diferenciação filme/série NUNCA é só esta marca (invariante 11): rota,
  * breadcrumb, badge, label e schema continuam carregando o sinal.
@@ -140,8 +141,33 @@ function isUnder(pathname: string, prefix: string): boolean {
 
 /**
  * Quanto a arte é mais alta que a palavra "cinérie": 1 na marca-mãe, 181/163 nas
- * de área. O CSS multiplica a altura da palavra por este fator.
+ * de área. Informativo desde 30/10/2026: o header deixou de escalar pela palavra
+ * (ver `CINERIE_HEADER_LOGO_BOX`).
  */
 export function brandLogoScale(file: BrandLogoFile): number {
   return Number((file.height / CINERIE_WORD_HEIGHT).toFixed(4));
+}
+
+/**
+ * A CAIXA da marca no header, por área — o mapa `LOGO_W` do canônico
+ * (handoff de 30/10/2026): altura 26 px para TODAS as artes e a largura
+ * acompanhando a variante. A arte entra por `contain` ancorada à esquerda.
+ *
+ * Isto SUBSTITUI a regra anterior ("a palavra tem o mesmo tamanho em toda
+ * área"): no canônico a arte INTEIRA mede 26 px, então nas marcas de área a
+ * palavra fica 26 × 163/181 ≈ 23,4 px. A caixa nunca é menor que a arte em
+ * `contain` (672/163 × 26 = 107,2 ≤ 108; 1376/181 × 26 = 197,7 ≤ 200;
+ * 1430/181 × 26 = 205,4 ≤ 208; 1208/181 × 26 = 173,5 ≤ 176) — travado em teste.
+ */
+export const CINERIE_HEADER_LOGO_BOX: Readonly<{
+  height: number;
+  width: Readonly<Record<BrandArea, number>>;
+}> = {
+  height: 26,
+  width: { neutral: 108, movie: 200, series: 208, news: 176 },
+};
+
+/** Largura ÷ altura da caixa da marca de uma área (o CSS escala pela altura). */
+export function brandHeaderBoxRatio(area: BrandArea): number {
+  return Number((CINERIE_HEADER_LOGO_BOX.width[area] / CINERIE_HEADER_LOGO_BOX.height).toFixed(4));
 }

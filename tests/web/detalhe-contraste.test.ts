@@ -26,7 +26,8 @@
  *
  * Sao duas superficies, e elas sao diferentes de proposito:
  *   - `--c-bg-page` (#fdfdfd) — o corpo da pagina
- *   - `.detail-hero`  (#fdfcfa) — a faixa do topo, que pinta o proprio fundo
+ *   - `.detail-hero`  (#ffffff) — a faixa do topo, que pinta o proprio fundo
+ *     (era #fdfcfa; o canonico de 2026-10-30 a deixou BRANCA)
  *
  * Sem navegador de proposito: a suite roda em `environment: 'node'`, e a
  * matematica de contraste sobre os valores REAIS do arquivo e deterministica.
@@ -70,7 +71,7 @@ const AA_NORMAL = 4.5;
 
 /** As duas superficies das telas de detalhe. */
 const FUNDO_PAGINA = "--c-bg-page";
-const FUNDO_HERO = "#fdfcfa";
+const FUNDO_HERO = "#ffffff";
 
 /** Texto que fica sobre o fundo da PAGINA. */
 const TEXTO_SOBRE_PAGINA = [
@@ -96,6 +97,26 @@ const TEXTO_SOBRE_HERO = [
   ".detail-hero__synopsis",
   ".detail-hero__back",
   ".detail-hero__meta-text",
+  // Barra superior das fichas de filme e serie (canonico de 2026-10-30).
+  ".title-top__title",
+  ".title-top__synopsis",
+  ".title-top__synopsis-notice",
+  "main[data-vertical='movie'] .title-top__genres",
+  "main[data-vertical='series'] .title-top__genres",
+  ".title-top__read-more",
+  "main[data-vertical='series'] .title-top__read-more",
+  ".title-top__cast-label",
+  ".title-top__person-name",
+  ".title-top__person-role",
+  ".title-top__see-all",
+  "main[data-vertical='series'] .title-top__see-all",
+  "main[data-vertical='movie'] .score-card__value",
+  "main[data-vertical='series'] .score-card__value",
+  ".score-card__scale",
+  ".score-card__composition",
+  ".rating-line__name",
+  ".rating-line__value",
+  ".rating-line__suffix",
 ] as const;
 
 // --------------------------------------------------------------------------

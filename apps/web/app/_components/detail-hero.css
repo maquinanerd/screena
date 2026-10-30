@@ -17,18 +17,23 @@
  * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
  */
 
+/* Fundo BRANCO desde o canonico de 2026-10-30 (era #fdfcfa). Vale para todo
+   hero de detalhe — fichas, temporada, episodio e galerias — para a faixa do
+   topo nao mudar de tom ao navegar entre elas. */
 .detail-hero {
-  background: #fdfcfa;
+  background: #ffffff;
   border-bottom: 1px solid #e9e3d8;
 }
 
+/* Trilha do canonico de 2026-10-30: 11px, gap 8, 14px do topo. A cor NAO e a
+   do canonico (#9A958C reprova em contraste, D3): segue o token acessivel. */
 .detail-hero__crumbs {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 9px;
-  padding-top: 22px;
-  font-size: 12px;
+  gap: 8px;
+  padding-top: 14px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--c-text-muted-aa);
 }
@@ -43,7 +48,7 @@
 .detail-hero__crumbs li {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
 }
 
 .detail-hero__crumbs li + li::before {
@@ -183,9 +188,8 @@
     order: 2;
   }
 
-  main[data-vertical='series'] > section[aria-label='Crítica da redação'] {
-    order: 3;
-  }
+  /* A faixa "Guia Cinerie · Crítica" (que ocupava o `order: 3`) saiu no
+     canonico de 2026-10-30. */
 
   main[data-vertical='series'] > section[aria-labelledby='series-episodes-title'] {
     order: 4;
@@ -198,6 +202,7 @@
   main[data-vertical='series'] > section[aria-labelledby='series-details-title'] {
     order: 6;
   }
+
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,6 +292,11 @@
   .detail-hero__cert {
     font-size: 12px;
   }
+  /* A trilha caiu para 11px no canonico de 2026-10-30; abaixo de 1024 o piso
+     de 12px do contrato vence. */
+  .detail-hero__crumbs {
+    font-size: 12px;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -358,4 +368,248 @@ main[data-vertical='series'] .detail-hero__genre-chip {
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ==================================================================== *
+ * BARRA SUPERIOR DAS FICHAS DE FILME E SERIE — canonico de 2026-10-30
+ *
+ * Fundo branco (o `.detail-hero` acima) e TRES colunas em `flex-wrap`, nos
+ * valores do canonico: titulo 21/700 com o ano, linha de generos 10.5/800
+ * em caixa-alta no acento escuro da vertical e sinopse 14/1.55 em 56ch com
+ * "Ler mais" | Cinerie Score + notas externas | Elenco e Equipe.
+ *
+ * So `.detail-hero--title` (filme e serie) usa estas classes: temporada,
+ * episodio e galerias continuam com o hero de `.detail-hero__grid`.
+ * ==================================================================== */
+
+.title-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px 34px;
+  align-items: flex-start;
+  padding: 16px 0 26px;
+}
+
+.title-top__main {
+  flex: 1 1 460px;
+  min-width: 0;
+}
+
+.title-top__score {
+  flex: 0 1 268px;
+  min-width: 248px;
+}
+
+.title-top__cast {
+  flex: 0 1 400px;
+  min-width: 330px;
+}
+
+.title-top__title {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: #12100e;
+  margin: 0;
+}
+
+/* Linha do selo + generos. O selo NAO esta no canonico novo e fica por causa
+   da invariante 11 (label + badge): compacto, na mesma linha dos generos, para
+   pesar o minimo possivel na barra. O elemento tambem e `.detail-badge-row`
+   (o guarda de "Original Screen" le essa linha); `.title-top__main >` sobe a
+   especificidade acima da regra base dela, que vive em detail.css — entre as
+   duas folhas nao ha ordem garantida. */
+.title-top__main > .title-top__kicker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin: 9px 0 0;
+}
+
+
+.title-top__genres {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+main[data-vertical='movie'] .title-top__genres {
+  color: #a32b23;
+}
+
+main[data-vertical='series'] .title-top__genres {
+  color: #2f5a38;
+}
+
+/* Sem `line-clamp`, ao contrario do hero antigo: o corte e por palavra inteira
+   (`truncateAtWord`, 180 caracteres) e um clamp de linhas esconderia o "Ler
+   mais" que fecha o paragrafo. */
+.title-top__synopsis {
+  max-width: 56ch;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #2b2723;
+  margin: 12px 0 0;
+  text-wrap: pretty;
+}
+
+.title-top__main .detail-hero__synopsis-group {
+  margin: 12px 0 0;
+}
+
+.title-top__main .detail-hero__synopsis-group .title-top__synopsis {
+  margin-top: 0;
+}
+
+.title-top__synopsis-notice {
+  max-width: 56ch;
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b6459;
+}
+
+.title-top__read-more {
+  position: relative;
+  color: #b23a31;
+  text-decoration: underline;
+}
+
+/* Alvo de toque de 44px sem mexer na linha (mesma tecnica da trilha). */
+.title-top__read-more::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 44px;
+}
+
+main[data-vertical='series'] .title-top__read-more {
+  color: #3f6b34;
+}
+
+/* Elenco e Equipe: avatares circulares de 62px (o canonico; o texto do prompt
+   fala em 56, e o arquivo canonico vence). */
+.title-top__cast-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #12100e;
+}
+
+.title-top__people {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.title-top__people > li {
+  flex: 0 1 104px;
+  min-width: 0;
+}
+
+.title-top__person {
+  display: block;
+  text-align: center;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.title-top__person:hover .title-top__person-name {
+  text-decoration: underline;
+}
+
+.title-top__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ece6dc;
+  font-size: 15px;
+  font-weight: 700;
+  color: #6e6a61;
+}
+
+.title-top__avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.title-top__person-name {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #12100e;
+  overflow-wrap: anywhere;
+}
+
+.title-top__person-role {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #6e6a61;
+  overflow-wrap: anywhere;
+}
+
+.title-top__see-all {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #b23a31;
+  text-decoration: none;
+}
+
+.title-top__see-all:hover {
+  text-decoration: underline;
+}
+
+main[data-vertical='series'] .title-top__see-all {
+  color: #3f6b34;
+}
+
+/* Alvo de toque de 44px sem mexer no layout (mesma tecnica da trilha). */
+.title-top__see-all::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 44px;
+}
+
+/* Abaixo de 1024: piso de 12px (contrato de responsividade) e as colunas da
+   direita ocupam a largura inteira em vez de ficarem presas em 268/400px. */
+@media (max-width: 1023px) {
+  .title-top__genres,
+  .title-top__person-role {
+    font-size: 12px;
+  }
+  .title-top__score,
+  .title-top__cast {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 }

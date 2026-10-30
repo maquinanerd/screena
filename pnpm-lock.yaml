@@ -161,6 +161,9 @@ importers:
       '@screena/legal':
         specifier: workspace:*
         version: link:../../services/legal
+      '@screena/opapreco':
+        specifier: workspace:*
+        version: link:../../services/opapreco
       '@screena/public-contracts':
         specifier: workspace:*
         version: link:../../packages/public-contracts
@@ -372,6 +375,8 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.20.0)(happy-dom@20.11.1)(jsdom@30.0.1)(sass@1.77.4)
+
+  services/opapreco: {}
 
   services/ratings:
     dependencies:

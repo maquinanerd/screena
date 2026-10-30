@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { AdInterstitial, AdPopup } from '../../_components/ad-surfaces'
 
 /** Painel de QA: abre as superfícies 17/18 sob demanda (nunca automático). */
-export function AdPreviewPanel(): ReactNode {
+export function AdPreviewPanel({ adsEnabled }: { adsEnabled: boolean }): ReactNode {
   const [popupAberto, setPopupAberto] = useState(false)
   const [telaAberta, setTelaAberta] = useState(false)
   return (
@@ -17,8 +17,8 @@ export function AdPreviewPanel(): ReactNode {
       <button className="imp-secondary" onClick={() => setTelaAberta(true)} type="button">
         Abrir tela 18 — tela cheia
       </button>
-      <AdPopup onClose={() => setPopupAberto(false)} open={popupAberto} />
-      <AdInterstitial onClose={() => setTelaAberta(false)} open={telaAberta} />
+      <AdPopup enabled={adsEnabled} onClose={() => setPopupAberto(false)} open={popupAberto} />
+      <AdInterstitial enabled={adsEnabled} onClose={() => setTelaAberta(false)} open={telaAberta} />
     </div>
   )
 }

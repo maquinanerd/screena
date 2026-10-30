@@ -1,0 +1,71 @@
+/* OpaPreço Ads — tokens v1. Gerado a partir de spec/tokens.json.
+   Aplicar no elemento raiz de cada slot: .op-slot { ... }
+   Publisher pode sobrescrever apenas: --op-action*, --op-border, --op-radius-card, --op-font. */
+.op-slot {
+  --op-bg: #FFFFFF;
+  --op-surface: #F7F7F7;
+  --op-surface-hover: #F0F0F0;
+  --op-border: #E6E6E6;
+  --op-border-hover: #CFCFCF;
+  --op-divider: #D4D4D4;
+  --op-text: #111111;
+  --op-text-2: #666666;
+  --op-text-body: #444444;
+  --op-action: #0B6E4F;
+  --op-action-hover: #095A41;
+  --op-action-active: #074633;
+  --op-action-fg: #FFFFFF;
+  --op-action-subtle: #EDF5F1;
+  --op-action-subtle-active: #DCEDE4;
+  --op-positive: #0B6E4F;
+  --op-positive-bg: #EDF5F1;
+  --op-disabled-bg: #F0F0F0;
+  --op-disabled-fg: #666666;
+  --op-skeleton: #EEEEEE;
+  --op-image-icon: #9A9A9A;
+
+  --op-font: inherit;
+  --op-space-1: 4px; --op-space-2: 8px; --op-space-3: 12px; --op-space-4: 16px;
+  --op-space-5: 20px; --op-space-6: 24px; --op-space-8: 32px;
+
+  --op-radius-badge: 4px;
+  --op-radius-image: 6px;
+  --op-radius-cta: 6px;
+  --op-radius-card: 8px;
+  --op-radius-hero: 12px;
+
+  --op-border-w: 1px;
+  --op-context-rule: 2px;
+  --op-focus: 2px solid var(--op-action);
+  --op-focus-offset: 2px;
+  --op-duration: 120ms;
+  --op-collapse: 200ms;
+
+  --op-cta-h: 44px;
+  --op-cta-h-hero: 48px;
+
+  --op-fs-disclosure: 11px;
+  --op-fs-eyebrow: 12px;
+  --op-fs-meta: 12px;
+  --op-fs-discount: 12px;
+  --op-fs-ref: 13px;
+  --op-fs-title-sm: 15px;
+  --op-fs-title-drop: 16px;
+  --op-fs-title: 17px;
+  --op-fs-title-hero: 18px;
+  --op-fs-context: 18px;
+  --op-fs-price-sm: 20px;
+  --op-fs-price-ctx: 22px;
+  --op-fs-price: 24px;
+  --op-fs-price-drop: 26px;
+  --op-fs-price-hero: 28px;
+  --op-fs-cta: 15px;
+  --op-fs-cta-hero: 16px;
+  --op-fs-cta-2: 14px;
+
+  font-family: var(--op-font);
+  container-type: inline-size;
+}
+@media (prefers-reduced-motion: reduce) {
+  .op-slot { --op-duration: 0ms; --op-collapse: 0ms; }
+}

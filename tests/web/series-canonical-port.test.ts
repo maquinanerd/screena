@@ -120,17 +120,22 @@ describe('shell público mínimo · detalhe de série', () => {
   })
 
   it('design canônico (tela 07): estrutura EXATA do handoff, sem dado inventado', () => {
-    // Ordem canônica: hero editorial claro (verde) → mídia → A obra →
-    // Guia crítica → EPISÓDIOS (catálogo) → Elenco → Notícias → Detalhes.
+    // Ordem canônica (revisão de 2026-10-30): barra superior branca (verde) →
+    // mosaico de mídia → tira de ações e onde assistir → A obra → EPISÓDIOS →
+    // OpaPreço title-mid → Elenco → Notícias → Detalhes + Mais como este →
+    // OpaPreço title-bottom. A faixa "Guia Cinerie · Crítica" saiu.
     const order = [
       'detail-hero',
+      'title-top',
       'media-strip',
+      'title-actions',
       'synopsis-lead',
-      'critic-band',
       'season-tabs',
+      'title-ad--mid',
       'cast-strip',
       'mnews-grid',
       'ficha-grid',
+      'title-ad--bottom',
     ]
     let cursor = -1
     for (const cls of order) {
@@ -162,5 +167,14 @@ describe('shell público mínimo · detalhe de série', () => {
     expect(code).not.toMatch(/Cinerie Score/)
     // 21k episódios nunca de uma vez (só a temporada selecionada renderiza).
     expect(code).toContain('season={selectedSeason}')
+    // A faixa "Guia Cinerie · Crítica" saiu das duas fichas (canônico de
+    // 2026-10-30): nenhuma sobra dela na página.
+    expect(code).not.toContain('critic-band')
+    expect(code).not.toContain('REVIEW_BLOCK_TYPE')
+    // OpaPreço: os dois slots do slot map, com as tags da página.
+    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-mid"/)
+    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-bottom"/)
+    expect(code.match(/<AdSlot\b/g)).toHaveLength(2)
+    expect(code).toContain('tags={{ vertical: "series", entity: slug, genres }}')
   })
 })

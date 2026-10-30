@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 
-import { AdSlot } from './ad-slot'
 import { CardBookmark } from './card-bookmark'
 import { EmptyState, SectionTitle } from './ds'
 import { HomeEditorialHighlights } from './home-editorial-highlights'
 import { HomeHeroCarousel } from './home-hero-carousel'
 import { HomeTicker } from './home-ticker'
 import { MonthStats } from './month-stats'
+import { AdSlot } from './opapreco/ad-slot'
 import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
 import { SectionBoundary } from './section-boundary'
@@ -220,6 +220,11 @@ export function HomeLike({
   vertical,
 }: HomeLikeProps): ReactNode {
   const hasRanking = rankingPanels.length > 0
+  // Tags da página para o ad server OpaPreço: só a vertical da rota (a home é
+  // mista). Nenhuma entidade: estas grades ficam entre seções de catálogo.
+  const adTags = {
+    vertical: vertical === 'movies' ? 'movie' : vertical === 'series' ? 'series' : 'home',
+  } as const
   const newsCategories = [
     ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
   ].slice(0, 6)
@@ -306,8 +311,10 @@ export function HomeLike({
         />
       ) : null}
 
+      {/* OpaPreço · home-after-popular (canônico: grade 4 itens, margem 56/56).
+          Sem ad server configurado o slot não renderiza nada. */}
       <div className="container">
-        <AdSlot format="leaderboard" slotId={`${adPrefix}-featured`} />
+        <AdSlot className="op-slot--home-popular" id="home-after-popular" tags={adTags} />
       </div>
 
       {/* Filmes em alta — certified-fresh cards (band condicional) */}
@@ -334,8 +341,9 @@ export function HomeLike({
           própria contagem de episódios e séries. */}
       <MonthStats vertical={vertical} />
 
+      {/* OpaPreço · home-after-movies (margem 56/0) */}
       <div className="container">
-        <AdSlot format="leaderboard" slotId={`${adPrefix}-filmes-alta`} />
+        <AdSlot className="op-slot--home-after" id="home-after-movies" tags={adTags} />
       </div>
 
       {/* Séries da semana — certified-fresh cards (band condicional) */}
@@ -383,8 +391,9 @@ export function HomeLike({
         )}
       </SectionBoundary>
 
+      {/* OpaPreço · home-after-coming-soon (margem 56/0) */}
       <div className="container">
-        <AdSlot format="leaderboard" slotId={`${adPrefix}-em-breve`} />
+        <AdSlot className="op-slot--home-after" id="home-after-coming-soon" tags={adTags} />
       </div>
 
       {/* Notícias & entrevistas — chips + lead 430 + grade 2x2 */}
@@ -442,9 +451,9 @@ export function HomeLike({
                       <img alt="" className="hnews-card__img" loading="lazy" src={card.image.src} />
                     ) : null}
                     <span className="hnews-card__scrim" />
+                    {/* Só o título: o canônico tirou o resumo dos 4 quadradinhos. */}
                     <span className="hnews-card__body">
                       <h3 className="hnews-card__title">{card.title}</h3>
-                      {card.deck !== null ? <p className="hnews-card__sub">{card.deck}</p> : null}
                     </span>
                   </a>
                 ))}
@@ -454,9 +463,10 @@ export function HomeLike({
         </div>
       ) : null}
 
-      <div className="container" style={{ paddingBottom: 56 }}>
-        <AdSlot format="leaderboard" slotId={`${adPrefix}-noticias`} />
-      </div>
+      {/* Sem anúncio depois de "Notícias & entrevistas": as duas grades que o
+          canônico tinha aqui foram removidas a pedido (OPAPRECO-SLOT-MAP.md,
+          "Removidos a pedido"). O respiro de 56px antes do rodapé fica. */}
+      <div aria-hidden="true" style={{ paddingBottom: 56 }} />
 
       {!hasContent ? (
         <div className="container section">

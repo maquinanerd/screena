@@ -174,18 +174,21 @@ describe('hero de capa da materia', () => {
     expect(tablet).toMatch(/\.art-hero__inner \{\s*padding-inline: var\(--pad-page-mobile\)/)
   })
 
-  it('a altura da capa e limitada em cima e embaixo, no desktop e no celular', () => {
-    // Teto: hero sem teto em monitor alto vira parede. Piso: hero curto demais
-    // espreme o proprio titulo. `min-height` mantem o crescimento por conteudo.
-    // `svh` (viewport PEQUENO) evita que o hero pule quando a barra de URL do
-    // celular recolhe; a linha `vh` antes dele e a base para quem nao tem `svh`.
+  it('a capa e TELA CHEIA (canonico de 30/10/2026), com piso no desktop e no celular', () => {
+    // O canonico passou a pedir a imagem de destaque em tela cheia (100vh) com
+    // o texto ancorado embaixo. `min-height` (e nao `height`) mantem o
+    // crescimento por conteudo: manchete longa cresce o hero em vez de vazar.
+    // Piso: hero curto demais espreme o proprio titulo. `svh` (viewport
+    // PEQUENO) evita que o hero pule quando a barra de URL do celular recolhe;
+    // a linha `vh` antes dele e a base para quem nao tem `svh`.
     const desktop = ruleBody("\n.art-hero[data-hero-media='true'] {")
-    expect(desktop).toMatch(/min-height: clamp\(560px, 88vh, 1000px\)/)
-    expect(desktop).toMatch(/min-height: clamp\(560px, 88svh, 1000px\)/)
+    expect(desktop).toMatch(/min-height: max\(560px, 100vh\)/)
+    expect(desktop).toMatch(/min-height: max\(560px, 100svh\)/)
     const mobile = css.slice(css.indexOf('@media (max-width: 599px)'))
-    expect(mobile).toMatch(/min-height: clamp\(420px, 78vh, 640px\)/)
-    expect(mobile).toMatch(/min-height: clamp\(420px, 78svh, 640px\)/)
-    expect(css).not.toMatch(/\.art-hero[^{]*\{[^}]*height: 100vh/s)
+    expect(mobile).toMatch(/min-height: max\(420px, 100vh\)/)
+    expect(mobile).toMatch(/min-height: max\(420px, 100svh\)/)
+    // `height` fixo cortaria manchete longa: o contrato e `min-height`.
+    expect(css).not.toMatch(/\.art-hero[^{]*\{[^}]*[^-]height: 100vh/s)
   })
 
   it('o scrim protege o texto SEM apagar a foto', () => {
@@ -231,10 +234,10 @@ describe('hero de capa da materia', () => {
      */
     expect(title).toMatch(/font-size: clamp\(34px, min\(4\.6vw, 7\.2vh\), 76px\)/)
     expect(title).toMatch(/font-size: clamp\(34px, min\(4\.6vw, 7\.2svh\), 76px\)/)
-    // O resumo cede altura pela mesma razao — senao devolve por baixo o que a
-    // manchete economizou por cima.
+    // O resumo (linha fina) tem 16px FIXOS desde o canonico de 30/10/2026 —
+    // e por ser fixo nao devolve por baixo o que a manchete economizou por cima.
     expect(ruleBody(".art-hero[data-hero-media='true'] .art-deck {")).toMatch(
-      /font-size: clamp\(16px, min\(1\.35vw, 2\.4svh\), 21px\)/,
+      /font-size: 16px;/,
     )
     // Largura de quebra: sem teto a manchete correria o container inteiro e
     // viraria uma faixa fina de texto.

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opapreco.com/schemas/ad-response.v1.json",
+  "title": "AdResponse",
+  "description": "Resposta de GET /v1/ad?publisher=maquinanerd&slot=article-inline-01&url=...&viewport=mobile|tablet|desktop&containerWidth=343. Sem oferta elegível → HTTP 204 sem corpo.",
+  "type": "object",
+  "required": ["requestId", "slot", "component", "props", "tracking"],
+  "additionalProperties": false,
+  "properties": {
+    "requestId": { "type": "string" },
+    "slot": { "enum": ["article-top", "article-inline-01", "article-inline-02", "article-bottom", "sidebar"] },
+    "component": { "enum": ["product_card_v1", "product_compact_v1", "product_hero_v1", "product_grid_v1", "price_drop_v1", "contextual_recommendation_v1"] },
+    "reserveHeight": { "type": "integer", "description": "px; altura reservada usada pelo slot (ver SPEC)" },
+    "props": {
+      "oneOf": [
+        { "title": "SingleOfferProps", "type": "object", "required": ["offer"], "additionalProperties": false,
+          "properties": { "offer": { "$ref": "offer.schema.json" } } },
+        { "title": "ContextualProps", "type": "object", "required": ["offer", "context"], "additionalProperties": false,
+          "properties": {
+            "offer": { "$ref": "offer.schema.json" },
+            "context": { "type": "string", "maxLength": 90 },
+            "contextNote": { "type": "string", "maxLength": 140 } } },
+        { "title": "GridProps", "type": "object", "required": ["offers"], "additionalProperties": false,
+          "properties": {
+            "heading": { "type": "string", "maxLength": 48 },
+            "offers": { "type": "array", "minItems": 2, "maxItems": 4, "items": { "$ref": "offer.schema.json" } } } }
+      ]
+    },
+    "tracking": {
+      "type": "object",
+      "required": ["impressionUrl"],
+      "properties": {
+        "impressionUrl": { "type": "string", "format": "uri", "description": "Disparar quando ≥ 50% do criativo estiver visível por ≥ 1 s" },
+        "viewUrl": { "type": "string", "format": "uri" }
+      }
+    },
+    "expiresAt": { "type": "string", "format": "date-time", "description": "Depois disso o frontend revalida no clique/visibilidade e pode aplicar o estado disabled" }
+  }
+}

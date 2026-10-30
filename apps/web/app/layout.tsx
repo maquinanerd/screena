@@ -4,7 +4,6 @@ import { preload } from "react-dom";
 
 import { SiteHeader } from "./_components/site-header";
 import { SiteFooter } from "./_components/site-footer";
-import { ADSENSE_CLIENT_ID } from "../src/lib/adsense";
 import { CINERIE_SOCIAL_CARD } from "../src/lib/brand-logos";
 import { SITE_URL } from "../src/lib/site";
 import "./globals.css";
@@ -41,10 +40,6 @@ export const metadata: Metadata = {
     ],
   },
   twitter: { card: "summary_large_image", images: [CINERIE_SOCIAL_CARD.src] },
-  // Verificacao de propriedade do site na conta do AdSense. So a metatag: o
-  // script de anuncios continua fora (motivos em `src/lib/adsense.ts`). O Next
-  // funde `other` por CHAVE, entao uma pagina que declare o seu nao apaga esta.
-  other: { "google-adsense-account": ADSENSE_CLIENT_ID },
 };
 
 /** O MESMO arquivo do `src` da `@font-face` em `globals.css` (travado por teste). */
