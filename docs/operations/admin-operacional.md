@@ -75,7 +75,7 @@ a **declarada** (teto do código) e a **medida** (média de `items_processed` do
 | Fila | Ritmo | Teto | O que faz | Universo |
 | --- | --- | --- | --- | --- |
 | `deploy_reference` (nova) | 1 h | — | lê o `main` no GitHub e grava `deploy_main_commits` | não se aplica |
-| `watch_offers` | 24 h | global | chama `/watch/providers` e grava ofertas | filmes + séries |
+| `watch_offers` | 24 h | 2.000 | chama `/watch/providers`, grava ofertas e o bruto em `api_cache`; reconfere cada título a cada 7 dias | filmes + séries |
 | `trending` | 6 h | 4 jobs | 4 `sync_lists` | 4 listas |
 | `airing_series` | 24 h | global | `sync_details` | séries em exibição (status nulo incluso) |
 | `title_media` | 24 h | 12.000 | `sync_media` | filmes + séries |

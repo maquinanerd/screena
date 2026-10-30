@@ -34,6 +34,7 @@
     "cache:purge": "tsx bin/purge-api-cache.ts",
     "prove:scheduler-lock": "tsx scripts/prove-scheduler-lock.ts",
     "prove:scheduler-service": "tsx scripts/prove-scheduler-service.ts",
-    "prove:queue-drains": "tsx scripts/prove-queue-drains.ts"
+    "prove:queue-drains": "tsx scripts/prove-queue-drains.ts",
+    "prove:watch-offers-selection": "tsx scripts/prove-watch-offers-selection.ts"
   }
 }

@@ -53,6 +53,7 @@ import {
   buildIdempotencyKey,
   buildIncrementalChangesJob,
   ingestWatchProvidersFromDetail,
+  type DetailWatchSink,
 } from '@screena/ingestion/runtime'
 
 import type { SchedulerQueue } from '../rhythms.js'
@@ -109,7 +110,19 @@ export interface RunnerDeps {
   /** `CatalogServices` de `@screena/ingestion` (fila, watch sink, etc.). */
   readonly services: {
     readonly store: { enqueue(input: Record<string, unknown>): Promise<{ created: boolean }> }
-    readonly watch: unknown
+    /**
+     * O gravador de ofertas do import de detalhe. Ate 2026-10-30 o tipo era
+     * `unknown`, o agendador recebia `undefined` e o `as never` no uso escondia
+     * isso: a fila `watch_offers` baixava e descartava tudo.
+     */
+    readonly watch: DetailWatchSink | undefined
+    /** `api_cache` do TMDB. Ausente nos testes: a fila chama o endpoint direto. */
+    readonly cache?: {
+      getOrFetch<T>(input: {
+        readonly endpoint: string
+        readonly fetcher: () => Promise<T>
+      }): Promise<{ readonly data: T; readonly fromCache: boolean }>
+    }
   }
   /** Endpoints de catalogo do TMDB (para o `watch/providers` dedicado). */
   readonly catalogEndpoints: {
@@ -622,9 +635,24 @@ const runPeople: QueueRunner = async (deps) => {
 // (C) Ofertas — endpoint dedicado, escritor compartilhado
 // ---------------------------------------------------------------------------
 
+/**
+ * Quanto tempo uma oferta conferida fica fora da fila.
+ *
+ * Ate 2026-10-30 a janela era de 1 dia com o teto global de 200: a fila pegaria
+ * os MESMOS 200 titulos mais populares todo dia e nunca passaria deles. Com 7
+ * dias e o teto proprio da tabela de ritmos, ela anda: os ~14 mil titulos mais
+ * populares sao reconferidos toda semana.
+ */
+export const WATCH_OFFERS_REFRESH_DAYS = 7
+
+/** O endpoint dedicado de ofertas — e a chave de `api_cache` dele. */
+export function watchProvidersEndpoint(entityType: 'movie' | 'tv', tmdbId: number): string {
+  return `/${entityType}/${String(tmdbId)}/watch/providers`
+}
+
 const runWatchOffers: QueueRunner = async (deps) => {
   const startedAt = deps.now()
-  const olderThan = new Date(startedAt.getTime() - DAY_MS)
+  const olderThan = new Date(startedAt.getTime() - WATCH_OFFERS_REFRESH_DAYS * DAY_MS)
   const candidates = await selectStaleWatchOffers(deps.prisma, olderThan, deps.batchLimit)
   const reasons = new Map<string, RunReason>()
   let processed = 0
@@ -638,12 +666,34 @@ const runWatchOffers: QueueRunner = async (deps) => {
       countReason(reasons, 'dry_run', 'sem --apply: nada foi buscado nem escrito')
       continue
     }
+    // Lote longo (milhares de requisicoes): o SIGTERM do redeploy para ENTRE
+    // titulos, e o que ficou de fora e contado — nunca "concluido".
+    if (deps.shutdownSignal?.aborted === true) {
+      skipped += 1
+      countReason(reasons, 'shutdown_requested', 'desligamento pedido: titulo nao conferido')
+      continue
+    }
     try {
-      const payload =
+      const fetchOffers = (): Promise<unknown> =>
         candidate.entityType === 'movie'
-          ? await deps.catalogEndpoints.getMovieWatchProviders(candidate.tmdbId)
-          : await deps.catalogEndpoints.getTvWatchProviders(candidate.tmdbId)
-      requests += 1
+          ? deps.catalogEndpoints.getMovieWatchProviders(candidate.tmdbId)
+          : deps.catalogEndpoints.getTvWatchProviders(candidate.tmdbId)
+
+      // Pelo `api_cache` quando ha um: a resposta crua fica guardada (regra de
+      // ingestao) e a linha e a MARCA de "conferido" que a selecao le — e o que
+      // tira da fila, por uma semana, o titulo que nao tem oferta nenhuma.
+      let payload: unknown
+      if (deps.services.cache === undefined) {
+        payload = await fetchOffers()
+        requests += 1
+      } else {
+        const cached = await deps.services.cache.getOrFetch({
+          endpoint: watchProvidersEndpoint(candidate.entityType, candidate.tmdbId),
+          fetcher: fetchOffers,
+        })
+        payload = cached.data
+        if (!cached.fromCache) requests += 1
+      }
 
       // O normalizador le `payload['watch/providers']` — a mesma chave do
       // sub-recurso no detalhe. Embrulhar aqui e o que permite UM parser servir
@@ -653,16 +703,20 @@ const runWatchOffers: QueueRunner = async (deps) => {
         tmdbId: candidate.tmdbId,
         entityId: null,
         payload: { 'watch/providers': payload },
-        sink: deps.services.watch as never,
+        sink: deps.services.watch,
         now: deps.now,
       })
 
-      if (report.outcome === 'applied' || report.outcome === 'empty') {
+      if (
+        report.outcome === 'applied' ||
+        report.outcome === 'empty' ||
+        report.outcome === 'out-of-scope'
+      ) {
         processed += 1
-        // `empty` NAO e falha: e "este titulo nao tem oferta hoje", e o snapshot
-        // vazio e a AUSENCIA REGISTRADA com data — o dado que sumiu da fonte nao
-        // some do banco em silencio.
-        if (report.outcome === 'empty') {
+        // `empty`/`out-of-scope` NAO sao falha: e "este titulo nao tem oferta no
+        // Brasil hoje". O snapshot vazio e gravado e REVOGA a oferta que saiu —
+        // o dado que sumiu da fonte nao fica na pagina.
+        if (report.outcome !== 'applied') {
           countReason(reasons, 'no_offer_today', 'titulo sem oferta nos territorios ingeridos')
         }
       } else {
