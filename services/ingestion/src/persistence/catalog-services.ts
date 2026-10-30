@@ -83,7 +83,7 @@ import type { SyncDetailKind } from '../catalog-jobs/handlers/schemas.js'
 import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
 import type { CatalogDisplayFields } from '../display-fields.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
-import type { CacheFetchInput, CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
+import type { CacheFetchInput, CachePort, CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
 import type { PrismaClient } from '@screena/db/server'
 import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
@@ -101,7 +101,7 @@ import { createPrismaRawMovieSource, createPrismaRawPersonSource, createPrismaRa
 import { createPrismaCatalogFinalize } from './catalog-finalize.js'
 import { createPrismaTmdbWatchOfferStore, createPrismaWatchEntityResolver } from './watch-providers-store.js'
 import { DEFAULT_WATCH_TERRITORIES } from '../watch-providers/territories.js'
-import { emptyDetailWatchReport } from '../watch-providers/from-detail.js'
+import { emptyDetailWatchReport, type DetailWatchSink } from '../watch-providers/from-detail.js'
 import { createPersistence } from './index.js'
 
 /**
@@ -198,6 +198,14 @@ export interface CatalogServicesOptions {
 /** Servicos montados, prontos para o registry e para a CLI. */
 export interface CatalogServices extends CatalogHandlerDependencies {
   readonly prisma: PrismaClient
+  /**
+   * O MESMO gravador de ofertas que o import de detalhe usa (com a politica de
+   * exibicao). Exposto para a fila `watch_offers` do agendador, que ate
+   * 2026-10-30 recebia `undefined` aqui e descartava tudo o que baixava.
+   */
+  readonly watch: DetailWatchSink
+  /** O `api_cache` do TMDB, para quem baixa por fora do import (`watch_offers`). */
+  readonly cache: CachePort
   readonly searchStore: SearchStorePort
   readonly searchSource: SearchProjectionSourcePort
   readonly now: () => Date
@@ -996,6 +1004,8 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
 
   return {
     prisma,
+    watch: importContext.watch,
+    cache: persistence.cache,
     store: jobStore,
     detailSync,
     creditsSync,

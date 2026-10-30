@@ -88,7 +88,12 @@
  */
 
 import type { PrismaClient } from '@screena/db/server'
-import { OMDB_COVERAGE_RETRY_AFTER_DAYS, type OmdbRotationMode } from '@screena/config'
+import {
+  OMDB_COVERAGE_RECENT_MIN_VOTES,
+  OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS,
+  OMDB_COVERAGE_RETRY_AFTER_DAYS,
+  type OmdbRotationMode,
+} from '@screena/config'
 import { buildOmdbByImdbIdRequest } from '@screena/omdb-client'
 
 import type {
@@ -212,26 +217,54 @@ export function omdbCacheKeyParts(): { readonly prefix: string; readonly suffix:
   return { prefix: parts[0] as string, suffix: parts[1] as string }
 }
 
+/** Indices dos parametros que `recentAttempt` le. */
+interface AttemptParams {
+  readonly provider: number
+  readonly prefix: number
+  readonly suffix: number
+  /** Corte LONGO (`OMDB_COVERAGE_RETRY_AFTER_DAYS`). */
+  readonly cutoff: number
+  /** Corte CURTO da estreia com publico (`OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS`). */
+  readonly recentCutoff: number
+  /** Piso e hoje da janela de estreia (os mesmos da ordem editorial). */
+  readonly floor: number
+  readonly today: number
+  /** `OMDB_COVERAGE_RECENT_MIN_VOTES`. */
+  readonly minVotes: number
+}
+
 /**
- * A OMDb ja foi perguntada sobre esta entidade desde o corte?
+ * A OMDb ja foi perguntada sobre esta entidade desde o corte DELA?
  *
- * Recebe os INDICES dos parametros (provider, prefixo, sufixo, corte). Coberto
- * pelo unique `(provider_api, request_key, params_hash)` de `api_cache`.
+ * O corte depende do titulo: a estreia com publico (estreou na janela recente e
+ * tem votos no TMDB) usa o curto; o resto usa o longo. Coberto pelo unique
+ * `(provider_api, request_key, params_hash)` de `api_cache`.
  */
-const recentAttempt = (provider: number, prefix: number, suffix: number, cutoff: number): string => `
+const recentAttempt = (entityType: RatingsEntityType, p: AttemptParams): string => {
+  const dateColumn = entityType === 'movie' ? 'release_date' : 'first_air_date'
+  const asDate = (idx: number): string => `($${String(idx)}::timestamptz AT TIME ZONE 'UTC')::date`
+  return `
        SELECT 1
          FROM "api_cache" c
-        WHERE c."provider_api" = $${String(provider)}
-          AND c."request_key" = $${String(prefix)} || e."imdb_id" || $${String(suffix)}
-          AND c."fetched_at" >= $${String(cutoff)}::timestamptz AT TIME ZONE 'UTC'
+        WHERE c."provider_api" = $${String(p.provider)}
+          AND c."request_key" = $${String(p.prefix)} || e."imdb_id" || $${String(p.suffix)}
+          AND c."fetched_at" >= CASE
+                WHEN e."${dateColumn}" >= ${asDate(p.floor)}
+                 AND e."${dateColumn}" <= ${asDate(p.today)}
+                 AND COALESCE(e."vote_count_tmdb", 0) >= $${String(p.minVotes)}::int
+                THEN $${String(p.recentCutoff)}::timestamptz AT TIME ZONE 'UTC'
+                ELSE $${String(p.cutoff)}::timestamptz AT TIME ZONE 'UTC'
+              END
 `
+}
 
 /**
  * Candidatos do modo `coverage`: zero notas, de qualquer provider, e nao
- * perguntados desde o corte de repergunta.
+ * perguntados desde o corte de repergunta daquele titulo.
  *
  * Params: $1 entityType, $2 piso, $3 hoje, $4 teto, $5 limite,
- *         $6 provider, $7 prefixo da chave, $8 sufixo da chave, $9 corte.
+ *         $6 provider, $7 prefixo da chave, $8 sufixo da chave, $9 corte longo,
+ *         $10 corte curto, $11 votos minimos.
  * Nao ha cutoff de FRESCOR aqui — e o ponto do modo; o corte e de TENTATIVA.
  */
 const COVERAGE_SQL = (table: string, entityType: RatingsEntityType): string => `
@@ -239,7 +272,16 @@ const COVERAGE_SQL = (table: string, entityType: RatingsEntityType): string => `
     FROM "${table}" e
    WHERE e."imdb_id" IS NOT NULL
      AND NOT EXISTS (${ANY_RATING_EXISTS})
-     AND NOT EXISTS (${recentAttempt(6, 7, 8, 9)})
+     AND NOT EXISTS (${recentAttempt(entityType, {
+       provider: 6,
+       prefix: 7,
+       suffix: 8,
+       cutoff: 9,
+       recentCutoff: 10,
+       floor: 2,
+       today: 3,
+       minVotes: 11,
+     })})
    ORDER BY ${priorityCase(entityType, 2, 3, 4)},
             e."popularity" DESC NULLS LAST,
             e."id" ASC
@@ -249,14 +291,24 @@ const COVERAGE_SQL = (table: string, entityType: RatingsEntityType): string => `
 /**
  * Conta quem a cobertura PULOU por ter sido perguntado ha pouco.
  *
- * Params: $1 entityType, $2 provider, $3 prefixo, $4 sufixo, $5 corte.
+ * Params: $1 entityType, $2 provider, $3 prefixo, $4 sufixo, $5 corte longo,
+ *         $6 corte curto, $7 piso, $8 hoje, $9 votos minimos.
  */
-const COVERAGE_SKIPPED_SQL = (table: string): string => `
+const COVERAGE_SKIPPED_SQL = (table: string, entityType: RatingsEntityType): string => `
   SELECT count(*)::int AS skipped
     FROM "${table}" e
    WHERE e."imdb_id" IS NOT NULL
      AND NOT EXISTS (${ANY_RATING_EXISTS})
-     AND EXISTS (${recentAttempt(2, 3, 4, 5)})
+     AND EXISTS (${recentAttempt(entityType, {
+       provider: 2,
+       prefix: 3,
+       suffix: 4,
+       cutoff: 5,
+       recentCutoff: 6,
+       floor: 7,
+       today: 8,
+       minVotes: 9,
+     })})
 `
 
 /**
@@ -319,6 +371,9 @@ export function createPrismaStaleEntityCandidates(
         const retryCutoff = new Date(
           now.getTime() - OMDB_COVERAGE_RETRY_AFTER_DAYS * DAY_MS,
         ).toISOString()
+        const recentRetryCutoff = new Date(
+          now.getTime() - OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS * DAY_MS,
+        ).toISOString()
         rows = await prisma.$queryRawUnsafe<CandidateRow[]>(
           COVERAGE_SQL(table, input.entityType),
           input.entityType,
@@ -330,14 +385,20 @@ export function createPrismaStaleEntityCandidates(
           prefix,
           suffix,
           retryCutoff,
+          recentRetryCutoff,
+          OMDB_COVERAGE_RECENT_MIN_VOTES,
         )
         const counted = await prisma.$queryRawUnsafe<{ skipped: number }[]>(
-          COVERAGE_SKIPPED_SQL(table),
+          COVERAGE_SKIPPED_SQL(table, input.entityType),
           input.entityType,
           input.providerApi,
           prefix,
           suffix,
           retryCutoff,
+          recentRetryCutoff,
+          floor,
+          today,
+          OMDB_COVERAGE_RECENT_MIN_VOTES,
         )
         skippedFresh = counted[0]?.skipped ?? 0
       } else {

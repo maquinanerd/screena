@@ -72,6 +72,12 @@ function rank<T extends { tmdbId: number }>(rows: readonly T[]): readonly (T & {
  * Titulo que NUNCA teve oferta coletada entra tambem (o `NOT EXISTS`): sem isso,
  * a fila so cuidaria de quem ja tem oferta e um titulo novo nunca ganharia a
  * primeira.
+ *
+ * "CONFERIDO" NAO E "COM OFERTA" (2026-10-30). Titulo sem oferta nenhuma nao
+ * deixa linha fresca em `watch_availability`, e voltaria ao topo todo dia — o
+ * mesmo defeito que travou a cobertura da OMDb. A marca de conferido e a
+ * resposta crua em `api_cache`, na chave do endpoint dedicado
+ * (`/{tipo}/{id}/watch/providers`, a mesma de `watchProvidersEndpoint`).
  */
 export async function selectStaleWatchOffers(
   prisma: PrismaClient,
@@ -86,6 +92,12 @@ export async function selectStaleWatchOffers(
               WHERE w."entity_type" = '${entityType}'::"EntityType"
                 AND w."entity_id" = e."id"
                 AND w."fetched_at" >= $1::timestamptz AT TIME ZONE 'UTC'
+           )
+       AND NOT EXISTS (
+             SELECT 1 FROM "api_cache" c
+              WHERE c."provider_api" = 'tmdb'
+                AND c."request_key" = '/${entityType}/' || e."tmdb_id" || '/watch/providers'
+                AND c."fetched_at" >= $1::timestamptz AT TIME ZONE 'UTC'
            )
      ORDER BY e."popularity" DESC NULLS LAST, e."id" ASC
      LIMIT $2`

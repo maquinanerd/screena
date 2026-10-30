@@ -38,6 +38,8 @@
  *      `OMDB_COVERAGE_RETRY_AFTER_DAYS`, conta o pulado em `skippedFresh`, e
  *      devolve quem foi perguntado ANTES da janela (controle negativo: a
  *      repergunta adia, nunca exclui para sempre).
+ *   8. A ESTREIA com votos volta em `OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS`; a
+ *      sem votos e a FUTURA continuam na janela longa (controle negativo).
  *
  * Motor: `embedded-postgres` (PostgreSQL 16 real, binario portatil, EFEMERO),
  * mesmo padrao dos demais `validate:*-real-postgres`.
@@ -60,7 +62,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import EmbeddedPostgres from 'embedded-postgres'
-import { OMDB_COVERAGE_RETRY_AFTER_DAYS } from '@screena/config'
+import {
+  OMDB_COVERAGE_RECENT_MIN_VOTES,
+  OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS,
+  OMDB_COVERAGE_RETRY_AFTER_DAYS,
+} from '@screena/config'
 import { runChild } from '@screena/db/async-child-process'
 import { buildOmdbByImdbIdRequest } from '@screena/omdb-client'
 
@@ -446,6 +452,69 @@ async function runChecks(prisma: PrismaLike): Promise<void> {
       cov3Keys.includes('sem-data'),
     )} · ${String(cov3Keys.length)} de ${String(covKeys.length)}`,
   )
+
+  // ------------------------------- ESTREIA COM PUBLICO (2026-10-30)
+  // Cara-de-Barro: 7,5 no IMDb e "N/A" na OMDb. A estreia com votos volta em
+  // OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS; a sem votos e a FUTURA seguem nos 14.
+  await prisma.$executeRawUnsafe(
+    `UPDATE movies SET vote_count_tmdb = ${String(OMDB_COVERAGE_RECENT_MIN_VOTES * 25)}
+      WHERE title_original IN ('estreou-ontem', 'estreia-proxima')`,
+  )
+  await recordOmdbAttempt(prisma, 'estreou-ontem', OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS + 1)
+  await recordOmdbAttempt(prisma, 'estreou-e-popular', OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS + 1)
+
+  const coverageKeys = async (): Promise<string[]> => {
+    const selection = await port.selectStaleByType({
+      entityType: 'movie',
+      limit: 20,
+      providerApi: PROVIDER,
+      cutoff,
+      mode: 'coverage',
+      now: NOW,
+    })
+    return keysOf(
+      prisma,
+      'movies',
+      selection.candidates.map((c) => c.entityId),
+    )
+  }
+  const cov4 = await coverageKeys()
+  console.log(`    cobertura com estreias perguntadas: ${cov4.join(', ')}`)
+  record(
+    20,
+    'estreia COM votos perguntada alem da janela curta VOLTA',
+    cov4.includes('estreou-ontem'),
+    `"estreou-ontem" (${String(OMDB_COVERAGE_RECENT_MIN_VOTES * 25)} votos, perguntado ha ${String(
+      OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS + 1,
+    )} dias) na cobertura? ${String(cov4.includes('estreou-ontem'))}`,
+  )
+  record(
+    21,
+    'estreia SEM votos perguntada no mesmo dia continua de fora (janela longa)',
+    !cov4.includes('estreou-e-popular'),
+    `"estreou-e-popular" (sem votos) na cobertura? ${String(cov4.includes('estreou-e-popular'))}`,
+  )
+  record(
+    22,
+    'CONTROLE NEGATIVO: estreia FUTURA com votos nao ganha a janela curta',
+    !cov4.includes('estreia-proxima'),
+    `"estreia-proxima" (estreia em 20 dias, com votos, perguntada ha 3 dias) na cobertura? ${String(
+      cov4.includes('estreia-proxima'),
+    )}`,
+  )
+
+  await prisma.$executeRawUnsafe(
+    `UPDATE api_cache SET fetched_at = (${lit(NOW.toISOString())}::timestamptz AT TIME ZONE 'UTC') - interval '1 day'
+      WHERE provider_api = ${lit(PROVIDER)}
+        AND request_key = ${lit(buildOmdbByImdbIdRequest('tt9000003').cacheKey.requestKey)}`,
+  )
+  const cov5 = await coverageKeys()
+  record(
+    23,
+    'estreia COM votos perguntada DENTRO da janela curta fica de fora',
+    !cov5.includes('estreou-ontem'),
+    `"estreou-ontem" perguntado ha 1 dia na cobertura? ${String(cov5.includes('estreou-ontem'))}`,
+  )
 }
 
 /**
@@ -540,7 +609,7 @@ async function main(): Promise<void> {
   console.log(`\nRESUMO: ${String(results.length - failed.length)}/${String(results.length)} checks OK.`)
   // Um numero de checks MENOR que o esperado significa que o validador morreu no
   // meio — e morrer no meio nao e passar.
-  const EXPECTED_CHECKS = 19
+  const EXPECTED_CHECKS = 23
   if (results.length < EXPECTED_CHECKS) {
     console.error(
       `FALHA: apenas ${String(results.length)} checks executados (esperados ${String(EXPECTED_CHECKS)}) — o validador morreu no meio.`,
