@@ -175,6 +175,17 @@ O validador `validate:omdb-order` ganhou três checagens (17 a 19): a tentativa
 recente exclui, o pulado é contado, e a tentativa **antiga** devolve o título
 (controle negativo: a repergunta adia, nunca exclui para sempre).
 
+**A exceção da estreia com público (2026-10-30).** A OMDb atrasa estreia. O
+Cara-de-Barro tinha 7,5/10 com 31 mil votos no IMDb e Metascore 59, e a OMDb
+respondia "N/A". Com 14 dias de espera, a nota apareceria até duas semanas depois
+de a OMDb atualizar. Agora o título que **estreou** nos últimos 90 dias **e** tem
+pelo menos `OMDB_COVERAGE_RECENT_MIN_VOTES` (20) votos no TMDB volta em
+`OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS` (2 dias). A estreia futura fica de fora,
+porque o IMDb não tem nota antes da estreia, e a estreia sem votos continua nos 14.
+Medido no mesmo dia: 67 títulos nesse recorte, o que dá ~34 consultas por dia,
+contra os ~1.950 da estreia sem votos que entupiam a fila. Checagens 20 a 23 do
+validador; a 22 é o controle da estreia futura.
+
 **O próximo gargalo, já visível:** IMDb e Rotten Tomatoes expiram em 30 dias
 (`RATING_STALE_POLICY`) e a atualização tem 105 requisições por dia. Isso mantém
 no máximo ~3.150 títulos com nota visível. Quando a cobertura passar disso,
