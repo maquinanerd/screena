@@ -144,6 +144,42 @@ sobe um PostgreSQL 16 efêmero, planta títulos com datas conhecidas e afirma a
 que o teste distingue mundo: o título mais popular (`popularity 9999`) **não**
 pode vir primeiro, e o primeiro id inserido **não** pode vir primeiro. Roda no CI.
 
+### 4.1 O sexto defeito: a cobertura reperguntava o "N/A" todo dia (2026-10-29)
+
+"Zero notas" não é "nunca perguntado". Um título que a OMDb responde sem nota
+(`imdbRating: "N/A"`, `Ratings: []` ou `Response: "False"`) continua com zero
+linhas em `external_ratings`. Como a ordem é total e determinística, ele voltava
+ao **topo** da cobertura no dia seguinte. E o balde que entope é justamente o
+da estreia: a OMDb ainda não tem nota para o filme que acabou de estrear.
+
+Medido em produção em 29/10/2026:
+
+```
+api_cache da OMDb (títulos distintos já perguntados) ..... 2.478  (em ~70 dias a 700/dia)
+consultas das últimas 24 h ............................... 700
+  ... a títulos perguntados pela 1ª vez há mais de 7 dias  618
+títulos novos na fila nos últimos 7 dias ................. 110
+filmes com 500+ votos no TMDB ............................ 7.737
+  ... com nota visível ................................... 287
+  ... NUNCA perguntados à OMDb ........................... 7.343
+```
+
+O conserto: a cobertura pula, por `OMDB_COVERAGE_RETRY_AFTER_DAYS` (14 dias,
+`@screena/config`), quem já foi perguntado. A memória é o próprio `api_cache`:
+toda consulta que toca a rede grava a resposta ali, inclusive "N/A", na chave do
+cliente. A chave sai de `buildOmdbByImdbIdRequest`, o mesmo construtor da
+consulta. O pulado aparece em `skippedFresh` ("pulados por repergunta recente"
+no `--plan`).
+
+O validador `validate:omdb-order` ganhou três checagens (17 a 19): a tentativa
+recente exclui, o pulado é contado, e a tentativa **antiga** devolve o título
+(controle negativo: a repergunta adia, nunca exclui para sempre).
+
+**O próximo gargalo, já visível:** IMDb e Rotten Tomatoes expiram em 30 dias
+(`RATING_STALE_POLICY`) e a atualização tem 105 requisições por dia. Isso mantém
+no máximo ~3.150 títulos com nota visível. Quando a cobertura passar disso,
+`refreshWindowFits` vai ficar `false` e a divisão 85/15 precisa ser revista.
+
 ---
 
 ## 5. O estouro de cota, reconhecido

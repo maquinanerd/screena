@@ -297,6 +297,13 @@ export interface SyncDetailsInput {
    * ao `sync_seasons`. Ver `EPISODE_MEDIA_SEASONS`.
    */
   readonly episodeMediaSeasons: EpisodeMediaSeasons
+  /**
+   * O motivo que `buildCoverageJob` grava no payload (`changes`, `on_demand`...).
+   * Decide se o detalhe pode vir da copia de `api_cache` ou tem de ir a rede —
+   * ver `COVERAGE_REFRESHES_CACHE`. Ate 2026-10-29 este validador o descartava.
+   * `null` em payload antigo ou montado sem motivo.
+   */
+  readonly reason: string | null
 }
 
 /** Input de `sync_credits`. */
@@ -539,6 +546,7 @@ export function validateSyncDetailsInput(value: unknown): SyncDetailsInput {
     enqueueDependencies: readOptionalBoolean(raw, 'enqueueDependencies', true),
     scope: readJobScope(raw),
     episodeMediaSeasons: readEpisodeMediaSeasons(raw),
+    reason: readOptionalString(raw, 'reason'),
   }
 }
 

@@ -32,7 +32,6 @@
  * decide indexacao sozinho e nao chama Gemini.
  */
 
-import { gunzipSync } from 'node:zlib'
 import { randomUUID } from 'node:crypto'
 
 import { createTmdbClient, createTmdbCatalogEndpoints } from '@screena/tmdb-client'
@@ -46,6 +45,7 @@ import {
 } from '../src/catalog-jobs/producer-jobs.js'
 import { runCatalogWorker } from '../src/catalog-jobs/worker.js'
 import { createStructuredLogMetricsSink } from '../src/metrics/index.js'
+import { streamExportLines } from '../src/discovery/export-stream.js'
 import { createCatalogServices } from '../src/persistence/catalog-services.js'
 import { redactSecrets } from '../src/cli/index.js'
 import {
@@ -67,19 +67,6 @@ function createServiceLogger(): StructuredLogger {
       process.stdout.write(`${redactSecrets(line)}\n`)
     },
   }
-}
-
-/** Baixa o texto de um Daily ID Export (arquivo publico, sem token nem cota). */
-async function fetchExportText(url: string): Promise<string> {
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`export HTTP ${response.status}`)
-  // Os exports sao `.json.gz` SERVIDOS COMO CORPO BINARIO — nao ha
-  // `content-encoding: gzip`, entao `fetch` NAO descompacta e `response.text()`
-  // devolveria bytes gzip lidos como UTF-8. O parser descartaria toda linha como
-  // JSON invalido e a descoberta reportaria "0 ids" com sucesso.
-  const buffer = Buffer.from(await response.arrayBuffer())
-  const isGzip = buffer.length > 2 && buffer[0] === 0x1f && buffer[1] === 0x8b
-  return isGzip ? gunzipSync(buffer).toString('utf8') : buffer.toString('utf8')
 }
 
 /**
@@ -182,7 +169,11 @@ async function main(): Promise<number> {
     tmdb: client.endpoints,
     catalogEndpoints,
     cacheTtlMs: client.config.cacheTtlMs,
-    fetchText: fetchExportText,
+    // STREAMING, nunca o arquivo inteiro: com `gunzipSync` + `toString` os tres
+    // exports seguravam a thread num trecho unico (14,9 s numa maquina de mesa,
+    // 3,0 GB de RSS) e o `/healthz` nao respondia durante ele. Ver
+    // docs/operations/descoberta-diaria-segura-o-worker-2026-10-29.md.
+    fetchExportLines: (url, signal) => streamExportLines(url, { signal }),
   })
   const registry = createCatalogHandlerRegistry(services)
 

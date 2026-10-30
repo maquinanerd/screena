@@ -207,7 +207,7 @@ async function main(): Promise<void> {
       console.log(
         `[plan] modo=${rotationMode} tipo=${args.type} limite=${limit} · ` +
           `SELECIONADOS=${selection.candidates.length} · ` +
-          `pulados por frescor=${selection.skippedFresh} · ` +
+          `${rotationMode === 'coverage' ? 'pulados por repergunta recente' : 'pulados por frescor'}=${selection.skippedFresh} · ` +
           'zero requisicao, zero cota, nada gravado.',
       )
       if (selection.candidates.length > 0) {

@@ -13,8 +13,10 @@
  * diferentes, ordens diferentes e ate um relogio diferente:
  *
  *   `coverage` — ZERO linhas em `external_ratings`, de QUALQUER provider. Nao
- *                aplica cutoff: `now - never` nao e um intervalo. Trabalho
- *                FINITO — ele acaba.
+ *                aplica cutoff de FRESCOR: `now - never` nao e um intervalo.
+ *                Trabalho FINITO — ele acaba. Mas pula, por
+ *                `OMDB_COVERAGE_RETRY_AFTER_DAYS`, quem a OMDb JA respondeu sem
+ *                nota (ver "ZERO NOTAS NAO E NUNCA PERGUNTADO" abaixo).
  *   `refresh`  — TEM linha, e a coleta daquele provider e anterior ao cutoff.
  *                Aqui sim `RATING_STALE_POLICY` manda. Trabalho PERPETUO.
  *
@@ -65,12 +67,29 @@
  *
  * `skippedFresh` NAO e cosmetico. Sem ele, um ciclo saudavel em que tudo ja esta
  * fresco reportaria "0 consultados" — indistinguivel de "a selecao quebrou". O
- * numero e o que separa as duas leituras. No modo `coverage` ele e sempre 0, e
- * isso e a verdade: ali nada e pulado por frescor.
+ * numero e o que separa as duas leituras. No modo `coverage` ele conta quem foi
+ * pulado por ter sido PERGUNTADO ha menos de `OMDB_COVERAGE_RETRY_AFTER_DAYS`.
+ *
+ * ============================================================================
+ * ZERO NOTAS NAO E NUNCA PERGUNTADO (2026-10-29)
+ * ============================================================================
+ * A ordem e total e deterministica, e a cobertura nao tinha memoria de quem ja
+ * tinha perguntado: o titulo que a OMDb responde "N/A" continua com zero notas e
+ * voltava ao topo todo dia. Medido em producao: 618 das 700 consultas do dia
+ * repetiam titulos ja perguntados, e 7.343 dos 7.737 filmes populares nunca
+ * tinham sido alcancados. Ver `OMDB_COVERAGE_RETRY_AFTER_DAYS` em
+ * `@screena/config`.
+ *
+ * A memoria e o proprio `api_cache`: toda consulta que toca a rede grava ali a
+ * resposta, inclusive "N/A" e `Response: "False"`, na chave do cliente OMDb. A
+ * chave vem de `buildOmdbByImdbIdRequest` — o MESMO construtor que a consulta
+ * usa —, nunca de uma string montada a mao aqui: se o formato da chave mudar, os
+ * dois lados mudam juntos.
  */
 
 import type { PrismaClient } from '@screena/db/server'
-import type { OmdbRotationMode } from '@screena/config'
+import { OMDB_COVERAGE_RETRY_AFTER_DAYS, type OmdbRotationMode } from '@screena/config'
+import { buildOmdbByImdbIdRequest } from '@screena/omdb-client'
 
 import type {
   RatingsEntityCandidate,
@@ -175,21 +194,69 @@ const SKIPPED_FRESH_SQL = (table: string): string => `
      AND EXISTS (${FRESH_FOR_PROVIDER})
 `
 
+/** Um imdb id que nao existe, so para descobrir onde o id entra na chave. */
+const KEY_PROBE_IMDB_ID = 'tt0000000'
+
 /**
- * Candidatos do modo `coverage`: zero notas, de qualquer provider.
+ * Prefixo e sufixo da `request_key` que o cliente OMDb grava em `api_cache`,
+ * em volta do imdb id. Derivados do construtor real — ver o cabecalho.
+ */
+export function omdbCacheKeyParts(): { readonly prefix: string; readonly suffix: string } {
+  const key = buildOmdbByImdbIdRequest(KEY_PROBE_IMDB_ID).cacheKey.requestKey
+  const parts = key.split(KEY_PROBE_IMDB_ID)
+  if (parts.length !== 2) {
+    // Fail-loud: sem saber onde o id entra, a selecao nao reconheceria nenhuma
+    // consulta anterior e voltaria a reperguntar tudo todo dia, calada.
+    throw new Error(`chave de cache OMDb sem lugar unico para o imdb id: ${key}`)
+  }
+  return { prefix: parts[0] as string, suffix: parts[1] as string }
+}
+
+/**
+ * A OMDb ja foi perguntada sobre esta entidade desde o corte?
  *
- * Params: $1 entityType, $2 piso, $3 hoje, $4 teto, $5 limite.
- * Nao ha cutoff de frescor aqui — e o ponto do modo.
+ * Recebe os INDICES dos parametros (provider, prefixo, sufixo, corte). Coberto
+ * pelo unique `(provider_api, request_key, params_hash)` de `api_cache`.
+ */
+const recentAttempt = (provider: number, prefix: number, suffix: number, cutoff: number): string => `
+       SELECT 1
+         FROM "api_cache" c
+        WHERE c."provider_api" = $${String(provider)}
+          AND c."request_key" = $${String(prefix)} || e."imdb_id" || $${String(suffix)}
+          AND c."fetched_at" >= $${String(cutoff)}::timestamptz AT TIME ZONE 'UTC'
+`
+
+/**
+ * Candidatos do modo `coverage`: zero notas, de qualquer provider, e nao
+ * perguntados desde o corte de repergunta.
+ *
+ * Params: $1 entityType, $2 piso, $3 hoje, $4 teto, $5 limite,
+ *         $6 provider, $7 prefixo da chave, $8 sufixo da chave, $9 corte.
+ * Nao ha cutoff de FRESCOR aqui — e o ponto do modo; o corte e de TENTATIVA.
  */
 const COVERAGE_SQL = (table: string, entityType: RatingsEntityType): string => `
   SELECT e."id" AS id, e."imdb_id" AS imdb_id, e."tmdb_id" AS tmdb_id
     FROM "${table}" e
    WHERE e."imdb_id" IS NOT NULL
      AND NOT EXISTS (${ANY_RATING_EXISTS})
+     AND NOT EXISTS (${recentAttempt(6, 7, 8, 9)})
    ORDER BY ${priorityCase(entityType, 2, 3, 4)},
             e."popularity" DESC NULLS LAST,
             e."id" ASC
    LIMIT $5
+`
+
+/**
+ * Conta quem a cobertura PULOU por ter sido perguntado ha pouco.
+ *
+ * Params: $1 entityType, $2 provider, $3 prefixo, $4 sufixo, $5 corte.
+ */
+const COVERAGE_SKIPPED_SQL = (table: string): string => `
+  SELECT count(*)::int AS skipped
+    FROM "${table}" e
+   WHERE e."imdb_id" IS NOT NULL
+     AND NOT EXISTS (${ANY_RATING_EXISTS})
+     AND EXISTS (${recentAttempt(2, 3, 4, 5)})
 `
 
 /**
@@ -246,7 +313,12 @@ export function createPrismaStaleEntityCandidates(
       let skippedFresh = 0
 
       if (mode === 'coverage') {
-        // Nenhum cutoff, nenhum `skippedFresh`: nada aqui foi coletado ainda.
+        // Nenhum cutoff de frescor: nada aqui tem nota. O corte e de TENTATIVA —
+        // quem a OMDb respondeu sem nota espera a janela antes de voltar.
+        const { prefix, suffix } = omdbCacheKeyParts()
+        const retryCutoff = new Date(
+          now.getTime() - OMDB_COVERAGE_RETRY_AFTER_DAYS * DAY_MS,
+        ).toISOString()
         rows = await prisma.$queryRawUnsafe<CandidateRow[]>(
           COVERAGE_SQL(table, input.entityType),
           input.entityType,
@@ -254,7 +326,20 @@ export function createPrismaStaleEntityCandidates(
           today,
           ceil,
           take,
+          input.providerApi,
+          prefix,
+          suffix,
+          retryCutoff,
         )
+        const counted = await prisma.$queryRawUnsafe<{ skipped: number }[]>(
+          COVERAGE_SKIPPED_SQL(table),
+          input.entityType,
+          input.providerApi,
+          prefix,
+          suffix,
+          retryCutoff,
+        )
+        skippedFresh = counted[0]?.skipped ?? 0
       } else {
         const withCutoff = input.cutoff !== null
         rows = withCutoff

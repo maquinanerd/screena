@@ -96,6 +96,32 @@ export const OMDB_BACKGROUND_DAILY_ENVELOPE = 700
 export const OMDB_COVERAGE_RATIO = 0.85
 
 /**
+ * Dias que a COBERTURA espera antes de perguntar de novo por um titulo que a
+ * OMDb ja respondeu SEM nota (`imdbRating: "N/A"`, `Ratings: []` ou
+ * `Response: "False"`).
+ *
+ * ============================================================================
+ * "ZERO NOTAS" NAO E "NUNCA PERGUNTADO"
+ * ============================================================================
+ * A cobertura seleciona "titulo com zero linhas em `external_ratings`", sempre
+ * na mesma ordem. Um titulo que a OMDb responde sem nota continua com zero
+ * linhas — e volta ao TOPO no dia seguinte. Medido em producao em 2026-10-29:
+ *
+ *   - o `api_cache` da OMDb tinha 2.478 titulos em 70 dias de fila a 700/dia;
+ *   - das 700 consultas das ultimas 24 h, 618 foram a titulos perguntados pela
+ *     primeira vez ha mais de 7 dias (~1.100 respondiam "N/A");
+ *   - dos 7.737 filmes com 500+ votos no TMDB, 7.343 NUNCA tinham sido
+ *     perguntados.
+ *
+ * O balde que entupia era o da estreia (estreou ha 90 dias / estreia em 60): e
+ * exatamente o titulo que a OMDb ainda nao tem nota.
+ *
+ * 14 dias: tempo para uma estreia acumular votos no IMDb e a OMDb refletir, sem
+ * deixar a repergunta ocupar mais que ~1/14 da fatia de cobertura por dia.
+ */
+export const OMDB_COVERAGE_RETRY_AFTER_DAYS = 14
+
+/**
  * Fatia do conjunto consultavel que e FILME. O complemento e serie.
  *
  * Ver o cabecalho: proporcional ao consultavel, nao meio a meio.

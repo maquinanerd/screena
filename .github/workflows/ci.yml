@@ -463,14 +463,28 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # pg_dump/pg_restore/psql versao 16 (casa com o servico). O runner ja traz
-      # o repo PGDG; garantimos o cliente 16 explicitamente.
+      # pg_dump/pg_restore/psql versao 16 (casa com o servico), SEM fallback para
+      # o cliente da distribuicao. Em 29/10/2026 o `ubuntu-latest` virou 26.04, que
+      # nao traz `postgresql-client-16`: o antigo `|| apt-get install
+      # postgresql-client` instalou o 18 calado, e o pg_restore 18 emite
+      # `SET transaction_timeout`, que o servidor 16 nao conhece — o job reprovou
+      # em toda PR sem mudanca de codigo. Agora o repositorio PGDG entra quando o
+      # pacote falta, o bin do 16 vai na frente do PATH dos passos seguintes, e o
+      # passo REPROVA se o cliente nao for o 16.
       - name: Instalar postgresql-client 16
         run: |
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-16 || sudo apt-get install -y postgresql-client
-          pg_dump --version
-          psql --version
+          if ! apt-cache show postgresql-client-16 >/dev/null 2>&1; then
+            sudo apt-get install -y postgresql-common
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+            sudo apt-get update
+          fi
+          sudo apt-get install -y postgresql-client-16
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/pg_dump --version | grep -E ' 16\.'
+          /usr/lib/postgresql/16/bin/pg_restore --version | grep -E ' 16\.'
+          /usr/lib/postgresql/16/bin/psql --version | grep -E ' 16\.'
 
       - name: Generate Prisma Client
         run: pnpm --filter @screena/db db:generate
@@ -481,7 +495,10 @@ jobs:
           pnpm --filter @screena/db db:seed
 
       - name: Verificar backup + restore com fidelidade de dados
-        run: bash scripts/backup/verify-backup-restore.sh
+        run: |
+          # O PATH do passo de instalacao tem de ter valido: o cliente aqui e o 16.
+          pg_dump --version | grep -E ' 16\.' || { echo "cliente do PostgreSQL nao e o 16: $(pg_dump --version)"; exit 1; }
+          bash scripts/backup/verify-backup-restore.sh
 
       # CONTROLE NEGATIVO do passo acima. Um teste de restore que nunca fica
       # vermelho nao prova restore nenhum: aqui o `restore-test.sh` roda cinco
