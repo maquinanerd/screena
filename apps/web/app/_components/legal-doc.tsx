@@ -52,8 +52,11 @@ export const LEGAL_TERMS_VERSION = '2026-08'
  * `2026-08.2`: revisão do §6 (Cookies) para declarar o player de vídeo do
  * YouTube como conteúdo de terceiro carregado sob clique. Mesmo mês da versão
  * anterior, por isso o sufixo.
+ *
+ * `2026-10`: medição de audiência — Cloudflare Web Analytics sem cookie e
+ * Google Analytics 4 só com autorização (itens 2.3, 3, 5.6, 5.7, 6 e 7).
  */
-export const LEGAL_PRIVACY_VERSION = '2026-08.2'
+export const LEGAL_PRIVACY_VERSION = '2026-10'
 
 /**
  * Marca um dado que só o controlador pode preencher (razão social, CNPJ,

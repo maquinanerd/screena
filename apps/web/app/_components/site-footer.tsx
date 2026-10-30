@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { CookiePreferencesButton } from "./consent-banner";
 import { FooterNewsletter } from "./footer-newsletter";
 import { SectionBoundary } from "./section-boundary";
 import {
@@ -7,6 +8,7 @@ import {
   type SectionDecision,
 } from "../../src/lib/section-absence";
 import type { PublicCreditLogo } from "@screena/legal/public-credits";
+import { analyticsConfig } from "../../src/lib/analytics-config";
 import { isNewsletterEnabled } from "../../src/lib/site";
 import {
   DATA_CREDITS,
@@ -175,6 +177,11 @@ export function SiteFooter(): ReactNode {
         }),
       } as const);
 
+  // "Preferências de cookies" só existe quando há cookie opcional para decidir:
+  // a MESMA condição que monta o aviso no layout raiz. Sem GA4, o botão abriria
+  // um aviso que não está na página.
+  const hasCookieChoice = analyticsConfig().ga4MeasurementId !== null;
+
   return (
     <footer className="footer" role="contentinfo">
       <div className="footer__inner">
@@ -271,6 +278,11 @@ export function SiteFooter(): ReactNode {
               <li>
                 <a href={SITE_INDEX_PATH}>Índice do site</a>
               </li>
+              {hasCookieChoice ? (
+                <li>
+                  <CookiePreferencesButton />
+                </li>
+              ) : null}
             </ul>
           </nav>
 

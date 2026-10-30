@@ -72,18 +72,33 @@ import { needsTrailingSlash } from "./src/lib/trailing-slash";
  *             exige nonce por request, que e outra PR.
  * `frame-ancestors 'none'` e o equivalente moderno do `X-Frame-Options: DENY`
  *             que o `next.config` ja emite — os dois convivem de proposito.
+ * Medicao de audiencia (`src/lib/analytics-config.ts`, 2026-10-30):
+ *             `static.cloudflareinsights.com` serve o beacon sem cookie que a
+ *             BORDA injeta (ele envia para `/cdn-cgi/rum`, mesma origem;
+ *             `cloudflareinsights.com` cobre a configuracao manual);
+ *             `googletagmanager.com` serve o gtag.js e os hosts
+ *             `*.google-analytics.com` / `*.analytics.google.com` recebem as
+ *             coletas do GA4 — que so carrega depois do "Aceitar".
  */
+const ANALYTICS_SCRIPT_SOURCES =
+  "https://static.cloudflareinsights.com https://www.googletagmanager.com";
+const ANALYTICS_CONNECT_SOURCES =
+  "https://cloudflareinsights.com https://*.google-analytics.com " +
+  "https://*.analytics.google.com https://www.googletagmanager.com";
+const ANALYTICS_IMAGE_SOURCES =
+  "https://*.google-analytics.com https://www.googletagmanager.com";
+
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  `img-src 'self' https://${TMDB_IMAGE_HOST} data: blob:`,
+  `img-src 'self' https://${TMDB_IMAGE_HOST} ${ANALYTICS_IMAGE_SOURCES} data: blob:`,
   "media-src 'self'",
   "font-src 'self' data:",
-  "connect-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  `connect-src 'self' ${ANALYTICS_CONNECT_SOURCES}`,
+  `script-src 'self' 'unsafe-inline' ${ANALYTICS_SCRIPT_SOURCES}`,
   "style-src 'self' 'unsafe-inline'",
   "frame-src https://www.youtube-nocookie.com",
   // `upgrade-insecure-requests` ESTAVA aqui e foi removida em 2026-09-11.
