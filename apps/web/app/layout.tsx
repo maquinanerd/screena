@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { preload } from "react-dom";
 
+import { ConsentBanner } from "./_components/consent-banner";
 import { SiteHeader } from "./_components/site-header";
 import { SiteFooter } from "./_components/site-footer";
+import { analyticsConfig } from "../src/lib/analytics-config";
 import { CINERIE_SOCIAL_CARD } from "../src/lib/brand-logos";
 import { SITE_URL } from "../src/lib/site";
 import "./globals.css";
@@ -56,6 +58,11 @@ export default function RootLayout({ children }: { children: ReactNode }): React
   // buscada em modo CORS, e um preload sem ele nao casa com a requisicao da
   // `@font-face` — o navegador baixaria a fonte DUAS vezes.
   preload(FONT_PATH, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
+  // MEDICAO DE AUDIENCIA (2026-10-30). Lida por requisicao: o release constroi
+  // sem env publica. O GA4 so existe atras do aviso de cookies. O beacon da
+  // Cloudflare (sem cookie) NAO e montado aqui: a borda ja o injeta em toda
+  // pagina. Regras em `src/lib/analytics-config.ts`.
+  const analytics = analyticsConfig();
   return (
     <html lang="pt-BR">
       <body>
@@ -67,6 +74,9 @@ export default function RootLayout({ children }: { children: ReactNode }): React
           {children}
         </div>
         <SiteFooter />
+        {analytics.ga4MeasurementId !== null ? (
+          <ConsentBanner measurementId={analytics.ga4MeasurementId} />
+        ) : null}
       </body>
     </html>
   );

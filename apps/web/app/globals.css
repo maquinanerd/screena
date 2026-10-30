@@ -3298,3 +3298,137 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 
 /* A banda de midia (colapso da grade), a pagina de episodio e o trailer da
    temporada vivem em app/_components/detail.css. */
+
+/* ------------------------------------------------------------------ */
+/*
+ * AVISO DE COOKIES do Google Analytics (`_components/consent-banner.tsx`).
+ * Mora aqui, e nao numa folha propria, porque o layout raiz o monta em toda
+ * pagina: folha alcancada pelo layout e global (tests/web/css-route-sheets.test.ts).
+ *
+ * Faixa CLARA fixa no rodape da janela, acima do cabecalho (z-index 80) e abaixo
+ * do modal de trailer (1000). Nao cobre a pagina: a leitura continua.
+ *
+ * Os dois botoes tem EXATAMENTE a mesma regra. Recusar nao pode parecer menor,
+ * mais apagado ou secundario que aceitar — e por isso nao existe uma classe
+ * "primaria" aqui.
+ */
+
+.consent-banner {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  left: 16px;
+  z-index: 90;
+  margin: 0 auto;
+  max-width: 760px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 12px;
+  background: var(--c-bg-surface);
+  box-shadow: 0 12px 32px rgba(16, 16, 16, 0.14);
+  color: var(--c-text-body);
+}
+
+.consent-banner__inner {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 18px 20px;
+}
+
+.consent-banner__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.consent-banner__text p {
+  margin: 0;
+}
+
+.consent-banner__text a {
+  color: var(--c-text-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.consent-banner__title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text-primary);
+}
+
+.consent-banner__text .consent-banner__current {
+  margin-top: 6px;
+  color: var(--c-text-muted-aa);
+  font-size: 13px;
+}
+
+.consent-banner__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.consent-banner__button {
+  min-width: 108px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--c-text-primary);
+  border-radius: 8px;
+  background: var(--c-bg-surface);
+  color: var(--c-text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.consent-banner__button:hover {
+  background: var(--c-text-primary);
+  color: var(--c-text-inverse);
+}
+
+.consent-banner__button:focus-visible {
+  outline: 2px solid var(--c-text-primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .consent-banner__inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .consent-banner__actions {
+    width: 100%;
+  }
+
+  .consent-banner__button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+/* O gatilho "Preferencias de cookies" do rodape escuro: um botao com cara dos
+   links ao lado. */
+.cookie-prefs-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cookie-prefs-button:hover {
+  color: var(--footer-text-primary);
+}
+
+.cookie-prefs-button:focus-visible {
+  outline: 2px solid var(--footer-text-primary);
+  outline-offset: 2px;
+}

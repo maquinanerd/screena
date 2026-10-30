@@ -55,7 +55,9 @@ export const C7D_DEFAULTS = {
   // `2026-08.2`: revisao do §6 (Cookies) declarando o player de video do
   // YouTube. Os Termos NAO mudaram e continuam em `2026-08` — subir os dois
   // juntos pediria a toda a base um novo aceite de um documento intacto.
-  privacyPolicyVersion: "2026-08.2",
+  // `2026-10`: medicao de audiencia (Cloudflare Web Analytics e GA4 com
+  // consentimento) — mudou o texto da Privacidade, nao o dos Termos.
+  privacyPolicyVersion: "2026-10",
   sessionTtlHours: 720,
   deletionGraceDays: 30,
 } as const;

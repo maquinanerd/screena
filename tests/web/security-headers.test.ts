@@ -263,6 +263,10 @@ describe('CSP entra pelo middleware, e em REPORT-ONLY', () => {
     // burlaria a mesma regra que o codigo passou a respeitar.
     expect(csp).toContain(`https://${TMDB_IMAGE_HOST}`)
     expect(csp).toContain('https://www.youtube-nocookie.com')
+    // Medicao de audiencia: beacon da Cloudflare e GA4 (este, so apos o aceite).
+    expect(csp).toContain('https://static.cloudflareinsights.com')
+    expect(csp).toContain('https://www.googletagmanager.com')
+    expect(csp).toContain('https://*.google-analytics.com')
 
     // `upgrade-insecure-requests` e INERTE numa politica report-only: ela muda
     // requisicao, e report-only nao muda nada por definicao — o navegador so
