@@ -66,6 +66,15 @@ function isBetter(a: IdExportRecord, b: IdExportRecord): boolean {
  * lista ordenada de tamanho <= N com insercao binaria (o mesmo desenho de
  * `selectTopByPopularity`), entao a memoria e O(N) e o resultado e o mesmo que
  * ordenar o universo inteiro e cortar depois.
+ *
+ * O MESMO CONTRATO DE `filterAdult` + `buildSyncQueue`, porque desde 29/10/2026
+ * este sampler e tambem o caminho da FILA (`discover_ids`, via
+ * `export-discovery.ts`), nao so o da amostra da CLI:
+ *  - a ordem de descarte e a de `filterAdult`: id invalido, depois adulto,
+ *    depois malformado;
+ *  - id repetido no export mantem a MAIOR popularidade, como `buildSyncQueue`
+ *    (ate aqui o sampler mantinha a primeira ocorrencia e a amostra podia
+ *    discordar da fila).
  */
 export function createTopRecordSampler(input: {
   readonly limit: number | null
@@ -74,14 +83,35 @@ export function createTopRecordSampler(input: {
   const cap =
     input.limit !== null && Number.isInteger(input.limit) && input.limit > 0 ? input.limit : null
   const kept: IdExportRecord[] = []
+  // Sem teto, o mapa E a colecao: o dedup precisa achar o registro anterior
+  // para troca-lo pelo de maior popularidade. Com teto, `seen` so responde "ja
+  // vi este id"; o anterior, se ainda conta, esta em `kept` (<= N).
+  const byId = new Map<number, IdExportRecord>()
   const seen = new Set<number>()
   let adultDropped = 0
   let unsafeDropped = 0
   let invalidDropped = 0
   let duplicate = 0
 
+  function insert(record: IdExportRecord, limit: number): void {
+    if (kept.length === limit && !isBetter(record, kept[kept.length - 1]!)) return
+    let low = 0
+    let high = kept.length
+    while (low < high) {
+      const mid = (low + high) >>> 1
+      if (isBetter(record, kept[mid]!)) high = mid
+      else low = mid + 1
+    }
+    kept.splice(low, 0, record)
+    if (kept.length > limit) kept.pop()
+  }
+
   return {
     offer(record: IdExportRecord): void {
+      if (!Number.isInteger(record.id) || record.id <= 0) {
+        invalidDropped += 1
+        return
+      }
       const verdict = classifyAdult(record.adult, input.adultFieldRequired)
       if (verdict === 'adult') {
         adultDropped += 1
@@ -91,39 +121,43 @@ export function createTopRecordSampler(input: {
         unsafeDropped += 1
         return
       }
-      if (!Number.isInteger(record.id) || record.id <= 0) {
-        invalidDropped += 1
-        return
-      }
-      if (seen.has(record.id)) {
-        duplicate += 1
-        return
-      }
-      seen.add(record.id)
 
       // Sem teto, insercao ordenada seria O(n^2) num export de milhoes de
       // linhas: acumula e ordena UMA vez no `finish`.
       if (cap === null) {
-        kept.push(record)
+        const previous = byId.get(record.id)
+        if (previous === undefined) {
+          byId.set(record.id, record)
+          return
+        }
+        duplicate += 1
+        if (isBetter(record, previous)) byId.set(record.id, record)
         return
       }
-      if (kept.length === cap && !isBetter(record, kept[kept.length - 1]!)) {
+
+      if (!seen.has(record.id)) {
+        seen.add(record.id)
+        insert(record, cap)
         return
       }
-      let low = 0
-      let high = kept.length
-      while (low < high) {
-        const mid = (low + high) >>> 1
-        if (isBetter(record, kept[mid]!)) high = mid
-        else low = mid + 1
+      duplicate += 1
+      const at = kept.findIndex((item) => item.id === record.id)
+      if (at === -1) {
+        // O anterior ja nao conta: foi recusado ou expulso por um registro
+        // melhor. O piso de `kept` so sobe, entao o repetido concorre como
+        // qualquer outro — se for pior que o anterior, e pior que o piso.
+        insert(record, cap)
+        return
       }
-      kept.splice(low, 0, record)
-      if (kept.length > cap) kept.pop()
+      if (!isBetter(record, kept[at]!)) return
+      kept.splice(at, 1)
+      insert(record, cap)
     },
     finish(): ExportSample {
-      if (cap === null) kept.sort((a, b) => (isBetter(a, b) ? -1 : 1))
+      const ordered =
+        cap === null ? [...byId.values()].sort((a, b) => (isBetter(a, b) ? -1 : 1)) : kept
       return {
-        kept,
+        kept: ordered,
         counts: { adultDropped, unsafeDropped, invalidDropped, duplicate },
       }
     },

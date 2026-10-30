@@ -55,7 +55,7 @@ import { runMediaSync } from '../catalog-sync/media-sync.js'
 import type { MediaTarget } from '../catalog-sync/media-sync.js'
 import { extractListItems } from '../discovery-snapshots/index.js'
 import { exportUrl, DAILY_ID_EXPORTS } from '../discovery/id-exports.js'
-import { discoverIdsFromExportText } from '../discovery/export-discovery.js'
+import { discoverIdsFromExportBatches } from '../discovery/export-discovery.js'
 import { reindexEntity } from '../search-projection/index.js'
 import type { SearchProjectionSourcePort } from '../search-projection/index.js'
 import type { SearchStorePort } from '../search/store-port.js'
@@ -182,8 +182,16 @@ export interface CatalogServicesOptions {
    */
   readonly watchStaleWindowMs?: number
   readonly now?: () => Date
-  /** Baixa um texto por URL (Daily ID Exports). Injetado: o core nao faz rede. */
-  readonly fetchText?: (url: string) => Promise<string>
+  /**
+   * Baixa um Daily ID Export e entrega as linhas (ja descomprimidas) em LOTES.
+   * Injetado: o core nao faz rede. Em producao e `streamExportLines`
+   * (`discovery/export-stream.ts`). Nunca o texto inteiro: o export de pessoas
+   * tem 5 milhoes de linhas, e materializa-lo travava o worker (29/10/2026).
+   */
+  readonly fetchExportLines?: (
+    url: string,
+    signal: AbortSignal,
+  ) => AsyncIterable<readonly string[]>
   readonly metrics?: MetricsSink
 }
 
@@ -891,7 +899,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
   }
 
   const discovery: CatalogDiscoverIdsPort = {
-    async discover({ strategy, kind, locale, country, limit, maxPages, ids }) {
+    async discover({ strategy, kind, locale, country, limit, maxPages, ids, signal }) {
       if (strategy === 'explicit-ids') {
         const accepted = [...new Set(ids ?? [])]
         return {
@@ -903,7 +911,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         }
       }
       if (strategy === 'daily-exports') {
-        return discoverFromDailyExports(kind, limit, now, options.fetchText)
+        return discoverFromDailyExports(kind, limit, now, options.fetchExportLines, signal)
       }
       return discoverFromLists(catalogEndpoints, tmdb, {
         strategy,
@@ -1251,21 +1259,25 @@ async function discoverFromLists(
  * 2026-08-10: presente em movie/tv/person), entao ordenar NAO custa uma unica
  * chamada de API nem um byte de cota — e so nao jogar fora um campo que ja veio.
  *
- * `buildSyncQueue` e o ordenador canonico e ja era usado pelo caminho NDJSON de
- * `bin/discover-ids.ts`; o pipeline da fila usava outro caminho e por isso nao
- * herdava a ordem. Ele dedupa por `(kind, tmdbId)`, ordena por popularidade
- * desc (nulls por ultimo) com desempate por `tmdbId` asc — ordem TOTAL, entao
- * duas execucoes sobre o mesmo export produzem exatamente a mesma fila — e
- * reaplica `classifyAdult` como rede secundaria.
+ * Desde 29/10/2026 a ordem sai do sampler de top-N (`export-sample.ts`), o
+ * mesmo da CLI `bin/discover-ids.ts`, com o contrato de `buildSyncQueue`: dedup
+ * por id mantendo a maior popularidade, popularidade desc (nulls por ultimo) com
+ * desempate por `tmdbId` asc — ordem TOTAL, entao duas execucoes sobre o mesmo
+ * export produzem exatamente a mesma fila. A diferenca e a memoria: O(N) em vez
+ * do universo, e o arquivo nunca inteiro na memoria (ver `export-discovery.ts`).
  */
 async function discoverFromDailyExports(
   kind: 'movie' | 'tv' | 'person',
   limit: number | null,
   now: () => Date,
-  fetchText: ((url: string) => Promise<string>) | undefined,
+  fetchExportLines: CatalogServicesOptions['fetchExportLines'],
+  signal: AbortSignal,
 ): Promise<DiscoverIdsOutcome> {
-  if (typeof fetchText !== 'function') {
-    throw new PermanentJobError('missing_dependency', 'discover daily-exports exige `fetchText` no wiring')
+  if (typeof fetchExportLines !== 'function') {
+    throw new PermanentJobError(
+      'missing_dependency',
+      'discover daily-exports exige `fetchExportLines` no wiring',
+    )
   }
   const file = DAILY_ID_EXPORTS.find((f) => f.kind === kind)
   if (file === undefined) {
@@ -1273,12 +1285,14 @@ async function discoverFromDailyExports(
   }
   // O export do dia so fica pronto ~08:00 UTC; usamos o dia anterior.
   const date = new Date(now().getTime() - 24 * 60 * 60 * 1000)
-  const text = await fetchText(exportUrl(file.file, date))
 
   // Todo o resto (filtro anti-adulto, dedup, ORDEM por popularidade, corte) e
-  // puro e vive em `discovery/export-discovery.ts`, onde tem teste proprio.
-  return discoverIdsFromExportText({
-    text,
+  // puro e vive em `discovery/export-discovery.ts`, onde tem teste proprio. As
+  // linhas chegam em lotes e o event loop e devolvido no caminho: o worker
+  // segue respondendo `/healthz` e renovando o heartbeat do job.
+  return discoverIdsFromExportBatches({
+    batches: fetchExportLines(exportUrl(file.file, date), signal),
+    signal,
     kind,
     hasAdultField: file.hasAdultField,
     limit,
