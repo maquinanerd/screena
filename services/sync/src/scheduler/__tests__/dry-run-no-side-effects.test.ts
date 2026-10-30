@@ -180,9 +180,10 @@ function world(apply: boolean): World {
           return { created: true }
         },
       },
-      // Sem sink de oferta, de proposito: com `apply` o ingest falha DEPOIS da
-      // chamada ao endpoint, e a chamada e o efeito medido.
-      watch: {},
+      // Sem sink de oferta, de proposito: com `apply` o ingest devolve
+      // `not-configured` DEPOIS da chamada ao endpoint, e a chamada e o efeito
+      // medido.
+      watch: undefined,
     },
     catalogEndpoints: {
       getMovieWatchProviders: async (tmdbId) => {

@@ -141,8 +141,11 @@ export const RHYTHMS: readonly Rhythm[] = [
       'licenciamento curtos, e a pagina afirma disponibilidade com carimbo de data. ' +
       'Custa 1 requisicao por titulo no endpoint DEDICADO (/movie/{id}/watch/providers), ' +
       'nao o detalhe inteiro: ~2 kB contra os 130,6 kB (filme) e 648,3 kB (serie) medidos ' +
-      'do payload de detalhe.',
-    batchLimit: null,
+      'do payload de detalhe. Teto PROPRIO de 2.000 (2026-10-30): o TMDB nao tem cota ' +
+      'diaria, e com o global de 200 e janela de 1 dia a fila repetiria os mesmos 200 ' +
+      'titulos para sempre. 2.000/dia com reconferencia a cada 7 dias ' +
+      '(WATCH_OFFERS_REFRESH_DAYS) cobre os ~14 mil titulos mais populares por semana.',
+    batchLimit: 2_000,
   },
   {
     queue: 'trending',

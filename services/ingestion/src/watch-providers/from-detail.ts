@@ -184,9 +184,15 @@ export async function ingestWatchProvidersFromDetail(
     return { ...emptyDetailWatchReport('unrecognized'), rejections: tally }
   }
 
-  if (normalization.offers.length === 0) {
-    return { ...emptyDetailWatchReport('empty'), rejections: tally }
-  }
+  // `empty` e `out-of-scope` sao payloads RECONHECIDOS que dizem "nenhuma oferta
+  // aqui". Ate 2026-10-30 eles voltavam antes do store, e o snapshot anterior
+  // ficava de pe: titulo que saiu de TODO servico no Brasil continuava com a
+  // oferta velha — e, desde que a oferta acende por politica (decisao de
+  // 2026-10-29), continuava APARECENDO. Agora o snapshot vazio tambem e gravado,
+  // e o replace revoga o que sumiu. So `unrecognized` (corpo do qual nao se
+  // aprende nada) preserva o snapshot.
+  const nothingInScope: DetailWatchOutcome =
+    normalization.offers.length === 0 ? 'empty' : 'out-of-scope'
 
   const inScope = new Set(sink.territories.map((code) => code.toUpperCase()))
   const scoped: WatchProviderOffer[] = []
@@ -200,15 +206,6 @@ export async function ingestWatchProvidersFromDetail(
     }
     offersOutOfScope += 1
     countriesOutOfScope[offer.countryCode] = (countriesOutOfScope[offer.countryCode] ?? 0) + 1
-  }
-
-  if (scoped.length === 0) {
-    return {
-      ...emptyDetailWatchReport('out-of-scope'),
-      offersOutOfScope,
-      countriesOutOfScope,
-      rejections: tally,
-    }
   }
 
   const countriesWritten: string[] = []
@@ -244,13 +241,16 @@ export async function ingestWatchProvidersFromDetail(
 
     const fetchedAt = input.now()
     const staleAfter = new Date(fetchedAt.getTime() + sink.staleAfterMs)
+    const byCountry = groupOffersByCountry(scoped)
 
-    for (const [countryCode, countryOffers] of groupOffersByCountry(scoped)) {
+    // TODO territorio ingerido recebe o seu snapshot — inclusive o vazio, que e
+    // o que revoga a oferta que saiu do pais.
+    for (const countryCode of inScope) {
       const outcome = await sink.store.replaceSnapshot({
         entityType: input.entityType,
         entityId,
         countryCode,
-        offers: countryOffers,
+        offers: byCountry.get(countryCode) ?? [],
         fetchedAt,
         staleAfter,
       })
@@ -276,7 +276,7 @@ export async function ingestWatchProvidersFromDetail(
   }
 
   return {
-    outcome: 'applied',
+    outcome: scoped.length === 0 ? nothingInScope : 'applied',
     offersUpserted,
     offersRevoked,
     offersOutOfScope,
