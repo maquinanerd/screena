@@ -83,7 +83,7 @@ import type { SyncDetailKind } from '../catalog-jobs/handlers/schemas.js'
 import type { ReferenceOwnerType } from '../catalog-entities/store-port.js'
 import type { CatalogDisplayFields } from '../display-fields.js'
 import { desiredCatalogSlug } from '../public-catalog-slug.js'
-import type { CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
+import type { CacheFetchInput, CreditsWriteOutcome, TmdbReadPort } from '../ports.js'
 import type { PrismaClient } from '@screena/db/server'
 import type { TmdbCatalogEndpoints } from '@screena/tmdb-client'
 import { promoteMoviesFromRaw, promotePeopleFromRaw, promoteTvShowsFromRaw } from '../raw-promote/run.js'
@@ -262,6 +262,19 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
   }
 
   /**
+   * O MESMO contexto, com o cache que vai a rede mesmo dentro do TTL. Usado so
+   * quando o job afirma mudanca (`changes`) ou uma pessoa pediu (`on_demand`) —
+   * ver `COVERAGE_REFRESHES_CACHE`. A resposta nova continua sendo gravada.
+   */
+  const refreshingImportContext = {
+    ...importContext,
+    cache: {
+      getOrFetch: <T>(input: CacheFetchInput<T>) =>
+        persistence.cache.getOrFetch({ ...input, bypassFresh: true }),
+    },
+  }
+
+  /**
    * Desfecho de disponibilidade das entidades de REFERENCIA
    * (collection/company/network/keyword): nenhuma delas tem "onde assistir" —
    * os quatro endpoints sequer aceitam `append_to_response`. `not-applicable`
@@ -420,12 +433,13 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
   }
 
   const detailSync: CatalogDetailSyncPort = {
-    async syncDetail({ kind, tmdbId, locale }) {
+    async syncDetail({ kind, tmdbId, locale, refreshCache }) {
+      const context = refreshCache === true ? refreshingImportContext : importContext
       // Recusa na porta (recorte de idioma) conclui o job como PULADO, sem
       // retry e sem dead-letter — ver `refusedDetailOutcome`. So depois dela o
       // resultado passa por `assertImportOk`, que converte falha em excecao.
       if (kind === 'movie') {
-        const imported = await importMovie(importContext, tmdbId)
+        const imported = await importMovie(context, tmdbId)
         const refused = refusedDetailOutcome(imported)
         if (refused !== null) return refused
         const result = assertImportOk(imported, `importMovie(${tmdbId})`)
@@ -442,7 +456,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         }
       }
       if (kind === 'tv') {
-        const imported = await importTvShow(importContext, tmdbId)
+        const imported = await importTvShow(context, tmdbId)
         const refused = refusedDetailOutcome(imported)
         if (refused !== null) return refused
         const result = assertImportOk(imported, `importTvShow(${tmdbId})`)
@@ -459,7 +473,7 @@ export function createCatalogServices(options: CatalogServicesOptions): CatalogS
         }
       }
       if (kind === 'person') {
-        const result = assertImportOk(await importPerson(importContext, tmdbId), `importPerson(${tmdbId})`)
+        const result = assertImportOk(await importPerson(context, tmdbId), `importPerson(${tmdbId})`)
         await finalizeDetail('person', result.id, result.display, tmdbId, locale)
         return {
           created: result.created,

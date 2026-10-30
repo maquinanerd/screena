@@ -108,6 +108,36 @@ export const COVERAGE_EPISODE_MEDIA_SEASONS: Readonly<Record<CoverageReason, Epi
   })
 
 /**
+ * Quem NAO pode reaproveitar a copia de `api_cache` ainda dentro do TTL.
+ *
+ *  - `changes`: o TMDB AFIRMOU que o titulo mudou. A copia guardada pode ser de
+ *    antes da mudanca — e foi: em 29/10/2026 o `/changes` rodou as 00:01 UTC, 18 h
+ *    depois da coleta anterior (TTL de 24 h), e reaplicou o payload velho em 380
+ *    de 1.973 filmes e 255 de 941 series daquele lote. O Cara-de-Barro ficou com
+ *    a duracao de antes da edicao, e o job terminou "com sucesso";
+ *  - `on_demand`: uma pessoa pediu dado novo AGORA (o "Forcar detalhe" do
+ *    painel). Devolver a copia de horas atras faria o botao nao fazer nada;
+ *  - `scheduled`, `discovery`: ninguem afirmou mudanca. O cache e exatamente o
+ *    que evita gastar requisicao a toa.
+ */
+export const COVERAGE_REFRESHES_CACHE: Readonly<Record<CoverageReason, boolean>> = Object.freeze({
+  on_demand: true,
+  changes: true,
+  scheduled: false,
+  discovery: false,
+})
+
+/**
+ * O motivo gravado no payload do job exige ir a rede? Motivo ausente ou
+ * desconhecido: nao — o comportamento de antes, nunca uma requisicao a mais por
+ * acidente.
+ */
+export function coverageRefreshesCache(reason: string | null): boolean {
+  if (reason === null || !(COVERAGE_REASONS as readonly string[]).includes(reason)) return false
+  return COVERAGE_REFRESHES_CACHE[reason as CoverageReason]
+}
+
+/**
  * O AJUSTE FINO por popularidade, DENTRO de um motivo.
  *
  * Existe porque uma fila de manutencao com 10 mil titulos e um teto diario de

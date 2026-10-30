@@ -167,6 +167,12 @@ export interface CacheFetchInput<T> {
   readonly endpoint: string
   readonly params?: Record<string, string | number | undefined>
   readonly fetcher: () => Promise<T>
+  /**
+   * Vai a rede mesmo com copia dentro do TTL (e grava a resposta nova). Para
+   * quem sabe que o upstream mudou depois da copia — ver
+   * `COVERAGE_REFRESHES_CACHE` em `entity-coverage/entry.ts`.
+   */
+  readonly bypassFresh?: boolean
 }
 
 /** Resultado de uma busca cacheada. */
