@@ -42,9 +42,8 @@ describe('rodapé — botão de preferências de cookies', () => {
     expect(markup).toContain('class="cookie-prefs-button"')
   })
 
-  it('NÃO aparece sem GA4, mesmo com o beacon da Cloudflare (sem cookie, nada a decidir)', () => {
+  it('NÃO aparece sem GA4 — o beacon da Cloudflare não usa cookie, não há o que decidir', () => {
     stubOfficialProduction()
-    vi.stubEnv('CINERIE_CF_WEB_ANALYTICS_TOKEN', '0123456789abcdef0123456789abcdef')
 
     expect(footerMarkup()).not.toContain(LABEL)
   })

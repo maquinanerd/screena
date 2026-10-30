@@ -1,23 +1,15 @@
 /**
- * Endereços e parâmetros dos scripts de medição de audiência.
+ * Endereço e parâmetros do gtag.js (Google Analytics 4).
  *
  * Separado de `analytics-config.ts` porque o aviso de cookies roda no
  * navegador: este módulo não importa nada, e pode ir para o bundle do cliente.
  * `analytics-config.ts` lê env e o gate de ambiente de `site.ts`, que é do
  * servidor (`site.ts`: "Rotas puras vivem em `routes.ts` para poderem ser
  * importadas no cliente").
+ *
+ * O beacon da Cloudflare não tem endereço aqui: quem o injeta é a borda
+ * (ver `analytics-config.ts`).
  */
-
-/** Script oficial do beacon. Não leva nada do visitante na URL. */
-export const CLOUDFLARE_BEACON_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
-
-/**
- * Valor de `data-cf-beacon`. `spa: true` conta as navegações do App Router,
- * que trocam a página sem recarregar o documento.
- */
-export function cloudflareBeaconConfig(token: string): string {
-  return JSON.stringify({ token, spa: true });
-}
 
 export const GA4_SCRIPT_ORIGIN = "https://www.googletagmanager.com";
 

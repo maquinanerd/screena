@@ -50,7 +50,9 @@ import '../../_components/legal.css'
  * medir audiência. Itens 2.3, 3, 5.6 (Cloudflare), 5.7 (Google Analytics), 6,
  * 6.2, 6.3 e 7 descrevem o que `src/lib/analytics-config.ts` e
  * `app/_components/consent-banner.tsx` fazem: o beacon da Cloudflare sem cookie
- * em toda página, e o GA4 só depois do "Aceitar". Os números do texto (13
+ * em toda página (injetado pela borda desde jul/2026 — e até esta revisão o
+ * texto dizia que não havia script de medição nenhum), e o GA4 só depois do
+ * "Aceitar". Os números do texto (13
  * meses de cookie, 14 meses de retenção, 6 meses de escolha) vivem no código ou
  * na configuração da propriedade — mudou lá, muda aqui.
  *

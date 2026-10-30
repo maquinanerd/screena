@@ -73,11 +73,12 @@ import { needsTrailingSlash } from "./src/lib/trailing-slash";
  * `frame-ancestors 'none'` e o equivalente moderno do `X-Frame-Options: DENY`
  *             que o `next.config` ja emite — os dois convivem de proposito.
  * Medicao de audiencia (`src/lib/analytics-config.ts`, 2026-10-30):
- *             `static.cloudflareinsights.com` serve o beacon sem cookie e
- *             `cloudflareinsights.com` recebe as medidas; `googletagmanager.com`
- *             serve o gtag.js e os hosts `*.google-analytics.com` /
- *             `*.analytics.google.com` recebem as coletas do GA4 — que so
- *             carrega depois do "Aceitar" no aviso de cookies.
+ *             `static.cloudflareinsights.com` serve o beacon sem cookie que a
+ *             BORDA injeta (ele envia para `/cdn-cgi/rum`, mesma origem;
+ *             `cloudflareinsights.com` cobre a configuracao manual);
+ *             `googletagmanager.com` serve o gtag.js e os hosts
+ *             `*.google-analytics.com` / `*.analytics.google.com` recebem as
+ *             coletas do GA4 — que so carrega depois do "Aceitar".
  */
 const ANALYTICS_SCRIPT_SOURCES =
   "https://static.cloudflareinsights.com https://www.googletagmanager.com";

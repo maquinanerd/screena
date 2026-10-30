@@ -12,12 +12,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ANALYTICS_OFF,
-  CLOUDFLARE_BEACON_SRC,
   GA4_COOKIE_MAX_AGE_SECONDS,
   analyticsConfig,
-  cloudflareBeaconConfig,
   ga4ScriptUrl,
-  parseCloudflareToken,
   parseGa4MeasurementId,
 } from '../analytics-config'
 import {
@@ -33,17 +30,19 @@ import {
 } from '../analytics-consent'
 
 const GA_ID = 'G-AB12CD34EF'
-const CF_TOKEN = '0123456789abcdef0123456789abcdef'
 const PRODUCTION = {
   CINERIE_PUBLIC_SITE_URL: 'https://cinerie.com',
   NODE_ENV: 'production',
   CINERIE_GA4_MEASUREMENT_ID: GA_ID,
-  CINERIE_CF_WEB_ANALYTICS_TOKEN: CF_TOKEN,
 }
 
 describe('analyticsConfig — so na producao oficial, so com identificador valido', () => {
-  it('liga as duas ferramentas na producao oficial', () => {
-    expect(analyticsConfig(PRODUCTION)).toEqual({ ga4MeasurementId: GA_ID, cloudflareToken: CF_TOKEN })
+  it('liga o GA4 na producao oficial', () => {
+    expect(analyticsConfig(PRODUCTION)).toEqual({ ga4MeasurementId: GA_ID })
+  })
+
+  it('sem identificador, desligado', () => {
+    expect(analyticsConfig({ ...PRODUCTION, CINERIE_GA4_MEASUREMENT_ID: undefined })).toEqual(ANALYTICS_OFF)
   })
 
   it('NAO liga fora da origem oficial, nem em NODE_ENV que nao e producao', () => {
@@ -53,17 +52,6 @@ describe('analyticsConfig — so na producao oficial, so com identificador valid
     expect(analyticsConfig({ ...PRODUCTION, CINERIE_PUBLIC_SITE_URL: undefined })).toEqual(ANALYTICS_OFF)
     expect(analyticsConfig({ ...PRODUCTION, NODE_ENV: 'test' })).toEqual(ANALYTICS_OFF)
     expect(analyticsConfig({ ...PRODUCTION, VERCEL_ENV: 'preview' })).toEqual(ANALYTICS_OFF)
-  })
-
-  it('cada ferramenta liga sozinha: faltar uma nao derruba a outra', () => {
-    expect(analyticsConfig({ ...PRODUCTION, CINERIE_GA4_MEASUREMENT_ID: undefined })).toEqual({
-      ga4MeasurementId: null,
-      cloudflareToken: CF_TOKEN,
-    })
-    expect(analyticsConfig({ ...PRODUCTION, CINERIE_CF_WEB_ANALYTICS_TOKEN: '' })).toEqual({
-      ga4MeasurementId: GA_ID,
-      cloudflareToken: null,
-    })
   })
 
   it('identificador do GA4: aceita o formato do fluxo web, normaliza caixa e espaco', () => {
@@ -77,16 +65,7 @@ describe('analyticsConfig — so na producao oficial, so com identificador valid
     }
   })
 
-  it('token da Cloudflare: 32 hexadecimais; qualquer outra coisa desliga', () => {
-    expect(parseCloudflareToken(CF_TOKEN.toUpperCase())).toBe(CF_TOKEN)
-    for (const raw of [undefined, '', 'abc', `${CF_TOKEN}0`, 'g'.repeat(32), `${CF_TOKEN.slice(1)}"`]) {
-      expect(parseCloudflareToken(raw), String(raw)).toBeNull()
-    }
-  })
-
-  it('URLs e configuracoes dos scripts', () => {
-    expect(CLOUDFLARE_BEACON_SRC).toBe('https://static.cloudflareinsights.com/beacon.min.js')
-    expect(JSON.parse(cloudflareBeaconConfig(CF_TOKEN))).toEqual({ token: CF_TOKEN, spa: true })
+  it('URL do gtag.js', () => {
     expect(ga4ScriptUrl(GA_ID)).toBe(`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`)
   })
 

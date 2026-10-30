@@ -6,11 +6,7 @@ import { ConsentBanner } from "./_components/consent-banner";
 import { SiteHeader } from "./_components/site-header";
 import { SiteFooter } from "./_components/site-footer";
 import { ADSENSE_CLIENT_ID } from "../src/lib/adsense";
-import {
-  CLOUDFLARE_BEACON_SRC,
-  analyticsConfig,
-  cloudflareBeaconConfig,
-} from "../src/lib/analytics-config";
+import { analyticsConfig } from "../src/lib/analytics-config";
 import { CINERIE_SOCIAL_CARD } from "../src/lib/brand-logos";
 import { SITE_URL } from "../src/lib/site";
 import "./globals.css";
@@ -68,9 +64,9 @@ export default function RootLayout({ children }: { children: ReactNode }): React
   // `@font-face` — o navegador baixaria a fonte DUAS vezes.
   preload(FONT_PATH, { as: "font", type: "font/woff2", crossOrigin: "anonymous" });
   // MEDICAO DE AUDIENCIA (2026-10-30). Lida por requisicao: o release constroi
-  // sem env publica. O beacon da Cloudflare nao grava nada no navegador e
-  // carrega sempre; o GA4 so existe atras do aviso de cookies. Regras e
-  // identificadores em `src/lib/analytics-config.ts`.
+  // sem env publica. O GA4 so existe atras do aviso de cookies. O beacon da
+  // Cloudflare (sem cookie) NAO e montado aqui: a borda ja o injeta em toda
+  // pagina. Regras em `src/lib/analytics-config.ts`.
   const analytics = analyticsConfig();
   return (
     <html lang="pt-BR">
@@ -85,13 +81,6 @@ export default function RootLayout({ children }: { children: ReactNode }): React
         <SiteFooter />
         {analytics.ga4MeasurementId !== null ? (
           <ConsentBanner measurementId={analytics.ga4MeasurementId} />
-        ) : null}
-        {analytics.cloudflareToken !== null ? (
-          <script
-            data-cf-beacon={cloudflareBeaconConfig(analytics.cloudflareToken)}
-            defer
-            src={CLOUDFLARE_BEACON_SRC}
-          />
         ) : null}
       </body>
     </html>

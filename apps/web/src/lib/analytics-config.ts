@@ -3,12 +3,14 @@
  * em que ambiente.
  *
  * ============================================================================
- * DUAS FERRAMENTAS, DOIS REGIMES
+ * DUAS FERRAMENTAS, DOIS REGIMES — E SO UMA MORA AQUI
  * ============================================================================
  * - **Cloudflare Web Analytics** — beacon SEM cookie, sem armazenamento no
- *   navegador e sem identificador de visitante. Carrega em toda pagina quando o
- *   token existe. Nao depende de autorizacao do visitante (Politica de
- *   Privacidade, item 6.2).
+ *   navegador e sem identificador de visitante (Politica de Privacidade, item
+ *   6.2). NAO e montado pelo app: a borda da Cloudflare o injeta em toda pagina
+ *   ("configuracao automatica" do site `cinerie.com`, ligada desde jul/2026 —
+ *   medido em 30/10/2026: o script esta no DOM e envia para `/cdn-cgi/rum`).
+ *   Montar um segundo beacon aqui contaria cada visita DUAS vezes.
  * - **Google Analytics 4** — grava cookies (`_ga`, `_ga_<ID>`). So carrega
  *   DEPOIS de o visitante aceitar no aviso de cookies (`consent-banner.tsx`).
  *   Sem o identificador, nao ha aviso nem script: nao existe o que consentir.
@@ -32,29 +34,20 @@
 import { isOfficialProductionSurface, type SiteUrlEnv } from "./site";
 
 export const GA4_MEASUREMENT_ID_ENV = "CINERIE_GA4_MEASUREMENT_ID";
-export const CLOUDFLARE_WEB_ANALYTICS_TOKEN_ENV = "CINERIE_CF_WEB_ANALYTICS_TOKEN";
 
 export interface AnalyticsEnv extends SiteUrlEnv {
   /** `G-` seguido de letras maiusculas e digitos (fluxo de dados web do GA4). */
   readonly CINERIE_GA4_MEASUREMENT_ID?: string;
-  /** Token do site no Cloudflare Web Analytics: 32 caracteres hexadecimais. */
-  readonly CINERIE_CF_WEB_ANALYTICS_TOKEN?: string;
 }
 
 export interface AnalyticsConfig {
   /** `null` = GA4 desligado: sem aviso de cookies e sem script. */
   readonly ga4MeasurementId: string | null;
-  /** `null` = beacon da Cloudflare desligado. */
-  readonly cloudflareToken: string | null;
 }
 
-export const ANALYTICS_OFF: AnalyticsConfig = Object.freeze({
-  ga4MeasurementId: null,
-  cloudflareToken: null,
-});
+export const ANALYTICS_OFF: AnalyticsConfig = Object.freeze({ ga4MeasurementId: null });
 
 const GA4_MEASUREMENT_ID = /^G-[A-Z0-9]{6,16}$/;
-const CLOUDFLARE_TOKEN = /^[0-9a-f]{32}$/;
 
 function readTrimmed(value: string | undefined): string | null {
   if (value === undefined) return null;
@@ -67,25 +60,11 @@ export function parseGa4MeasurementId(raw: string | undefined): string | null {
   return value !== null && GA4_MEASUREMENT_ID.test(value) ? value : null;
 }
 
-export function parseCloudflareToken(raw: string | undefined): string | null {
-  const value = readTrimmed(raw)?.toLowerCase() ?? null;
-  return value !== null && CLOUDFLARE_TOKEN.test(value) ? value : null;
-}
-
 export function analyticsConfig(env: AnalyticsEnv = process.env): AnalyticsConfig {
   if (!isOfficialProductionSurface(env)) return ANALYTICS_OFF;
-  return {
-    ga4MeasurementId: parseGa4MeasurementId(env.CINERIE_GA4_MEASUREMENT_ID),
-    cloudflareToken: parseCloudflareToken(env.CINERIE_CF_WEB_ANALYTICS_TOKEN),
-  };
+  return { ga4MeasurementId: parseGa4MeasurementId(env.CINERIE_GA4_MEASUREMENT_ID) };
 }
 
-// Os enderecos dos scripts moram num modulo sem import, que o aviso de cookies
+// Os enderecos do gtag.js moram num modulo sem import, que o aviso de cookies
 // (cliente) pode carregar sem arrastar `site.ts` para o navegador.
-export {
-  CLOUDFLARE_BEACON_SRC,
-  GA4_COOKIE_MAX_AGE_SECONDS,
-  GA4_SCRIPT_ORIGIN,
-  cloudflareBeaconConfig,
-  ga4ScriptUrl,
-} from "./analytics-scripts";
+export { GA4_COOKIE_MAX_AGE_SECONDS, GA4_SCRIPT_ORIGIN, ga4ScriptUrl } from "./analytics-scripts";

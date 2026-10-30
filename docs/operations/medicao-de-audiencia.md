@@ -1,6 +1,6 @@
 # Medição de audiência — Cloudflare Web Analytics e Google Analytics 4
 
-> Desde 30/10/2026. Código em `apps/web/src/lib/analytics-config.ts`,
+> GA4 desde 30/10/2026; Cloudflare desde jul/2026, pela borda. Código em `apps/web/src/lib/analytics-config.ts`,
 > `apps/web/src/lib/analytics-consent.ts` e `apps/web/app/_components/consent-banner.tsx`.
 > Texto legal correspondente: Política de Privacidade, versão `2026-10`
 > (itens 2.3, 3, 5.6, 5.7, 6, 6.2, 6.3 e 7).
@@ -11,32 +11,49 @@
 |---|---|---|
 | Cookie | nenhum; nada no navegador | `_ga`, `_ga_<ID>` (13 meses) |
 | Quando carrega | em toda página | só depois do "Aceitar" no aviso de cookies |
+| Quem carrega | **a borda da Cloudflare** (injeção automática) | o app, pelo aviso de cookies |
 | Base legal declarada | legítimo interesse | consentimento |
 | O que entrega | visitas por página, origem, país, navegador, Core Web Vitals de campo | aquisição, engajamento, páginas, eventos |
 
-## As duas variáveis (serviço `screen-app`, runtime)
+## Cloudflare Web Analytics: já está no ar, e fica na borda
+
+Medido em 30/10/2026: o site `cinerie.com` existe no Web Analytics da conta
+Cloudflare desde **julho de 2026**, em **configuração automática**. A borda
+injeta `static.cloudflareinsights.com/beacon.min.js` em toda página, e ele envia
+para `cinerie.com/cdn-cgi/rum`. Eram ~4,8 mil visualizações por dia.
+
+Até a Política `2026-10`, o texto publicado dizia que não havia nenhum script de
+medição, e havia este. A `2026-10` passa a declará-lo (itens 5.6 e 6.2).
+
+**O app não monta um segundo beacon**, de propósito: contaria cada visita duas
+vezes. A guarda `tests/web/analytics-consent-gate.test.ts` (4b) reprova se o host
+aparecer fora do CSP. Para trocar a injeção automática pela manual, a decisão
+inclui desligar a automática no painel no mesmo dia.
+
+Painel: Cloudflare → conta do dono → Análise → **Web Analytics** → `cinerie.com`.
+
+## A variável do GA4 (serviço `screen-app`, runtime)
 
 | Variável | Formato | Sem ela |
 |---|---|---|
 | `CINERIE_GA4_MEASUREMENT_ID` | `G-` + letras/dígitos (fluxo de dados web do GA4) | sem aviso de cookies, sem botão no rodapé, sem script do Google |
-| `CINERIE_CF_WEB_ANALYTICS_TOKEN` | 32 caracteres hexadecimais (site no Cloudflare Web Analytics) | sem beacon |
 
-- São lidas **por requisição**. **Nunca** passe como build-arg: o release
+- É lida **por requisição**. **Nunca** passe como build-arg: o release
   constrói sem env pública, e o valor do build nunca chegaria à produção.
-- Só valem na **produção oficial** (`CINERIE_PUBLIC_SITE_URL=https://cinerie.com`
+- Só vale na **produção oficial** (`CINERIE_PUBLIC_SITE_URL=https://cinerie.com`
   e `NODE_ENV` de produção). Staging com a env copiada não envia nada.
-- Valor malformado **desliga** a ferramenta. Para desligar de emergência, apague a
+- Valor malformado **desliga** o GA4. Para desligar de emergência, apague a
   variável e reinicie o serviço: não há rebuild.
 
 ## Ordem obrigatória do deploy
 
-1. A versão `2026-10` da Política de Privacidade precisa estar **no ar antes** de
-   qualquer uma das variáveis existir. Antes dela, o texto publicado dizia "Não há
-   Google Analytics".
+1. A versão `2026-10` da Política de Privacidade precisa estar **no ar antes** da
+   variável existir. Antes dela, o texto publicado dizia "Não há Google
+   Analytics".
 2. Se `CINERIE_PRIVACY_POLICY_VERSION` estiver definida no EasyPanel, ela sobe
    para `2026-10` no mesmo deploy (a versão exibida tem de bater com a gravada no
    aceite). Os usuários logados verão o pedido de novo aceite da Privacidade.
-3. Só então defina as duas variáveis e reinicie o `screen-app`.
+3. Só então defina `CINERIE_GA4_MEASUREMENT_ID=G-WSY1DB68ZS` e reinicie o `screen-app`.
 
 ## Configuração da propriedade GA4 (o texto legal depende dela)
 
@@ -64,8 +81,8 @@ Mudou algum desses números? Mude o texto da Política junto, suba a versão e r
 
 ## Como conferir em produção
 
-- Página qualquer, aba anônima: o HTML tem `static.cloudflareinsights.com` e
-  **não** tem `googletagmanager`. O aviso aparece embaixo.
+- Página qualquer, aba anônima: o DOM tem `static.cloudflareinsights.com` (injetado
+  pela borda) e **não** tem `googletagmanager`. O aviso aparece embaixo.
 - "Recusar": recarregue; nenhuma requisição a `google-analytics.com`.
 - "Aceitar": surge o `gtag/js?id=G-…` e os cookies `_ga`. No GA4, o relatório
   "Tempo real" mostra a visita.

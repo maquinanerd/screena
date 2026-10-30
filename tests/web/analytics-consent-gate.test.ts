@@ -9,8 +9,9 @@
  * funcao que monta a URL so e chamada pelo aviso; e o layout so monta o aviso
  * a partir de `analyticsConfig()`.
  *
- * Tambem trava a outra metade da promessa da Politica de Privacidade: o beacon
- * da Cloudflare e o UNICO script de medicao que carrega sem pergunta.
+ * Tambem trava a outra metade: o beacon da Cloudflare, o UNICO script de
+ * medicao que carrega sem pergunta, e injetado pela borda — e o app nao monta
+ * um segundo, que contaria cada visita duas vezes.
  */
 
 import { readdirSync, statSync } from 'node:fs'
@@ -77,6 +78,10 @@ describe('Google Analytics — uma porta de entrada, atras do consentimento', ()
     const layout = readSourceWithoutComments(path.join(WEB_DIR, 'app', 'layout.tsx'))
     expect(layout).toContain('const analytics = analyticsConfig();')
     expect(layout).toContain('<ConsentBanner measurementId={analytics.ga4MeasurementId} />')
+  })
+
+  it('(4b) o app nao monta o beacon da Cloudflare: a borda ja injeta (so o CSP cita o host)', () => {
+    expect(arquivosQueContem(/cloudflareinsights\.com|data-cf-beacon/)).toEqual(['middleware.ts'])
   })
 
   it('(5) nenhum outro script de medicao no app (Tag Manager, Meta, Hotjar, Clarity)', () => {
