@@ -40,7 +40,20 @@
 
 ## Configuração da propriedade GA4 (o texto legal depende dela)
 
-- Retenção de dados: **14 meses**.
+Criada em 30/10/2026 na conta Google do dono:
+
+| | |
+|---|---|
+| Conta | **Cinerie** (`a414148410`) |
+| Propriedade | **Cinerie - Site** (`561681744`), fuso de São Paulo, reais |
+| Fluxo web | `https://cinerie.com` (`16238773190`) |
+| **ID de medição** | **`G-WSY1DB68ZS`** — o valor de `CINERIE_GA4_MEASUREMENT_ID` |
+
+Existe uma segunda conta "Cinerie" (`a414129111`, propriedade `561688142`),
+**vazia e sem fluxo**, criada por engano na mesma data. Não é usada.
+
+- Retenção de dados: **14 meses** (eventos e usuários), conferida após recarregar.
+- Compartilhamento de dados da conta com o Google: tudo desmarcado.
 - **Google Signals desligado**; personalização de anúncios desligada.
 - Sem vínculo com Google Ads nem com AdSense.
 - O código já força `allow_google_signals: false`,
