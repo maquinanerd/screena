@@ -122,6 +122,29 @@ export const OMDB_COVERAGE_RATIO = 0.85
 export const OMDB_COVERAGE_RETRY_AFTER_DAYS = 14
 
 /**
+ * A excecao da repergunta: a ESTREIA que ja tem publico volta a ser perguntada
+ * em `OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS`, nao em 14.
+ *
+ * Medido em 2026-10-30: Cara-de-Barro (estreia 22/10) tinha 7,5/10 com 31 mil
+ * votos no IMDb e Metascore 59, e a OMDb respondia "N/A" — o atraso e DELA, de
+ * dias a semanas. Com 14 dias de espera, a nota apareceria ate duas semanas
+ * depois de a OMDb atualizar, justo no titulo que mais gente abre.
+ *
+ * "Estreia com publico" = estreou nos ultimos `RECENT_RELEASE_WINDOW_DAYS` (90) E
+ * tem pelo menos `OMDB_COVERAGE_RECENT_MIN_VOTES` votos no TMDB. Estreia FUTURA
+ * fica de fora: o IMDb nao tem nota antes da estreia.
+ *
+ * Custo medido no mesmo dia: 67 titulos sem nota nesse recorte (34 filmes, 33
+ * series) — ~34 consultas por dia a cada 2 dias, de uma fatia de 595. Os outros
+ * ~1.950 da estreia, com menos de 20 votos, continuam nos 14 dias: sao eles que
+ * entupiam a fila.
+ */
+export const OMDB_COVERAGE_RECENT_RETRY_AFTER_DAYS = 2
+
+/** Votos no TMDB a partir dos quais a estreia ganha a repergunta curta. */
+export const OMDB_COVERAGE_RECENT_MIN_VOTES = 20
+
+/**
  * Fatia do conjunto consultavel que e FILME. O complemento e serie.
  *
  * Ver o cabecalho: proporcional ao consultavel, nao meio a meio.
