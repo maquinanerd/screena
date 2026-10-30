@@ -196,9 +196,11 @@ export function isOfficialSiteUrl(siteUrl: string): boolean {
  * alguem adicionasse uma condicao aqui, e a copia esquecida indexaria em
  * staging.
  *
- * Nao decide nada sozinha — nenhuma flag e consultada aqui.
+ * Nao decide nada sozinha — nenhuma flag e consultada aqui. Exportada porque a
+ * medicao de audiencia (`analytics-config.ts`) usa as MESMAS condicoes: staging
+ * com a env de producao copiada nao pode mandar visita para o painel real.
  */
-function isOfficialProductionSurface(env: SiteUrlEnv): boolean {
+export function isOfficialProductionSurface(env: SiteUrlEnv): boolean {
   if (configuredSiteUrl(env) !== OFFICIAL_SITE_URL) return false;
 
   const nodeEnv = readTrimmed(env.NODE_ENV)?.toLowerCase() ?? null;

@@ -23,11 +23,12 @@
  * anuncios em toda pagina. Ele segue fora (DIVERGENCIAS.md, D-005) ate uma
  * decisao do dono que cubra o que ele puxa junto:
  *  - a Politica de Privacidade (item 6) afirma HOJE que nao ha cookie de
- *    publicidade e que por isso nao ha banner de cookies. O script tornaria
- *    esse texto falso no mesmo deploy — e as politicas do proprio AdSense
- *    exigem declarar cookie de terceiro para anuncio;
- *  - nao existe banner nem finalidade de consentimento para publicidade (as
- *    registradas sao termos, privacidade, e-mail de marketing e analytics);
+ *    publicidade. O script tornaria esse texto falso no mesmo deploy — e as
+ *    politicas do proprio AdSense exigem declarar cookie de terceiro para
+ *    anuncio;
+ *  - o aviso de cookies (`app/_components/consent-banner.tsx`, desde
+ *    30/10/2026) pergunta SO sobre o Google Analytics; nao existe escolha nem
+ *    finalidade de consentimento para publicidade;
  *  - `Permissions-Policy` (`browsing-topics=()`, em `next.config.ts`) e o CSP
  *    (`middleware.ts`) foram calibrados para um site SEM anuncio;
  *  - o script e os iframes de anuncio pesam no LCP/INP que a auditoria de SEO

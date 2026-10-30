@@ -46,6 +46,14 @@ import '../../_components/legal.css'
  *    resolve a contradição entre o item 4 ("três caixas") e o item 9, que
  *    acrescentava uma quarta.
  *
+ * REVISÃO 2026-10 (30/10/2026), a pedido do controlador: a Cinerie passou a
+ * medir audiência. Itens 2.3, 3, 5.6 (Cloudflare), 5.7 (Google Analytics), 6,
+ * 6.2, 6.3 e 7 descrevem o que `src/lib/analytics-config.ts` e
+ * `app/_components/consent-banner.tsx` fazem: o beacon da Cloudflare sem cookie
+ * em toda página, e o GA4 só depois do "Aceitar". Os números do texto (13
+ * meses de cookie, 14 meses de retenção, 6 meses de escolha) vivem no código ou
+ * na configuração da propriedade — mudou lá, muda aqui.
+ *
  * PENDÊNCIA QUE O TEXTO NÃO RESOLVE: `privacidade@cinerie.com` e
  * `contato@cinerie.com` ainda não existem como caixas configuradas. São os
  * canais canônicos declarados pelo controlador e por isso permanecem no texto,
@@ -117,7 +125,7 @@ export default function PrivacidadePage() {
     <>
       <LegalDoc
         breadcrumbLabel="Privacidade"
-        effectiveDate="13 de agosto de 2026"
+        effectiveDate="30 de outubro de 2026"
         title={TITLE}
         version={LEGAL_PRIVACY_VERSION}
       >
@@ -305,8 +313,10 @@ export default function PrivacidadePage() {
             informado por você.
           </li>
           <li>
-            <strong>Não rastreamos você por terceiros.</strong> Não há Google Analytics, Meta Pixel,
-            Hotjar, Clarity ou qualquer script de rastreamento no site.
+            <strong>Não usamos rastreamento publicitário.</strong> Não há Meta Pixel, Hotjar,
+            Clarity, pixel de anúncio ou gravação de sessão no site. A única medição de audiência
+            com cookies é o Google Analytics, e ele <strong>só carrega se você autorizar</strong>{' '}
+            (item 6.2).
           </li>
         </ul>
 
@@ -365,15 +375,30 @@ export default function PrivacidadePage() {
                 <th scope="row">Análise de uso para melhorar recomendações</th>
                 <td>Consentimento (art. 7º, I). Opcional e revogável a qualquer momento.</td>
               </tr>
+              <tr>
+                <th scope="row">Medição de audiência sem cookie (Cloudflare Web Analytics)</th>
+                <td>
+                  Legítimo interesse (art. 7º, IX), para saber quais páginas são lidas e se o site
+                  carrega rápido. Não grava nada no seu navegador e não identifica você (item 6.2).
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Medição de audiência com cookies (Google Analytics)</th>
+                <td>
+                  Consentimento (art. 7º, I), dado no aviso de cookies. Opcional e revogável a
+                  qualquer momento (item 6.3).
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
         <p className="legal-note">
-          <strong>Transparência sobre &quot;análise de uso&quot;:</strong> hoje a Cinerie registra
-          essa escolha, mas <strong>não há nenhuma ferramenta de análise em funcionamento</strong> —
-          nem própria, nem de terceiros. O consentimento está lá para que, quando existir, ele já
-          nasça condicionado à sua decisão. Enquanto isso, marcá-lo ou não não muda nada no que é
-          coletado.
+          <strong>Transparência sobre &quot;análise de uso&quot;:</strong> a caixa &quot;Análise de
+          uso&quot; da sua conta trata de análise <strong>ligada à conta</strong>, para melhorar
+          recomendações. Hoje a Cinerie registra essa escolha, mas nenhuma ferramenta a usa — marcá-la
+          ou não não muda nada no que é coletado. A medição de audiência do site (item 6.2) é outra
+          coisa: ela não é ligada à sua conta, e a escolha sobre o Google Analytics é feita no aviso
+          de cookies de cada navegador.
         </p>
 
         <h2>4. Consentimento e como retirar</h2>
@@ -573,7 +598,56 @@ export default function PrivacidadePage() {
           identificadores de catálogo, como título, ano, IMDb ID ou TMDB ID.
         </p>
 
-        <h3>5.6 Cumprimento de obrigações legais</h3>
+        <h3>5.6 Cloudflare</h3>
+        <p>
+          Toda requisição ao site passa pela rede da Cloudflare, Inc., que entrega as páginas,
+          guarda cópias temporárias delas (cache) e protege o site contra ataques. Para isso, a
+          Cloudflare recebe o endereço IP, o user-agent, o endereço da página pedida e as demais
+          informações técnicas que o navegador transmite em qualquer acesso.
+        </p>
+        <p>
+          A Cinerie também usa o <strong>Cloudflare Web Analytics</strong> para contar visitas
+          (item 6.2). Ele não usa cookie, não grava nada no seu navegador e não cria identificador de
+          visitante. A Cinerie vê apenas números agregados — páginas mais lidas, origem do acesso,
+          país, tipo de navegador e tempo de carregamento —, nunca um registro por pessoa.
+        </p>
+        <p>
+          A Cloudflare opera uma rede global, e esses dados podem ser processados fora do Brasil,
+          inclusive nos Estados Unidos.
+        </p>
+
+        <h3>5.7 Google Analytics</h3>
+        <p>
+          O Google Analytics 4, serviço da Google LLC, só é carregado{' '}
+          <strong>depois que você clica em &quot;Aceitar&quot;</strong> no aviso de cookies. Sem essa
+          autorização, nenhuma requisição é feita ao Google Analytics.
+        </p>
+        <p>Quando autorizado, ele recebe:</p>
+        <ul>
+          <li>as páginas visitadas, o endereço de origem (de onde você veio) e o horário;</li>
+          <li>tipo de dispositivo, sistema, navegador, idioma e resolução de tela;</li>
+          <li>
+            localização aproximada (cidade ou região), deduzida pelo Google a partir do endereço IP —
+            o Google Analytics 4 não registra o IP em si;
+          </li>
+          <li>um identificador aleatório guardado nos cookies <code>_ga</code> (item 6).</li>
+        </ul>
+        <p>
+          Configuramos a propriedade com o mínimo: os <strong>Google Signals</strong> e a
+          personalização de anúncios estão <strong>desligados</strong>, nenhum dado de conta (e-mail,
+          nome, listas, notas) é enviado, e os dados detalhados são apagados pelo Google após{' '}
+          <strong>14 meses</strong>. A Cinerie usa esses números só para entender quais páginas são
+          lidas, nunca para publicidade.
+        </p>
+        <p>
+          Os dados são processados em servidores do Google, inclusive nos Estados Unidos, sob a{' '}
+          <a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">
+            Política de Privacidade do Google
+          </a>{' '}
+          e os termos de processamento de dados do Google Analytics.
+        </p>
+
+        <h3>5.8 Cumprimento de obrigações legais</h3>
         <p>Dados poderão ser compartilhados quando isso for necessário para:</p>
         <ul>
           <li>cumprir obrigação legal ou regulatória;</li>
@@ -587,13 +661,14 @@ export default function PrivacidadePage() {
           requisição válida.
         </p>
 
-        <h2>6. Cookies</h2>
+        <h2 id="cookies">6. Cookies</h2>
         <p>
-          A Cinerie usa <strong>dois cookies, ambos estritamente necessários</strong>. Não há cookie
-          de publicidade, de análise ou de rastreamento — e é por isso que você não vê banner de
-          cookies aqui: <strong>nada que dependa da sua autorização carrega sozinho</strong>. Existe
-          um único conteúdo de terceiro no site, o player de vídeo, e ele só entra na página se você
-          clicar para assistir (item 6.1). Enquanto você não clica, não há o que consentir.
+          A Cinerie usa <strong>dois cookies estritamente necessários</strong>, que só existem para
+          quem entra na conta, e os <strong>cookies do Google Analytics</strong>, que só existem se
+          você autorizar no aviso de cookies. Não há cookie de publicidade.{' '}
+          <strong>Nada que dependa da sua autorização carrega sozinho</strong>: o Google Analytics
+          espera o seu &quot;Aceitar&quot; (item 6.2), e o player de vídeo espera o seu clique em
+          assistir (item 6.1).
         </p>
         <div className="legal-table-wrap">
           <table className="legal-table">
@@ -626,12 +701,30 @@ export default function PrivacidadePage() {
                 </td>
                 <td>Igual à validade da sessão (padrão: 30 dias)</td>
               </tr>
+              <tr>
+                <th scope="row">
+                  <code>_ga</code> e <code>_ga_&lt;ID&gt;</code>
+                </th>
+                <td>
+                  Cookies do Google Analytics (item 5.7). Guardam um identificador aleatório para
+                  distinguir visitas, sem nome nem e-mail. <strong>Só são criados se você clicar em
+                  &quot;Aceitar&quot;</strong>, e são apagados quando você retira a autorização.
+                </td>
+                <td>Até 13 meses</td>
+              </tr>
             </tbody>
           </table>
         </div>
         <p>
-          Os dois são criados <strong>somente no login</strong> e removidos no logout. Quem apenas
-          navega sem conta não recebe cookie nenhum.
+          Os dois primeiros são criados <strong>somente no login</strong> e removidos no logout.
+          Quem apenas navega sem conta não recebe cookie nenhum, a não ser que autorize o Google
+          Analytics.
+        </p>
+        <p>
+          A sua resposta ao aviso de cookies — &quot;Aceitar&quot; ou &quot;Recusar&quot; — fica
+          guardada no próprio navegador, no armazenamento local (<code>localStorage</code>), sob o
+          nome <code>cinerie:consentimento-analise</code>. Ela não é um cookie, não é enviada ao
+          servidor e serve só para não perguntar de novo a cada página.
         </p>
 
         <h3>6.1. O player de vídeo do YouTube</h3>
@@ -639,8 +732,8 @@ export default function PrivacidadePage() {
           Trailers e vídeos dentro das matérias são reproduzidos por um player do YouTube, que é
           serviço do Google. <strong>Ele não carrega junto com a página.</strong> Você vê um botão
           nosso; até você clicar nele, nada é pedido ao YouTube — nem o seu endereço IP, nem qual
-          página você está lendo. Abrir a home, a lista de filmes ou uma matéria não entrega dado
-          nenhum ao Google.
+          página você está lendo. Sem a sua autorização ao Google Analytics (item 6.2), abrir a
+          home, a lista de filmes ou uma matéria não entrega dado nenhum ao Google.
         </p>
         <p>
           Quando você clica para assistir, o player é carregado de{' '}
@@ -654,9 +747,41 @@ export default function PrivacidadePage() {
         </p>
         <p>
           O que fazemos para reduzir isso ao mínimo: o endereço do player não leva nenhum parâmetro
-          de rastreamento, e o player roda isolado do resto do site, sem alcançar os nossos dois
+          de rastreamento, e o player roda isolado do resto do site, sem alcançar os nossos
           cookies. Se preferir não carregá-lo, cada vídeo tem a opção de abrir no YouTube em outra
           aba — a escolha é sua, e ela continua sendo sua a cada vídeo.
+        </p>
+
+        <h3>6.2. Medição de audiência</h3>
+        <p>
+          Para saber quais páginas são lidas e se o site está rápido, usamos duas ferramentas:
+        </p>
+        <ul>
+          <li>
+            <strong>Cloudflare Web Analytics</strong> (item 5.6) — carrega em todas as páginas.{' '}
+            <strong>Não usa cookie</strong>, não grava nada no seu navegador e não cria
+            identificador de visitante. Mostra para a Cinerie só números agregados: visitas por
+            página, origem do acesso, país, tipo de navegador e tempo de carregamento.
+          </li>
+          <li>
+            <strong>Google Analytics 4</strong> (item 5.7) — usa cookies e por isso{' '}
+            <strong>depende da sua autorização</strong>. Na primeira visita aparece um aviso com
+            dois botões do mesmo tamanho, &quot;Recusar&quot; e &quot;Aceitar&quot;. Enquanto você
+            não responder, ou se recusar, o Google Analytics não carrega.
+          </li>
+        </ul>
+
+        <h3>6.3. Como mudar sua escolha</h3>
+        <p>
+          Use o botão <strong>&quot;Preferências de cookies&quot;</strong>, no rodapé de todas as
+          páginas. Ele reabre o aviso e mostra a sua escolha atual. Se você retirar a autorização,
+          o Google Analytics para de coletar na hora e os cookies <code>_ga</code> deste site são
+          apagados.
+        </p>
+        <p>
+          A resposta vale por <strong>6 meses</strong> naquele navegador. Depois disso, ou se a
+          lista de ferramentas mudar, o aviso pergunta de novo. Limpar os dados do site no navegador
+          também apaga a escolha.
         </p>
 
         <h2>7. Por quanto tempo guardamos os dados</h2>
@@ -718,6 +843,14 @@ export default function PrivacidadePage() {
               <tr>
                 <th scope="row">Registros de envio de e-mail</th>
                 <td>Até 180 dias, ressalvados registros mantidos diretamente pela Brevo</td>
+              </tr>
+              <tr>
+                <th scope="row">Dados do Google Analytics (só com autorização)</th>
+                <td>14 meses, apagados pelo próprio Google conforme a configuração da propriedade</td>
+              </tr>
+              <tr>
+                <th scope="row">Escolha no aviso de cookies (no seu navegador)</th>
+                <td>6 meses, ou até você limpar os dados do site</td>
               </tr>
               <tr>
                 <th scope="row">Backups da Cinerie</th>
