@@ -377,3 +377,17 @@ implementação PRECISOU introduzir:
   do header (`--container-nav` + `--pad-page`, PR #113) em vez de `1240px + 40px`,
   e a manchete mantém a escala amarrada à altura da tela (contraste em tela
   larga e baixa).
+- **D-209 — Anúncio só na matéria (2026-10-31).** O canônico põe slots OpaPreço
+  na home, nas listagens, nas fichas, em Pessoa, Explorar, Onde assistir, Listas
+  e Entrar; a Cinerie monta só os quatro da matéria, pelo SDK oficial do
+  OpaPreço (`<op-slot>`, `docs/opapreco/`). O sistema de mesma origem de
+  D-201/D-202 saiu do repositório: o servidor do OpaPreço não implementa o
+  `GET /v1/ad` dele, e só as posições da matéria existem no cadastro do site.
+  As colunas laterais que eram do anúncio (340px no feed de `/pt/noticias/`,
+  300px em Entrar) ficam vazias na grade, para o resto não mudar de lugar.
+- **D-210 — Anúncio na home, nas listagens e nas fichas (2026-10-31).** Revê a
+  D-209 a pedido do dono: os slots do canônico na home e nas listagens de
+  filmes e séries (três grades) e nas fichas de filme e série (card no meio,
+  grade no fim) voltam, agora pelo SDK oficial, com as chaves do contrato
+  v1.2.0 do OpaPreço (`home-0N`, `listing-0N`, `detail-01`/`detail-02`).
+  Pessoa, Explorar, Onde assistir, Listas, Notícias e Entrar continuam sem.

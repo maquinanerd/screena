@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 
 import { serializeJsonLd, websiteId } from '@screena/seo'
 
-import { AdSlot } from '../../_components/opapreco/ad-slot'
 import { CardBookmark } from '../../_components/card-bookmark'
 import { ContinueWatching } from '../../_components/continue-watching'
 import { DiscoverFilterableRails } from '../../_components/discover-rails'
@@ -221,10 +220,6 @@ export default async function ExplorePage({
         </form>
 
         {search !== null ? <SearchResults view={search} /> : null}
-
-        {/* OpaPreço · discover-top — grade sob a busca (margem 0/36). É o único
-            slot do Explorar no canônico. */}
-        <AdSlot className="cin-adslot--discover-top" id="discover-top" tags={{ vertical: 'mixed' }} />
 
         <DiscoverFilterableRails
           emAlta={discover.emAlta}

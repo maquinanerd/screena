@@ -106,8 +106,8 @@ describe('shell público mínimo · detalhe de filme', () => {
   it('design canônico (tela 06): estrutura EXATA do handoff, sem dado inventado', () => {
     // Ordem canônica (revisão de 2026-10-30): barra superior branca (título |
     // Score + notas | Elenco e Equipe) → mosaico de mídia → tira de ações e
-    // onde assistir → A obra → OpaPreço title-mid → Elenco → Notícias e
-    // bastidores → Ficha + Mais como este → OpaPreço title-bottom.
+    // onde assistir → A obra → OpaPreço detail-01 → Elenco → Notícias e
+    // bastidores → Ficha + Mais como este → OpaPreço detail-02.
     const order = [
       'detail-hero',
       'title-top',
@@ -147,10 +147,15 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).not.toMatch(/score-line__value/)
     expect(code).not.toMatch(/Ainda não calculado/)
     expect(code).not.toMatch(/Cinerie Score/)
-    // OpaPreço: os dois slots do slot map, com as tags da página.
-    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-mid"/)
-    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-bottom"/)
-    expect(code.match(/<AdSlot\b/g)).toHaveLength(2)
-    expect(code).toContain('tags={{ vertical: "movie", entity: slug, genres }}')
+    // OpaPreço (SDK oficial, `<op-slot>`): os dois slots da ficha, com o
+    // contexto da página. Os `<AdSlot>` de mesma origem do PR #346 saíram em
+    // 2026-10-31 (pediam `GET /v1/ad`, que o ad server não implementa); as
+    // posições voltaram com as chaves `detail-01`/`detail-02` do contrato v1.2.0.
+    expect(code).toMatch(/<OpaPrecoAd[^>]*slotKey="detail-01"/)
+    expect(code).toMatch(/<OpaPrecoAd[^>]*slotKey="detail-02"/)
+    expect(code.match(/<OpaPrecoAd\b/g)).toHaveLength(2)
+    expect(code).toContain('contentId: `movie-${entityId}`')
+    expect(code).toContain('tags: [view.title, ...genres]')
+    expect(code).not.toContain('<AdSlot')
   })
 })

@@ -2777,7 +2777,7 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
 /* Tela 14 — Dados e importação (valores exatos do canônico)           */
 /* ------------------------------------------------------------------ */
 /* O resto da tela 14 vive em app/pt/importar/importar.css. Ficam aqui os botoes
-   que /pt/listas/ e /dev/ad-preview/ tambem usam. */
+   que /pt/listas/ tambem usa. */
 
 .imp-primary {
   appearance: none;

@@ -77,13 +77,23 @@ describe('os dados do site no OpaPreço', () => {
     expect(OPAPRECO_ADS_STYLESHEET_URL).toBe('https://opapreco.com.br/v1/ads/sdk/opapreco-ads.css')
   })
 
-  it('os cinco slots do contrato, e a imagem so do OpaPreço ou do CDN da Shopee', () => {
+  it('os slots do contrato (v1.2.0), e a imagem so do OpaPreço ou do CDN da Shopee', () => {
+    // Os cinco da materia, e desde 2026-10-31 os da home, das listagens de
+    // filmes e series e das fichas. Chave fora desta lista o OpaPreço recusa.
     expect(OPAPRECO_ADS_SLOT_KEYS).toEqual([
       'article-top',
       'article-inline-01',
       'article-inline-02',
       'article-bottom',
       'sidebar',
+      'home-01',
+      'home-02',
+      'home-03',
+      'listing-01',
+      'listing-02',
+      'listing-03',
+      'detail-01',
+      'detail-02',
     ])
     expect(OPAPRECO_ADS_IMAGE_ORIGINS).toEqual(['https://opapreco.com.br', 'https://cf.shopee.com.br'])
   })

@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 
-import { AdSlot } from '../../_components/opapreco/ad-slot'
 import { CINERIE_AREA_LOGOS } from '../../../src/lib/brand-logos'
 
 /**
  * AuthShell — moldura da tela 16 do canônico (Entrar/Cadastrar), estrutura
- * EXATA: coluna central 460px (marca Cinerie + lede + card com tabs) e
- * skyscraper de publicidade sticky à direita.
+ * EXATA: coluna central 460px (marca Cinerie + lede + card com tabs). A coluna
+ * de 300px à direita era a do anúncio, que saiu; a grade a mantém vazia para o
+ * card não mudar de lugar (ver `auth.css`).
  *
  * A marca é o wordmark ATUAL da Cinerie (o protótipo trazia a marca histórica
  * "THE SCREEN" — rebranding Gate 1.5 aplica a identidade vigente). Sem SSO:
@@ -61,10 +61,6 @@ export function AuthShell({
         <p className="auth-terms">
           Ao continuar, você concorda com os Termos e a Política de Privacidade.
         </p>
-      </div>
-      <div className="auth-side">
-        {/* OpaPreço · auth-sidebar — product_card_v1 de 300px, só >= 1024px. */}
-        <AdSlot id="auth-sidebar" />
       </div>
     </div>
   )

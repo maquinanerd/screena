@@ -96,7 +96,6 @@ const DEFAULT_PATHS = [
   "/pt/politica-editorial/",
   "/pt/contato/",
   "/pt/cinerie-score/",
-  "/dev/ad-preview/",
   "/pt/pagina-que-nao-existe-paridade/",
 ];
 

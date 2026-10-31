@@ -11,8 +11,8 @@
  * `pnpm --filter @screena/web css:move-check` prova que nenhuma regra que ficou
  * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
  *
- * `.imp-primary` e `.imp-secondary` ficaram no global: /pt/listas/ e
- * /dev/ad-preview/ tambem os usam.
+ * `.imp-primary` e `.imp-secondary` ficaram no global: /pt/listas/ tambem os
+ * usa.
  */
 
 .imp-header {

@@ -3,16 +3,19 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { isOpaPrecoEnabled } from '../../apps/web/src/lib/opapreco/config'
-
 /**
  * Contrato do shell público — ATUALIZADO DELIBERADAMENTE para o design
  * canônico (Screen Screens v4, SHA-256 6936a341…), que substituiu o reset
  * neutro de julho/2026 com escopo humano explícito (superprompt do frontend
  * final). O guard não foi removido: ele passou a travar o NOVO contrato —
- * tokens do handoff presentes, fonte local, acessibilidade preservada e
- * AdSlot OpaPreço (desde 2026-10-30, no lugar do AdSense): nulo quando
- * desligado, raiz `data-op-slot` com a reserva, nenhum criativo no servidor.
+ * tokens do handoff presentes, fonte local e acessibilidade preservada.
+ *
+ * O caso do `AdSlot` OpaPreço saiu em 2026-10-31 junto com a integração de
+ * mesma origem do PR #346 (`services/opapreco`, `/api/opapreco/*`): ela pedia
+ * `GET /v1/ad`, que o ad server não implementa. O anúncio que fica é o SDK
+ * oficial (`opapreco-ad.test.tsx`), na matéria, na home, nas listagens de
+ * filmes e séries e nas fichas; a ausência do AdSense é travada por
+ * `sem-adsense.test.ts`.
  */
 
 const ROOT = process.cwd()
@@ -110,26 +113,5 @@ describe('shell público — design canônico', () => {
     expect(css).toContain(':focus-visible')
     expect(css).toContain('prefers-reduced-motion')
     expect(css).not.toMatch(/#main-content:focus\s*\{[^}]*outline\s*:\s*none/is)
-  })
-
-  it('AdSlot (OpaPreço) cumpre o contrato: nulo quando desligado, data-op-slot, sem AdSense', () => {
-    // O componente devolve `null` quando o sistema esta desligado...
-    const adSlot = read('apps/web/app/_components/opapreco/ad-slot.tsx')
-    expect(adSlot).toContain('if (!isOpaPrecoEnabled()) return null')
-    // ...e desligado e o PADRAO: sem env, sem fixtures na origem oficial.
-    expect(isOpaPrecoEnabled({})).toBe(false)
-    expect(isOpaPrecoEnabled({ OPAPRECO_MODE: 'fixtures', CINERIE_PUBLIC_SITE_URL: 'https://cinerie.com' })).toBe(false)
-    expect(isOpaPrecoEnabled({ OPAPRECO_MODE: 'fixtures', CINERIE_PUBLIC_SITE_URL: 'http://localhost:3000' })).toBe(true)
-    // A raiz do slot leva id, componente e reserva; o criativo vem pelo navegador
-    // (invariante 3). Marcacao renderizada conferida em
-    // apps/web/app/_components/__tests__/opapreco-components.test.tsx.
-    const cliente = read('apps/web/app/_components/opapreco/ad-slot-client.tsx')
-    expect(cliente).toContain('data-op-slot={id}')
-    expect(cliente).toContain('data-ad-component={component}')
-    expect(cliente).toContain('fetch(`/api/opapreco/ad?${query}`')
-    // Nada do AdSense nem da flag de placeholder do slot antigo.
-    for (const arquivo of [adSlot, cliente]) {
-      expect(arquivo).not.toMatch(/adsbygoogle|googlesyndication|ca-pub-[0-9]|NEXT_PUBLIC_AD_SLOTS/i)
-    }
   })
 })

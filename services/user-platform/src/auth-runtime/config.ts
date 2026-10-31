@@ -58,7 +58,9 @@ export const C7D_DEFAULTS = {
   // `2026-10`: medicao de audiencia (Cloudflare Web Analytics e GA4 com
   // consentimento) — mudou o texto da Privacidade, nao o dos Termos.
   // `2026-10.2`: ofertas afiliadas do OpaPreco Ads nas materias.
-  privacyPolicyVersion: "2026-10.2",
+  // `2026-10.3`: as ofertas tambem na home, nas listagens e nas fichas de
+  // filme e de serie.
+  privacyPolicyVersion: "2026-10.3",
   sessionTtlHours: 720,
   deletionGraceDays: 30,
 } as const;

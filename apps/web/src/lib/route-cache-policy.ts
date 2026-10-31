@@ -248,21 +248,11 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
     "rota interna autenticada por credencial de maquina (ADR 0019)",
   ),
   "/api/newsletter": priv("recebe dado pessoal (e-mail) por POST"),
-  // Anuncios OpaPreco (ofertas afiliadas). Pedidos pelo navegador depois do
-  // render: a pagina nunca chama o ad server (invariante 3).
-  "/api/opapreco/ad": priv(
-    "decisao de anuncio por pagina e viewport: guardada, serviria oferta de outra pagina ou verificada ha mais de 6 h",
-  ),
-  "/api/opapreco/img": publicDynamic(
-    "proxy de imagem de produto (hosts da lista); a propria rota declara max-age=3600",
-  ),
-  "/api/opapreco/track": priv("dispara a impressao do anuncio (POST): nada a guardar"),
   "/api/seo/redirect": priv(
     "consulta de redirect chamada pelo middleware a cada requisicao; cache aqui congelaria a tabela `redirects`",
   ),
 
   // ------------------------------------------------------------- dev only
-  "/dev/ad-preview": publicStatic(BUILD_PRERENDERED, "harness de desenvolvimento, fora do produto"),
   "/dev/movie-page-preview": publicStatic(BUILD_PRERENDERED, "harness de desenvolvimento, fora do produto"),
 
   // ---------------------------------------------------------------- assets

@@ -284,13 +284,31 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(code(ticker)).not.toContain('attributionText')
   })
 
-  it('anúncios só via AdSlot OpaPreço governado (nunca criativo inline)', () => {
-    // Os três slots do canônico, na ordem: depois de Popular, depois de
-    // "Filmes em alta"/mês, depois de "Em breve". Nenhum depois de Notícias
-    // (removido a pedido — OPAPRECO-SLOT-MAP.md, "Removidos a pedido").
-    const ids = [...homeLike.matchAll(/<AdSlot[^>]*\bid="([a-z0-9-]+)"/g)].map((m) => m[1])
-    expect(ids).toEqual(['home-after-popular', 'home-after-movies', 'home-after-coming-soon'])
-    expect(homeLike.lastIndexOf('<AdSlot')).toBeLessThan(homeLike.indexOf('className="hnews-grid"'))
+  it('anúncios só pelo SDK OpaPreço (`<OpaPrecoAd>`), nunca criativo inline', () => {
+    // Três grades, na ordem: depois de Popular, depois de "Seu mês em números",
+    // depois de "Em breve". Nenhuma depois de Notícias. A home pede `home-0N` e
+    // as listagens de filmes e séries (o mesmo template), `listing-0N`. Os
+    // `<AdSlot>` de mesma origem do PR #346 saíram em 2026-10-31 (pediam
+    // `GET /v1/ad`, que o ad server não implementa); as posições voltaram com as
+    // chaves do contrato v1.2.0 do OpaPreço.
+    const homeLikeCode = code(homeLike)
+    const slots = [...homeLikeCode.matchAll(/<OpaPrecoAd[^>]*slotKey=\{adSlots\[(\d)\]\}/g)].map(
+      (m) => Number(m[1]),
+    )
+    expect(slots).toEqual([0, 1, 2])
+    expect(homeLikeCode).toContain("['home-01', 'home-02', 'home-03']")
+    expect(homeLikeCode).toContain("['listing-01', 'listing-02', 'listing-03']")
+    expect(homeLikeCode.indexOf('<OpaPrecoAd')).toBeGreaterThan(homeLikeCode.indexOf('<PopularThisWeek'))
+    expect(homeLikeCode.indexOf('slotKey={adSlots[1]}')).toBeGreaterThan(
+      homeLikeCode.indexOf('<MonthStats'),
+    )
+    expect(homeLikeCode.indexOf('slotKey={adSlots[2]}')).toBeGreaterThan(
+      homeLikeCode.indexOf('decision={upcomingSection}'),
+    )
+    expect(homeLikeCode.lastIndexOf('<OpaPrecoAd')).toBeLessThan(
+      homeLikeCode.indexOf('className="hnews-grid"'),
+    )
+    expect(homeLikeCode).not.toContain('<AdSlot')
     expect(homeLike).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     expect(home).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
   })

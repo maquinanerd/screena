@@ -6,7 +6,7 @@ import { HomeEditorialHighlights } from './home-editorial-highlights'
 import { HomeHeroCarousel } from './home-hero-carousel'
 import { HomeTicker } from './home-ticker'
 import { MonthStats } from './month-stats'
-import { AdSlot } from './opapreco/ad-slot'
+import { OpaPrecoAd } from './opapreco-ad'
 import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
 import { SectionBoundary } from './section-boundary'
@@ -63,7 +63,10 @@ export interface HomeLikeProps {
   newsCards: readonly NewsCardView[]
   showMoviesBand: boolean
   showSeriesBand: boolean
-  /** Prefixo dos slotIds de anuncio (home | filmes | series). */
+  /**
+   * Prefixo dos ids da rota (home | filmes | series). Tambem e o `content-id`
+   * dos slots OpaPreço da pagina.
+   */
   adPrefix: string
   emptyMessage: string
   /**
@@ -220,10 +223,17 @@ export function HomeLike({
   vertical,
 }: HomeLikeProps): ReactNode {
   const hasRanking = rankingPanels.length > 0
-  // Tags da página para o ad server OpaPreço: só a vertical da rota (a home é
-  // mista). Nenhuma entidade: estas grades ficam entre seções de catálogo.
-  const adTags = {
-    vertical: vertical === 'movies' ? 'movie' : vertical === 'series' ? 'series' : 'home',
+  // OpaPreço Ads: três grades entre as seções (depois de Popular, depois de
+  // "Seu mês em números", depois de "Em breve"). A home pede `home-0N`; as
+  // listagens de filmes e de séries, `listing-0N`. O contexto é só da página:
+  // a rota e a vertical, nenhuma entidade (as grades ficam entre trilhos).
+  const adSlots =
+    vertical === 'home'
+      ? (['home-01', 'home-02', 'home-03'] as const)
+      : (['listing-01', 'listing-02', 'listing-03'] as const)
+  const adContext = {
+    contentId: adPrefix,
+    section: vertical === 'movies' ? 'Filmes' : vertical === 'series' ? 'Séries' : null,
   } as const
   const newsCategories = [
     ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
@@ -311,10 +321,11 @@ export function HomeLike({
         />
       ) : null}
 
-      {/* OpaPreço · home-after-popular (canônico: grade 4 itens, margem 56/56).
-          Sem ad server configurado o slot não renderiza nada. */}
+      {/* OpaPreço · 1ª grade, depois de Popular. A margem vive no PRÓPRIO slot
+          e zera quando ele colapsa (`home-like.css`); desligado, o slot nem
+          sai no HTML. */}
       <div className="container">
-        <AdSlot className="cin-adslot--home-popular" id="home-after-popular" tags={adTags} />
+        <OpaPrecoAd className="home-ad home-ad--popular" slotKey={adSlots[0]} {...adContext} />
       </div>
 
       {/* Filmes em alta — certified-fresh cards (band condicional) */}
@@ -341,9 +352,9 @@ export function HomeLike({
           própria contagem de episódios e séries. */}
       <MonthStats vertical={vertical} />
 
-      {/* OpaPreço · home-after-movies (margem 56/0) */}
+      {/* OpaPreço · 2ª grade, depois de "Seu mês em números". */}
       <div className="container">
-        <AdSlot className="cin-adslot--home-after" id="home-after-movies" tags={adTags} />
+        <OpaPrecoAd className="home-ad home-ad--after" slotKey={adSlots[1]} {...adContext} />
       </div>
 
       {/* Séries da semana — certified-fresh cards (band condicional) */}
@@ -391,9 +402,9 @@ export function HomeLike({
         )}
       </SectionBoundary>
 
-      {/* OpaPreço · home-after-coming-soon (margem 56/0) */}
+      {/* OpaPreço · 3ª grade, depois de "Em breve" e antes de Notícias. */}
       <div className="container">
-        <AdSlot className="cin-adslot--home-after" id="home-after-coming-soon" tags={adTags} />
+        <OpaPrecoAd className="home-ad home-ad--after" slotKey={adSlots[2]} {...adContext} />
       </div>
 
       {/* Notícias & entrevistas — chips + lead 430 + grade 2x2 */}

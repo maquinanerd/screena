@@ -1,13 +1,14 @@
 /**
  * <OpaPrecoAd slotKey contentId section tags className> — uma posição do
- * OpaPreço Ads na matéria. SERVER component: só marcação, nenhum JavaScript da
- * Cinerie.
+ * OpaPreço Ads (matéria, home, listagens de filmes e séries, fichas de filme e
+ * série). SERVER component: só marcação, nenhum JavaScript da Cinerie.
  *
  * O que sai no HTML:
  *  - o `<script async>` e a folha de estilo do SDK, servidos por
  *    `opapreco.com.br`. O React 19 sobe os dois para o `<head>` e não os repete
  *    quando a página tem mais de um slot. Ficam só nas páginas que têm slot:
- *    fichas, home e listagens não carregam nada do OpaPreço;
+ *    pessoas, Explorar, Notícias e as demais rotas não carregam nada do
+ *    OpaPreço;
  *  - o `<op-slot>`. A folha de estilo do SDK já reserva a altura dele pelo
  *    `slot-key` antes de qualquer JavaScript (sem CLS); o script pede a oferta,
  *    desenha, colapsa sem anúncio e conta impressão e clique. Nada disso é
@@ -21,15 +22,16 @@
  *    opaco, o React não hidrata os filhos e não toca neles depois.
  *    `suppressHydrationWarning` cobre os atributos que o script muda
  *    (`data-op-estado`, `data-ad-component`, `style`).
- *  - `key` = id da matéria + slot: numa troca de matéria pelo cliente o slot
- *    nasce de novo e pede a oferta com o contexto da matéria nova.
+ *  - `key` = id do conteúdo + slot: numa troca de matéria ou de ficha pelo
+ *    cliente o slot nasce de novo e pede a oferta com o contexto da página nova.
  *
  * Desligado (`NEXT_PUBLIC_OPAPRECO_ADS_ENABLED=false`, ou fora da produção
  * oficial sem a chave): devolve `null`, e a página sai sem slot, sem script e
  * sem folha de estilo.
  *
- * `className` leva a margem da matéria. Ela fica no próprio `<op-slot>` e zera
- * quando ele colapsa (`article.css`), para não sobrar buraco.
+ * `className` leva a margem da página. Ela fica no próprio `<op-slot>` e zera
+ * quando ele colapsa (`article.css`, `home-like.css`, `detail.css`), para não
+ * sobrar buraco.
  */
 
 import type { ClassAttributes, HTMLAttributes, ReactNode } from 'react'
@@ -71,11 +73,11 @@ const SLOT_CONTENT_OWNED_BY_SDK = { __html: '' }
 
 export interface OpaPrecoAdProps {
   readonly slotKey: OpaPrecoAdSlotKey
-  /** Id da matéria (`content-id`); também compõe a `key` do slot. */
+  /** Id do conteúdo (`content-id`): a matéria, o título ou a rota. Também compõe a `key` do slot. */
   readonly contentId: string
-  /** Categoria editorial da matéria. */
+  /** Categoria editorial da matéria, ou a vertical da página ("Filmes", "Séries"). */
   readonly section?: string | null
-  /** O que a matéria cita (títulos das entidades); vira `tags="a,b"`. */
+  /** O que a página cita (títulos, gêneros); vira `tags="a,b"`. */
   readonly tags?: readonly (string | null | undefined)[]
   readonly className?: string
 }

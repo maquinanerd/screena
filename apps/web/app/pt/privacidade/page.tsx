@@ -69,6 +69,15 @@ import '../../_components/legal.css'
  * mudou lá, muda aqui. O item 12 dizia "versão 2026-08" desde agosto; passou a
  * ler a mesma constante do cabeçalho.
  *
+ * REVISÃO 2026-10.3 (31/10/2026), a pedido do controlador: as ofertas
+ * afiliadas passaram a aparecer também na página inicial, nas listagens de
+ * filmes e de séries (`home-like.tsx`, slots `home-*` e `listing-*`) e nas
+ * fichas de filme e de série (slots `detail-*`). Até aqui o item 5.8 afirmava
+ * que essas páginas não exibiam ofertas. Itens 2.3, 3, 5.8, 6 e 11 deixaram de dizer
+ * "matéria" onde o que vale é "página com ofertas", e o 5.8 lista onde elas
+ * aparecem e o que o pedido leva em cada página. As fichas de pessoas, a busca
+ * e as demais páginas continuam sem ofertas.
+ *
  * PENDÊNCIA QUE O TEXTO NÃO RESOLVE: `privacidade@cinerie.com` e
  * `contato@cinerie.com` ainda não existem como caixas configuradas. São os
  * canais canônicos declarados pelo controlador e por isso permanecem no texto,
@@ -333,9 +342,9 @@ export default function PrivacidadePage() {
             <strong>Não usamos rastreamento publicitário.</strong> Não há Meta Pixel, Hotjar,
             Clarity, gravação de sessão nem anúncio de rede publicitária que acompanhe você de um
             site para outro. A única medição de audiência com cookies é o Google Analytics, e ele{' '}
-            <strong>só carrega se você autorizar</strong> (item 6.2). As ofertas afiliadas das
-            matérias (item 5.8) contam quantas vezes cada anúncio foi visto e clicado, sem cookie e
-            sem saber quem viu.
+            <strong>só carrega se você autorizar</strong> (item 6.2). As ofertas afiliadas (item
+            5.8) contam quantas vezes cada anúncio foi visto e clicado, sem cookie e sem saber quem
+            viu.
           </li>
         </ul>
 
@@ -409,10 +418,10 @@ export default function PrivacidadePage() {
                 </td>
               </tr>
               <tr>
-                <th scope="row">Ofertas afiliadas nas matérias (OpaPreço Ads)</th>
+                <th scope="row">Ofertas afiliadas (OpaPreço Ads)</th>
                 <td>
-                  Legítimo interesse (art. 7º, IX), para manter o site com anúncios ligados ao assunto
-                  da matéria. A oferta é escolhida pela página, não por você: sem cookie, sem
+                  Legítimo interesse (art. 7º, IX), para manter o site com anúncios ligados ao
+                  assunto da página. A oferta é escolhida pela página, não por você: sem cookie, sem
                   identificador e sem perfil (item 5.8).
                 </td>
               </tr>
@@ -674,20 +683,22 @@ export default function PrivacidadePage() {
           e os termos de processamento de dados do Google Analytics.
         </p>
 
-        <h3>5.8 OpaPreço Ads e Shopee (ofertas afiliadas nas matérias)</h3>
+        <h3>5.8 OpaPreço Ads e Shopee (ofertas afiliadas)</h3>
         <p>
-          As matérias exibem até quatro ofertas de produtos da Shopee, escolhidas e entregues pelo
-          OpaPreço Ads (<code>opapreco.com.br</code>). Cada oferta leva o aviso &quot;Link de
+          Algumas páginas exibem ofertas de produtos da Shopee, escolhidas e entregues pelo OpaPreço
+          Ads (<code>opapreco.com.br</code>): as matérias, a página inicial, as listagens de filmes
+          e de séries e as fichas de filmes e de séries. Cada oferta leva o aviso &quot;Link de
           afiliado&quot;: se você comprar depois de clicar, a compra pode gerar comissão de
-          afiliado, sem custo a mais para você. A home, as listagens e as fichas de filmes, séries e
-          pessoas não exibem essas ofertas.
+          afiliado, sem custo a mais para você. As fichas de pessoas, a busca e as demais páginas
+          não exibem essas ofertas.
         </p>
         <p>
-          Ao abrir uma matéria, o seu navegador se conecta diretamente ao OpaPreço para carregar o
-          script e o estilo dos anúncios e pedir as ofertas. O pedido leva só informações da{' '}
-          <strong>página</strong>: o endereço e o título da matéria, a categoria, os títulos que ela
-          cita, o identificador da matéria, o tipo de tela (celular, tablet ou computador), a
-          largura do espaço do anúncio e o idioma.{' '}
+          Ao abrir uma página com ofertas, o seu navegador se conecta diretamente ao OpaPreço para
+          carregar o script e o estilo dos anúncios e pedir as ofertas. O pedido leva só informações
+          da <strong>página</strong>: o endereço e o título dela, a seção (como Filmes ou Séries),
+          os títulos citados (numa matéria, os que ela menciona; numa ficha, o título e os gêneros),
+          um identificador da página (da matéria, do filme ou da série), o tipo de tela (celular,
+          tablet ou computador), a largura do espaço do anúncio e o idioma.{' '}
           <strong>Não leva cookie, e-mail, dado de conta nem identificador seu.</strong> Depois, o
           navegador avisa o OpaPreço quando um anúncio ficou visível e quando você clicou nele, para
           contar exibições e cliques.
@@ -724,8 +735,8 @@ export default function PrivacidadePage() {
         <p>
           A Cinerie usa <strong>dois cookies estritamente necessários</strong>, que só existem para
           quem entra na conta, e os <strong>cookies do Google Analytics</strong>, que só existem se
-          você autorizar no aviso de cookies. Não há cookie de publicidade: as ofertas afiliadas das
-          matérias (item 5.8) não usam cookie.{' '}
+          você autorizar no aviso de cookies. Não há cookie de publicidade: as ofertas afiliadas
+          (item 5.8) não usam cookie.{' '}
           <strong>Nada que dependa da sua autorização carrega sozinho</strong>: o Google Analytics
           espera o seu &quot;Aceitar&quot; (item 6.2), e o player de vídeo espera o seu clique em
           assistir (item 6.1).
@@ -1137,10 +1148,10 @@ export default function PrivacidadePage() {
           user-agent e informações sobre a imagem solicitada.
         </p>
         <p>
-          <strong>OpaPreço e Shopee</strong> — Ao abrir uma matéria, o navegador se conecta ao
-          OpaPreço e pode se conectar ao servidor de imagens da Shopee (item 5.8). Essas conexões
-          podem passar por redes de distribuição de conteúdo fora do Brasil e levam endereço IP,
-          user-agent e informações sobre a página, sem dado de conta.
+          <strong>OpaPreço e Shopee</strong> — Ao abrir uma página com ofertas (item 5.8), o
+          navegador se conecta ao OpaPreço e pode se conectar ao servidor de imagens da Shopee.
+          Essas conexões podem passar por redes de distribuição de conteúdo fora do Brasil e levam
+          endereço IP, user-agent e informações sobre a página, sem dado de conta.
         </p>
         <p>
           <strong>RapidAPI e APIs integradas</strong> — Consultas técnicas feitas pela Cinerie podem

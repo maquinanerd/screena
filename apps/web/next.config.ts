@@ -358,10 +358,6 @@ const nextConfig: NextConfig = {
     // alcancam, e a guarda de fronteira prova que nenhum client component o
     // importa. A chave da Brevo nunca entra no bundle do cliente.
     "@screena/user-platform",
-    // Transporte do ad server da OpaPreco. SERVER-ONLY: so as rotas
-    // /api/opapreco/** o alcancam; a pagina renderiza a reserva e o navegador
-    // pede o anuncio a rota propria (invariante 3).
-    "@screena/opapreco",
   ],
   // Esses pacotes usam imports ESM com extensao `.js` (convencao NodeNext) que
   // apontam para arquivos `.ts` (ex.: `export * from "./value-blocks.js"`). O

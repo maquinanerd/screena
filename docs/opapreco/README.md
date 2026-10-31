@@ -23,12 +23,30 @@ o guia de integração do publisher (no repositório do OpaPreço,
 - `apps/web/app/pt/noticias/[slug]/page.tsx` — as quatro posições; `article.css` — só a margem em volta do slot, que zera quando ele colapsa.
 - `apps/web/middleware.ts` — o CSP libera `opapreco.com.br` em `script-src`, `style-src`, `connect-src` e `img-src`, e `cf.shopee.com.br` em `img-src` (a imagem do produto vem de um ou de outro).
 - Política de Privacidade `2026-10.2` — itens 2.3, 3, 5.8, 6, 7, 11 e 12.
+- Política de Privacidade `2026-10.3` — ofertas também na home, nas listagens e nas fichas de filme e de série (itens 2.3, 3, 5.8, 6 e 11).
 
 O script do OpaPreço faz o resto, e a Cinerie não refaz nada: reserva a altura,
 pede a oferta (`POST /v1/ads/serve`), desenha, colapsa sem anúncio e conta
 impressão e clique por beacon. O clique vai direto para `s.shopee.com.br`. O
 pedido sai do navegador depois do render, sem cookie e sem dado do leitor: a
 página continua sem API externa no render (invariante 3).
+
+### Fora da matéria: home, listagens e fichas (2026-10-31)
+
+O mesmo `<OpaPrecoAd>` entra em mais três superfícies, nas posições que os
+slots de 30/10 tinham. As chaves são as do contrato **v1.2.0** do OpaPreço:
+enquanto o servidor não as aceitar, o pedido volta recusado e o script colapsa
+o slot (margem zero, nada sobra na página).
+
+| Página | Slots | Onde | Contexto |
+|---|---|---|---|
+| `/pt/` | `home-01`, `home-02`, `home-03` | grade depois de Popular, depois de "Seu mês em números" e depois de "Em breve" (antes de Notícias) | `content-id` = `home` |
+| `/pt/filmes/`, `/pt/series/` | `listing-01`, `listing-02`, `listing-03` | as mesmas três posições (`home-like.tsx`) | `content-id` = `filmes`/`series`, `section` = "Filmes"/"Séries" |
+| `/pt/filmes/{slug}/`, `/pt/series/{slug}/` | `detail-01`, `detail-02` | card entre a obra (na série, os episódios) e o elenco; grade depois de "Mais como este" | `content-id` = `movie-{id}`/`series-{id}`, `section` = vertical, `tags` = título + gêneros |
+
+A margem fica no próprio `<op-slot>` e zera no colapso (`home-like.css`,
+`detail.css`). Pessoa, Explorar, Onde assistir, Listas, Notícias e Entrar
+continuam sem anúncio.
 
 ### Ligar e desligar (runtime, sem rebuild)
 
@@ -58,13 +76,16 @@ Numa matéria publicada, em desktop e celular: cada `<op-slot>` com
 afiliado" visível e o layout parado. Um 204 traz o motivo em
 `X-OpaPreco-Ads-Reason` (`no_candidates`, `slot_disabled`, `site_not_approved`…).
 
-## A integração ANTERIOR (2026-10-30), que não fala com o servidor real
+## A integração ANTERIOR (2026-10-30), removida em 2026-10-31
 
 O PR #346 montou um sistema próprio, de mesma origem, contra um contrato
 (`GET {url}/v1/ad?publisher=…&slot=…`) que o servidor do OpaPreço não implementa.
-Ele continua no repositório, **desligado** (sem `OPAPRECO_AD_SERVER_URL` +
-`OPAPRECO_PUBLISHER_ID`), nas outras páginas — home, listagens, fichas, entrar —
-e sai num PR próprio:
+**Saiu do repositório em 2026-10-31**: `<AdSlot>` e os 6 componentes
+(`apps/web/app/_components/opapreco/`), `apps/web/src/lib/opapreco/`, as rotas
+`apps/web/app/api/opapreco/{ad,img,track}`, o harness `/dev/ad-preview` e
+`services/opapreco` (`@screena/opapreco`). Os slots da home, das listagens, das
+fichas, de Pessoa, Explorar, Onde assistir, Listas e Entrar saíram junto: essas
+posições não existem no cadastro do OpaPreço. Ficam só como histórico:
 
 | Pasta | O que é |
 |---|---|
@@ -73,10 +94,5 @@ e sai num PR próprio:
 | `fixtures/` | ofertas de teste, incluindo `mustNotRender` e `mustHideDiscount` |
 | `DECISIONS.md` | decisões e divergências, com as da implementação na Cinerie |
 
-- `apps/web/src/lib/opapreco/` — registro de slots, validação do contrato, ambiente, fixtures.
-- `apps/web/app/_components/opapreco/` — `<AdSlot id tags className>` e os 6 componentes desenhados na Cinerie.
-- `apps/web/app/api/opapreco/{ad,img,track}` — as rotas de mesma origem.
-- `services/opapreco` (`@screena/opapreco`) — o cliente HTTP desse contrato.
-
-Não ligue as variáveis `OPAPRECO_*` antigas: o ad server responde só em
-`/v1/ads/*`, e os slots da home e das fichas não existem no cadastro do site.
+As variáveis `OPAPRECO_AD_SERVER_URL`, `OPAPRECO_PUBLISHER_ID` e `OPAPRECO_MODE`
+não são mais lidas por nenhum código; podem sair do ambiente.

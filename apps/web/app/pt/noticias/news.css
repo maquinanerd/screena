@@ -41,30 +41,6 @@
   border-bottom-color: var(--c-accent-movie);
 }
 
-/* Faixa OpaPreço do topo (`news-top`): product_compact_v1 de 728×90 a direita
-   das abas, exatamente como o canonico (`flex: 0 1 728px; min-width: 0`). Ela
-   ENCOLHE com a coluna em vez de vazar; abaixo de 1024px desce para uma linha
-   propria sob as abas, com a largura inteira da coluna. A classe e do proprio
-   slot — sem anuncio, nada sobra no cabecalho. Duas classes (e nao `.cin-adslot`,
-   que e bloco do componente e nao desta folha — guarda R2) para vencer a folha
-   do componente, que carrega depois. */
-.nws-header .nws-header__ad {
-  flex: 0 1 728px;
-  min-width: 0;
-  max-width: 728px;
-  margin-left: auto;
-}
-
-/* Grade do meio do feed: mesma regua dos cards (borda superior + 26px). */
-.nws-feed__ad {
-  border-top: 1px solid var(--c-border);
-  padding-top: 26px;
-}
-
-.nws-feed__ad > [data-op-slot] {
-  margin: 0 0 4px;
-}
-
 .nws-divider {
   border-top: 1px solid var(--c-border);
   margin-top: 20px;
@@ -275,6 +251,9 @@
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
 }
 
+/* A coluna de 340px era a do anuncio lateral do feed, removido em 2026-10-31
+   junto com a integracao OpaPreco de mesma origem. Ela fica vazia de
+   proposito: sem ela a lista alargaria e as linhas mudariam de altura. */
 .nws-feed {
   display: grid;
   grid-template-columns: 1fr 340px;
@@ -320,11 +299,6 @@
   }
   .nws-cards3 {
     grid-template-columns: 1fr;
-  }
-  .nws-header .nws-header__ad {
-    flex-basis: 100%;
-    max-width: 100%;
-    margin-left: 0;
   }
 }
 
