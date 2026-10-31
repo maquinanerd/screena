@@ -981,3 +981,23 @@ a.seg-toggle__opt[aria-current='page'] {
     inset: -10px -6px;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Slots OpaPreço (`<op-slot>`, `_components/opapreco-ad.tsx`)          */
+/* ------------------------------------------------------------------ */
+/* Daqui sai SO a margem em volta das tres grades, que e layout da pagina. O
+   estilo do anuncio, a reserva de altura e o colapso sao do SDK do OpaPreço.
+   A margem fica no proprio `<op-slot>` e zera quando o script o colapsa (sem
+   anuncio, `data-op-estado="colapsado"`): o slot vazio nao deixa buraco. No
+   telefone os 56px descem para 40, a escala dos intervalos entre secoes. */
+.home-ad--popular {
+  margin: clamp(40px, 5vw, 56px) 0;
+}
+
+.home-ad--after {
+  margin: clamp(40px, 5vw, 56px) 0 0;
+}
+
+.home-ad[data-op-estado='colapsado'] {
+  margin: 0;
+}

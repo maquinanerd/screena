@@ -106,18 +106,19 @@ describe('shell público mínimo · detalhe de filme', () => {
   it('design canônico (tela 06): estrutura EXATA do handoff, sem dado inventado', () => {
     // Ordem canônica (revisão de 2026-10-30): barra superior branca (título |
     // Score + notas | Elenco e Equipe) → mosaico de mídia → tira de ações e
-    // onde assistir → A obra → Elenco → Notícias e bastidores → Ficha + Mais
-    // como este. Os slots `title-mid`/`title-bottom` saíram da ordem em
-    // 2026-10-31 (ver a nota no fim deste caso).
+    // onde assistir → A obra → OpaPreço detail-01 → Elenco → Notícias e
+    // bastidores → Ficha + Mais como este → OpaPreço detail-02.
     const order = [
       'detail-hero',
       'title-top',
       'media-strip',
       'title-actions',
       'synopsis-lead',
+      'title-ad--mid',
       'cast-strip',
       'mnews-grid',
       'ficha-grid',
+      'title-ad--bottom',
     ]
     let cursor = -1
     for (const cls of order) {
@@ -146,9 +147,15 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).not.toMatch(/score-line__value/)
     expect(code).not.toMatch(/Ainda não calculado/)
     expect(code).not.toMatch(/Cinerie Score/)
-    // As asserções dos `<AdSlot>` `title-mid`/`title-bottom` saíram em
-    // 2026-10-31 com a integração OpaPreço de mesma origem (PR #346): ela pedia
-    // `GET /v1/ad`, que o ad server não implementa, e as posições da ficha não
-    // existem no cadastro do OpaPreço, que só atende os slots da matéria.
+    // OpaPreço (SDK oficial, `<op-slot>`): os dois slots da ficha, com o
+    // contexto da página. Os `<AdSlot>` de mesma origem do PR #346 saíram em
+    // 2026-10-31 (pediam `GET /v1/ad`, que o ad server não implementa); as
+    // posições voltaram com as chaves `detail-01`/`detail-02` do contrato v1.2.0.
+    expect(code).toMatch(/<OpaPrecoAd[^>]*slotKey="detail-01"/)
+    expect(code).toMatch(/<OpaPrecoAd[^>]*slotKey="detail-02"/)
+    expect(code.match(/<OpaPrecoAd\b/g)).toHaveLength(2)
+    expect(code).toContain('contentId: `movie-${entityId}`')
+    expect(code).toContain('tags: [view.title, ...genres]')
+    expect(code).not.toContain('<AdSlot')
   })
 })

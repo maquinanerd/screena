@@ -30,6 +30,23 @@ impressão e clique por beacon. O clique vai direto para `s.shopee.com.br`. O
 pedido sai do navegador depois do render, sem cookie e sem dado do leitor: a
 página continua sem API externa no render (invariante 3).
 
+### Fora da matéria: home, listagens e fichas (2026-10-31)
+
+O mesmo `<OpaPrecoAd>` entra em mais três superfícies, nas posições que os
+slots de 30/10 tinham. As chaves são as do contrato **v1.2.0** do OpaPreço:
+enquanto o servidor não as aceitar, o pedido volta recusado e o script colapsa
+o slot (margem zero, nada sobra na página).
+
+| Página | Slots | Onde | Contexto |
+|---|---|---|---|
+| `/pt/` | `home-01`, `home-02`, `home-03` | grade depois de Popular, depois de "Seu mês em números" e depois de "Em breve" (antes de Notícias) | `content-id` = `home` |
+| `/pt/filmes/`, `/pt/series/` | `listing-01`, `listing-02`, `listing-03` | as mesmas três posições (`home-like.tsx`) | `content-id` = `filmes`/`series`, `section` = "Filmes"/"Séries" |
+| `/pt/filmes/{slug}/`, `/pt/series/{slug}/` | `detail-01`, `detail-02` | card entre a obra (na série, os episódios) e o elenco; grade depois de "Mais como este" | `content-id` = `movie-{id}`/`series-{id}`, `section` = vertical, `tags` = título + gêneros |
+
+A margem fica no próprio `<op-slot>` e zera no colapso (`home-like.css`,
+`detail.css`). Pessoa, Explorar, Onde assistir, Listas, Notícias e Entrar
+continuam sem anúncio.
+
 ### Ligar e desligar (runtime, sem rebuild)
 
 | `NEXT_PUBLIC_OPAPRECO_ADS_ENABLED` | Efeito |

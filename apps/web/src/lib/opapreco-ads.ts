@@ -1,5 +1,5 @@
 /**
- * opapreco-ads.ts — o OpaPreço Ads da matéria: endereço do SDK, chave do site,
+ * opapreco-ads.ts — o OpaPreço Ads da Cinerie: endereço do SDK, chave do site,
  * slots aceitos e a chave de liga/desliga. PURO: só leitura de `process.env`,
  * POR REQUISIÇÃO.
  *
@@ -7,17 +7,27 @@
  * QUEM FAZ O QUÊ
  * ============================================================================
  * O servidor da página renderiza só o `<op-slot>` com a chave do slot e o
- * contexto da matéria (seção, tags, id). O script do OpaPreço, carregado de
+ * contexto da página (seção, tags, id). O script do OpaPreço, carregado de
  * `opapreco.com.br`, reserva a altura, pede a oferta (`POST /v1/ads/serve`),
  * desenha, colapsa sem anúncio e conta impressão e clique por beacon. Nada disso
  * é refeito aqui. O pedido sai do NAVEGADOR depois do render, então a página
  * continua sem API externa no render (invariante 3).
  *
- * Os slots são os cinco que o servidor do OpaPreço aceita para o site
- * `cinerie` (o contrato recusa outro valor). A matéria da Cinerie tem coluna
- * única de 720px, sem barra lateral: usa os quatro do corpo, que também são o
- * teto de slots por matéria. `sidebar` fica no tipo para quando houver coluna
- * lateral no desktop.
+ * Os slots são os que o contrato do OpaPreço aceita (ele recusa outro valor):
+ *
+ *  - matéria: `article-top`, `article-inline-01`, `article-inline-02` e
+ *    `article-bottom`. A coluna única de 720px não tem barra lateral; `sidebar`
+ *    fica no tipo para quando houver coluna lateral no desktop.
+ *  - home (`/pt/`): `home-01`, `home-02` e `home-03`, três grades entre as
+ *    seções (`home-like.tsx`).
+ *  - listagens de filmes e de séries (`/pt/filmes/`, `/pt/series/`):
+ *    `listing-01`, `listing-02` e `listing-03`, nas mesmas três posições.
+ *  - fichas de filme e de série: `detail-01` (card, entre a obra e o elenco) e
+ *    `detail-02` (grade, depois de "Mais como este").
+ *
+ * As chaves fora da matéria entraram em 2026-10-31 (contrato v1.2.0 do
+ * OpaPreço). Antes de o OpaPreço aceitá-las, o servidor recusa o pedido e o
+ * script colapsa o slot: nada sobra na página.
  *
  * ============================================================================
  * A CHAVE: `NEXT_PUBLIC_OPAPRECO_ADS_ENABLED`, LIDA NO SERVIDOR
@@ -64,6 +74,14 @@ export const OPAPRECO_ADS_SLOT_KEYS = [
   "article-inline-02",
   "article-bottom",
   "sidebar",
+  "home-01",
+  "home-02",
+  "home-03",
+  "listing-01",
+  "listing-02",
+  "listing-03",
+  "detail-01",
+  "detail-02",
 ] as const;
 
 export type OpaPrecoAdSlotKey = (typeof OPAPRECO_ADS_SLOT_KEYS)[number];

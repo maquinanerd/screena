@@ -18,6 +18,7 @@ import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
 import { SectionHead } from '../../../_components/section-head'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { AwardsBand } from '../../../_components/awards-band'
+import { OpaPrecoAd } from '../../../_components/opapreco-ad'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { RatingsLine } from '../../../_components/ratings-panel'
 import { TitleTopCast, type TitleTopPerson } from '../../../_components/title-top-cast'
@@ -54,10 +55,10 @@ import '../../../_components/detail.css'
  * Score + notas externas | Elenco e Equipe) → mosaico de mídia → tira de ações
  * (Minha lista · Avaliar | Onde assistir) → Prêmios → A obra → EPISÓDIOS
  * (catálogo assistível: eyebrow "Catálogo", tabs de temporada à direita, rows
- * com still + número + título + sinopse + chevron) → Elenco → Notícias
- * relacionadas → Detalhes + Mais como este. A tela 08 (mobile) é ESTE MESMO
- * template no breakpoint 390 (media queries). A seção "Guia Cinerie ·
- * Crítica" saiu no canônico novo.
+ * com still + número + título + sinopse + chevron) → OpaPreço `detail-01` →
+ * Elenco → Notícias relacionadas → Detalhes + Mais como este → OpaPreço
+ * `detail-02`. A tela 08 (mobile) é ESTE MESMO template no breakpoint 390
+ * (media queries). A seção "Guia Cinerie · Crítica" saiu no canônico novo.
  *
  * Série de ~21k episódios nunca vira 20k nós: só a temporada SELECIONADA
  * renderiza (paginação por temporada já vem do getter).
@@ -264,6 +265,14 @@ export default async function SeriesPage({
   // A linha de gêneros do topo (canônico: "DRAMA · MISTÉRIO · SUSPENSE").
   const genreLine = heroGenreChips(genres).join(' · ')
   const scoreDecision = decideCinerieScore(score)
+  // O contexto que os slots OpaPreço mandam para escolher a oferta: o título e
+  // os gêneros da ficha. URL canônica e título da página o próprio script lê
+  // do <head>. Nada do leitor.
+  const adContext = {
+    contentId: `series-${entityId}`,
+    section: 'Séries',
+    tags: [view.title, ...genres],
+  } as const
 
   const editorialBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
   const episodeContextBlocks = view.blocks.filter((block) =>
@@ -688,6 +697,11 @@ export default async function SeriesPage({
         </section>
       ) : null}
 
+      {/* ===== OpaPreço · detail-01 — depois dos episódios, antes do elenco =====
+          A margem vive na classe do PRÓPRIO slot e zera quando ele colapsa
+          (`detail.css`); desligado, o slot nem sai no HTML. */}
+      <OpaPrecoAd className="title-ad title-ad--mid" slotKey="detail-01" {...adContext} />
+
       {/* ===== Elenco · faixa visual ===== */}
       <SectionBoundary decision={castSection}>
         {(members) => (
@@ -838,6 +852,9 @@ export default async function SeriesPage({
           </div>
         </section>
       ) : null}
+
+      {/* ===== OpaPreço · detail-02 — depois de "Mais como este" ===== */}
+      <OpaPrecoAd className="title-ad title-ad--bottom" slotKey="detail-02" {...adContext} />
 
       <div className="detail-container">
         {isUnderReview ? (
