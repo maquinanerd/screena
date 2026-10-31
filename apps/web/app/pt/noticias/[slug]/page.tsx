@@ -34,8 +34,8 @@ import './article.css'
  * transparente (breadcrumb no topo; data → headline 52 → deck → assinatura
  * no rodapé do hero; crédito da capa no canto inferior direito) → corpo de
  * leitura 720 justificado (17/1.8) com os slots OpaPreço → FICHA DO TÍTULO
- * (entity card real da 1ª entidade citada) → fonte → entidades citadas +
- * share → nota de transparência de IA → LEIA TAMBÉM (4 artigos reais).
+ * (entity card real da 1ª entidade citada) → fonte → compartilhar → nota de
+ * transparência de IA → LEIA TAMBÉM (4 artigos reais).
  *
  * O hero tem DOIS estados, e o segundo não é degradação: matéria COM capa é
  * imagem full-bleed com scrim e texto branco; matéria SEM capa (o caso comum
@@ -51,12 +51,6 @@ import './article.css'
 export const dynamic = 'force-dynamic'
 
 const NEWS_INDEX_PATH = '/pt/noticias/'
-
-const RELATED_LABELS: Readonly<Record<string, string>> = {
-  movie: 'Filme',
-  tv: 'Série',
-  person: 'Pessoa',
-}
 
 interface NewsArticleParams {
   slug: string
@@ -154,7 +148,9 @@ function seoFactsOf(
       view.correction === null
         ? null
         : { dateIso: view.correction.dateIso, note: view.correction.note },
-    // As entidades dos chips "Entidades citadas nesta materia" — visiveis na pagina.
+    // As entidades que a materia CITA no texto (os vinculos de entidade do CMS).
+    // A lista visivel delas saiu da pagina em 31/10/2026; os nomes continuam no
+    // corpo da materia, e e isso que `mentions` descreve.
     mentions: view.related.map((entity) => ({
       type: MENTION_SCHEMA_TYPES[entity.entityType],
       name: entity.title,
@@ -514,33 +510,10 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
           </aside>
         ) : null}
 
-        {/* Entidades citadas (chips) + share — o CMS não tem tags editoriais;
-            as entidades citadas ficam como componente próprio rotulado. */}
+        {/* Compartilhar. A lista de entidades citadas que ficava à esquerda
+            saiu por decisão do dono (31/10/2026): a ficha do título e as
+            fichas no corpo já levam às páginas dos títulos citados. */}
         <div className="art-share">
-          {view.related.length > 0 ? (
-            <ul aria-label="Entidades citadas nesta matéria" className="related-entities">
-              {view.related.map((entity) => (
-                <li key={`${entity.entityType}:${entity.href}`}>
-                  <a href={entity.href}>
-                    <span
-                      className={
-                        entity.entityType === 'movie'
-                          ? 'badge badge--movie'
-                          : entity.entityType === 'tv'
-                            ? 'badge badge--series'
-                            : 'badge'
-                      }
-                    >
-                      {RELATED_LABELS[entity.entityType] ?? entity.entityType}
-                    </span>
-                    {entity.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <span />
-          )}
           <div className="art-share__row">
             <span className="art-share__label">Compartilhar</span>
             <a

@@ -367,7 +367,7 @@ export function buildArticleJsonLd(facts: ArticleSeoFacts): Record<string, unkno
         : { '@type': 'Person', '@id': profilePersonId(authorUrl), name: author, url: authorUrl }
   }
 
-  // `mentions`: o que a materia CITA e mostra ("Entidades citadas nesta materia").
+  // `mentions`: o que a materia CITA no texto (os vinculos de entidade do CMS).
   // `about` NAO e emitido: o banco nao marca qual entidade e o ASSUNTO da materia
   // — a ficha exibida e a da primeira citada, e chamar isso de assunto seria
   // afirmar o que ninguem declarou.

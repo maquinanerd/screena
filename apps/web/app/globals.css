@@ -2086,6 +2086,20 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   color: var(--c-text-muted-aa);
 }
 
+/* O <span> de peso leve DENTRO do titulo de secao (`<strong>Leia</strong>
+   <span>tambem</span>`) NAO e o rotulo acima: no canonico ele tem o tamanho do
+   titulo, em peso 300. A regra de cima pegava qualquer <span> da barra e
+   encolhia a segunda palavra para 11px em "Leia tambem", "Populares agora",
+   "Em Alta", "Continuar assistindo" e "Resultados para". Duas classes vencem a
+   regra de cima e o piso de 12px do celular, que tem uma so. */
+.eyebrow-bar .section-title span {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
 /* Ficha tecnica */
 .facts {
   display: grid;

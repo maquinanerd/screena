@@ -231,10 +231,15 @@
   hyphens: none;
 }
 
+/* O poster tem tamanho FIXO (172x258, 2:3) e fica no topo do card. Sem o
+   `align-self`, o flex esticava a caixa ate a altura do corpo: com resumo
+   longo o poster passava de 400px e o `object-fit: cover` mostrava so um
+   recorte ampliado no meio da arte (visto em producao em 31/10/2026). */
 .art-ficha__poster {
   display: block;
   width: 172px;
   flex-shrink: 0;
+  align-self: flex-start;
   aspect-ratio: 2 / 3;
   background: var(--c-bg-skeleton);
   overflow: hidden;
@@ -503,10 +508,12 @@
   font-weight: 600;
 }
 
+/* So o compartilhar, na direita da faixa — a posicao dele no canonico. A lista
+   de entidades citadas que ocupava a esquerda saiu em 31/10/2026. */
 .art-share {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 18px;
   border-top: 1px solid var(--c-border);
@@ -521,15 +528,10 @@
 }
 
 /*
- * Listas da materia que NAO sao lista de leitura: "Entidades citadas nesta
- * materia" (chips) e a galeria de imagens. As duas iam para o ar com o
- * marcador e o recuo do navegador — bolinha antes de cada chip, numero antes
- * de cada foto — porque nenhuma das duas classes tinha regra nesta folha.
- *
- * Aqui vai SO o que tira o padrao do navegador. O desenho dos dois blocos
- * continua ausente de proposito: e outra conversa, nao este vazamento.
+ * A galeria de imagens da materia NAO e lista de leitura: ia para o ar com o
+ * marcador e o recuo do navegador (numero antes de cada foto) porque a classe
+ * nao tinha regra nesta folha. Aqui vai SO o que tira o padrao do navegador.
  */
-.related-entities,
 .art-gallery__items {
   list-style: none;
   margin: 0;
@@ -575,7 +577,14 @@
   gap: 24px;
 }
 
+/* `display: block` NAO e opcional: a capa e um <span> e `aspect-ratio` nao
+   vale em caixa inline. Sem ele a imagem tomava a altura do card inteiro
+   (262x280 em vez de 262x164), o rotulo, o titulo e a data escorriam para
+   FORA do link e o rodape cobria a data — o "Leia tambem" parecia colado no
+   rodape (visto em producao em 31/10/2026). Mesmo defeito das capas de
+   /pt/noticias, corrigido em 30/10. */
 .read-also__cover {
+  display: block;
   position: relative;
   aspect-ratio: 16 / 10;
   overflow: hidden;
@@ -718,14 +727,39 @@
     font-size: 12px;
   }
 
-  /* Entidades citadas e fontes: alvo de toque. */
-  .related-entities a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 36px;
-  }
+  /* Fontes: alvo de toque. */
   .art-sources a {
     display: inline-block;
     padding-block: 6px;
+  }
+}
+
+/* Leia tambem no celular: LISTA COMPACTA, como o feed de /pt/noticias —
+   miniatura 16:10 de 112px ao lado do rotulo, titulo e data. Na coluna unica
+   cada card com a capa na largura toda passava de 330px. */
+@media (max-width: 599px) {
+  .read-also__grid {
+    gap: 0;
+  }
+  .read-also__grid > a {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: start;
+    border-top: 1px solid var(--c-border);
+    padding: 16px 0;
+  }
+  .read-also__cover {
+    grid-row: 1 / span 3;
+  }
+  .read-also__cat {
+    margin: 0;
+  }
+  .read-also__title {
+    font-size: 15px;
+    margin: 4px 0 0;
+  }
+  .read-also__date {
+    margin-top: 6px;
   }
 }
