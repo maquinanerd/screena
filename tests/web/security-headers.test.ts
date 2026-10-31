@@ -36,6 +36,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import nextConfig from '../../apps/web/next.config'
+import {
+  OPAPRECO_ADS_ENDPOINT,
+  OPAPRECO_ADS_IMAGE_ORIGINS,
+} from '../../apps/web/src/lib/opapreco-ads'
 import { TMDB_IMAGE_HOST } from '@screena/public-contracts'
 
 import { middleware } from '../../apps/web/middleware'
@@ -267,6 +271,23 @@ describe('CSP entra pelo middleware, e em REPORT-ONLY', () => {
     expect(csp).toContain('https://static.cloudflareinsights.com')
     expect(csp).toContain('https://www.googletagmanager.com')
     expect(csp).toContain('https://*.google-analytics.com')
+    // OpaPreço Ads: o SDK vem de `opapreco.com.br` (script e estilo), pede a
+    // oferta e manda os beacons para la (connect), e a imagem do produto vem de
+    // la ou do CDN da Shopee (img). Conferido POR DIRETIVA: a origem certa na
+    // diretiva errada passaria num `toContain` do cabecalho inteiro.
+    const directives = new Map(
+      csp!.split(';').map((part) => {
+        const [name = '', ...sources] = part.trim().split(/\s+/)
+        return [name, sources] as const
+      }),
+    )
+    for (const name of ['script-src', 'style-src', 'connect-src', 'img-src']) {
+      expect(directives.get(name), `${name} sem o OpaPreço`).toContain(OPAPRECO_ADS_ENDPOINT)
+    }
+    for (const origin of OPAPRECO_ADS_IMAGE_ORIGINS) {
+      expect(directives.get('img-src'), `img-src sem ${origin}`).toContain(origin)
+    }
+    expect(OPAPRECO_ADS_IMAGE_ORIGINS).toContain('https://cf.shopee.com.br')
 
     // `upgrade-insecure-requests` e INERTE numa politica report-only: ela muda
     // requisicao, e report-only nao muda nada por definicao — o navegador so

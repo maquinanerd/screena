@@ -214,7 +214,7 @@ export default async function NewsIndexPage() {
         )}
 
         {/* OpaPreço · news-feed-01 — grade antes do feed (margem 56/0). */}
-        <AdSlot className="op-slot--news-feed" id="news-feed-01" tags={NEWS_AD_TAGS} />
+        <AdSlot className="cin-adslot--news-feed" id="news-feed-01" tags={NEWS_AD_TAGS} />
 
         {/* Feed + rail */}
         {feed.length > 0 ? (

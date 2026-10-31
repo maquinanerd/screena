@@ -246,7 +246,7 @@ export default async function WatchBrowsePage() {
             52/0). O `browse-02` do canônico vem depois de "Para você", que não
             renderiza: sem essa seção os dois slots ficariam colados, e a regra
             do slot map proíbe dois slots adjacentes sem editorial entre eles. */}
-        <AdSlot className="op-slot--browse" id="browse-01" tags={{ vertical: 'mixed' }} />
+        <AdSlot className="cin-adslot--browse" id="browse-01" tags={{ vertical: 'mixed' }} />
 
         {/* PARA VOCÊ — não renderiza. A seção não pode ter sucesso para
             ninguém (não existe serviço de recomendação), e uma caixa que só

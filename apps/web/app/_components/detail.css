@@ -1920,7 +1920,7 @@ main[data-vertical='series'] .score-card__method {
    respiro some junto, e a reserva de altura do anuncio nao divide caixa com
    um padding herdado. Largura = a do `.detail-container` (1360 menos 64 de
    cada lado), na mesma escada de recuos. `main >` sobe a especificidade
-   acima da folha do proprio slot (`.op-slot`), que carrega depois. ------ */
+   acima da folha do proprio slot (`.cin-adslot`), que carrega depois. ------ */
 main > .title-ad {
   box-sizing: border-box;
   width: calc(100% - 128px);

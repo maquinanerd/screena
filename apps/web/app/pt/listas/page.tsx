@@ -24,9 +24,9 @@ export default function Pagina() {
   return (
     <main data-vertical="account">
       <div className="lists-page">
-        <AdSlot className="op-slot--lists-top" id="lists-top" />
+        <AdSlot className="cin-adslot--lists-top" id="lists-top" />
         <ListsPanel />
-        <AdSlot className="op-slot--lists-billboard" id="lists-billboard" />
+        <AdSlot className="cin-adslot--lists-billboard" id="lists-billboard" />
       </div>
     </main>
   )

@@ -219,10 +219,10 @@ export function AdSlotClient({ className, id, tags }: AdSlotClientProps): ReactN
 
   const component = decision?.component ?? definition.components.desktop[0]
   const classes = [
-    'op-slot',
-    definition.sidebar ? 'op-slot--sidebar' : null,
-    phase === 'ready' ? 'op-slot--ready' : 'op-slot--loading',
-    phase === 'collapsing' ? 'op-slot--collapsing' : null,
+    'cin-adslot',
+    definition.sidebar ? 'cin-adslot--sidebar' : null,
+    phase === 'ready' ? 'cin-adslot--ready' : 'cin-adslot--loading',
+    phase === 'collapsing' ? 'cin-adslot--collapsing' : null,
     className ?? null,
   ]
     .filter((value): value is string => value !== null && value !== '')

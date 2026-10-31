@@ -45,7 +45,7 @@
    das abas, exatamente como o canonico (`flex: 0 1 728px; min-width: 0`). Ela
    ENCOLHE com a coluna em vez de vazar; abaixo de 1024px desce para uma linha
    propria sob as abas, com a largura inteira da coluna. A classe e do proprio
-   slot — sem anuncio, nada sobra no cabecalho. Duas classes (e nao `.op-slot`,
+   slot — sem anuncio, nada sobra no cabecalho. Duas classes (e nao `.cin-adslot`,
    que e bloco do componente e nao desta folha — guarda R2) para vencer a folha
    do componente, que carrega depois. */
 .nws-header .nws-header__ad {

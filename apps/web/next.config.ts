@@ -82,9 +82,11 @@ const AUTH_BOUNDARY_ROUTE_TREES = ["auth", "account", "me"] as const;
  * agora trocaria zero reducao de superficie por uma falha silenciosa de login
  * depois.
  *
- * `browsing-topics=()` entra porque o app nao tem publicidade: os contratos
- * canonicos de home/noticia/explorar ja asseguram ausencia de `doubleclick` e
- * `adsbygoogle` no HTML. Sem anuncio, inferencia de topico e so superficie.
+ * `browsing-topics=()` entra porque o app nao tem publicidade COMPORTAMENTAL:
+ * `tests/web/sem-adsense.test.ts` assegura ausencia de `doubleclick` e
+ * `adsbygoogle`, e o unico anuncio do site, o OpaPreço Ads das materias
+ * (2026-10-31), escolhe a oferta pelo CONTEUDO da pagina, sem cookie e sem
+ * Topics API. Inferencia de topico seria so superficie.
  */
 const PERMISSIONS_POLICY = [
   "accelerometer=()",

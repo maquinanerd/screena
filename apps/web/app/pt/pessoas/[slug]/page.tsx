@@ -475,7 +475,7 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
 
         {/* OpaPreço · person-bottom — grade entre as fotos e a filmografia,
             como no canônico (margem 56/0). */}
-        <AdSlot className="op-slot--person-bottom" id="person-bottom" tags={{ vertical: 'person' }} />
+        <AdSlot className="cin-adslot--person-bottom" id="person-bottom" tags={{ vertical: 'person' }} />
 
         <section aria-labelledby="person-filmography-title" className="section">
           <div className="section-head">

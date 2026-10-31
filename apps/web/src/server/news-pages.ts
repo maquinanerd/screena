@@ -76,6 +76,8 @@ export interface NewsIndexData {
 }
 
 export interface NewsArticleData {
+  /** Id do artigo (`articles.id`), estavel entre trocas de slug: o `content-id` do anuncio. */
+  articleId: string;
   view: NewsArticleView;
   indexability: IndexabilityResult;
   canonicalSlug: string;
@@ -351,6 +353,7 @@ export const getNewsArticleData = cache(
     });
 
     return {
+      articleId: translation.articleId.toString(),
       view,
       indexability,
       canonicalSlug: translation.slug,

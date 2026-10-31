@@ -224,7 +224,7 @@ export default async function ExplorePage({
 
         {/* OpaPreço · discover-top — grade sob a busca (margem 0/36). É o único
             slot do Explorar no canônico. */}
-        <AdSlot className="op-slot--discover-top" id="discover-top" tags={{ vertical: 'mixed' }} />
+        <AdSlot className="cin-adslot--discover-top" id="discover-top" tags={{ vertical: 'mixed' }} />
 
         <DiscoverFilterableRails
           emAlta={discover.emAlta}
