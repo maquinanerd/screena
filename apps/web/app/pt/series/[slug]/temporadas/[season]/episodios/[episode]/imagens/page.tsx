@@ -187,7 +187,10 @@ export default async function EpisodeImagesPage({ params }: { params: Promise<Ro
         ]}
         entityPath={canonicalUrl}
         entityTitle={view.episodeTitle}
-        facets={[...images.kindFacets, ...images.languageFacets]}
+        facetGroups={[
+          { dimension: 'kind', facets: images.kindFacets },
+          { dimension: 'lang', facets: images.languageFacets },
+        ]}
         facetsLabel="Composição da galeria"
         heading={HEADING}
         total={images.total}

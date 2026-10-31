@@ -19,7 +19,7 @@
  */
 
 import { MOVIES_INDEX_PATH, PEOPLE_INDEX_PATH, SERIES_INDEX_PATH } from '../../src/lib/site'
-import type { GalleryFacet } from '../../src/lib/gallery-presenter'
+import { GalleryFacetFilter, GalleryLightbox, type GalleryFacetGroup } from './gallery-interactive'
 
 /**
  * As verticais que o casco desenha.
@@ -52,8 +52,12 @@ export interface GalleryShellProps {
   readonly total: number
   /** "imagem"/"imagens" ou "vídeo"/"vídeos". */
   readonly unit: readonly [string, string]
-  /** Filtros com contagem. Vazio = não desenha a faixa. */
-  readonly facets: readonly GalleryFacet[]
+  /**
+   * Filtros com contagem, por dimensão (tipo e/ou idioma). Sem nenhuma faceta,
+   * a faixa não é desenhada. Cada chip filtra a grade no navegador pelo
+   * `data-kind`/`data-lang` dos itens (`gallery-interactive.tsx`).
+   */
+  readonly facetGroups: readonly GalleryFacetGroup[]
   /** Rótulo do grupo de filtros, para leitor de tela. */
   readonly facetsLabel: string
   /** `true` quando a página está abaixo do piso e recebeu `noindex`. */
@@ -123,7 +127,8 @@ export function GalleryShell(props: GalleryShellProps) {
   ]
 
   return (
-    <div className="container">
+    // `data-gallery`: o contêiner que os filtros e o visualizador enxergam.
+    <div className="container" data-gallery="">
       <nav aria-label="Trilha de navegação" className="detail-hero__crumbs">
         <ol>
           {trilha.map((degrau, index) => (
@@ -158,29 +163,19 @@ export function GalleryShell(props: GalleryShellProps) {
         <p className="gallery-head__count">{contagem(props.total, props.unit)}</p>
       </header>
 
-      {props.facets.length > 0 ? (
-        <section aria-label={props.facetsLabel} className="gallery-facets">
-          <ul className="chip-row">
-            {props.facets.map((facet) => (
-              <li key={facet.value}>
-                {/*
-                  Chip SEM interação por enquanto: ele informa a composição
-                  ("12 pôsteres, 40 cenas"), que é dado real. Um chip clicável
-                  que não filtrasse seria pior que um chip informativo — e
-                  filtrar no cliente exigiria `use client` e um segundo caminho
-                  de decisão fora do presenter.
-                */}
-                <span className="chip chip--static">
-                  {facet.label}
-                  <span className="chip__count">{facet.count}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {/* Chips que FILTRAM (desde 30/10/2026): a contagem continua sendo o dado
+          real do presenter, e o filtro só esconde o que já veio do servidor. */}
+      <GalleryFacetFilter
+        groups={props.facetGroups}
+        label={props.facetsLabel}
+        total={props.total}
+        unit={props.unit[1]}
+      />
 
       {props.children}
+
+      {/* Clique numa imagem abre o visualizador, sem sair do site. */}
+      <GalleryLightbox />
 
       {props.belowFloor ? (
         // A ausência FALA. A página responde (o conteúdo existe), mas não

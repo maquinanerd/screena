@@ -170,7 +170,12 @@
   padding: 0;
 }
 
+/* `display: block` NAO e opcional: a capa e um <span> (fica dentro do <a> do
+   card) e `aspect-ratio` nao vale em caixa inline. Sem ele a capa media 0px de
+   altura, a imagem vazava por baixo do titulo e o card invadia o feed abaixo
+   (visto em producao em 30/10/2026, nas 3 capas da linha de destaques). */
 .nws-card__cover {
+  display: block;
   position: relative;
   aspect-ratio: 16 / 10;
   border-radius: var(--r-card);

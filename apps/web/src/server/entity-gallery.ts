@@ -159,6 +159,46 @@ export async function countGalleryMedia(
 }
 
 /**
+ * Cenas para os cartões da banda de mídia da ficha (30/10/2026).
+ *
+ * Os três cartões à direita do destaque ("Imagens e Pôsteres", "Notícias e
+ * Eventos", "Trailers e Teasers") usavam TODOS o mesmo backdrop da ficha — o
+ * mesmo quadro repetido três vezes. Esta porta devolve até três OUTRAS cenas do
+ * mesmo título (backdrop/still, as sem texto primeiro, depois as mais votadas),
+ * sem a que a ficha já usa no destaque. Só caminhos: a URL e o portão de licença
+ * de imagem continuam com quem monta o backdrop (`tmdbImageUrlIfAllowed`).
+ */
+export async function getMediaBandScenePaths(
+  prisma: PrismaClient,
+  entityType: GalleryOwnerType,
+  tmdbId: number,
+  excludeFilePath: string | null,
+): Promise<readonly string[]> {
+  const rows = await prisma.tmdbImage.findMany({
+    where: {
+      entityType,
+      tmdbId,
+      imageType: { in: ["backdrop", "still"] },
+      ...(excludeFilePath === null ? {} : { filePath: { not: excludeFilePath } }),
+    },
+    select: { filePath: true, languageCode: true, voteAverage: true },
+    take: 40,
+  });
+  return [...rows]
+    .sort((a, b) => {
+      // Sem texto primeiro: um cartão pequeno com título estampado na arte
+      // compete com o rótulo branco que o cartão escreve por cima.
+      const textA = a.languageCode === null ? 0 : 1;
+      const textB = b.languageCode === null ? 0 : 1;
+      if (textA !== textB) return textA - textB;
+      return Number(b.voteAverage ?? 0) - Number(a.voteAverage ?? 0);
+    })
+    .map((row) => row.filePath)
+    .filter((path, index, all) => all.indexOf(path) === index)
+    .slice(0, 3);
+}
+
+/**
  * Teto de fotos que uma pessoa traz para o processo de render.
  *
  * ALTO, não ausente — mesma razão do teto de 240 das imagens de título. O TMDB
