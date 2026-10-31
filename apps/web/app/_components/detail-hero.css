@@ -613,3 +613,90 @@ main[data-vertical='series'] .title-top__see-all {
     min-width: 0;
   }
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — barra superior da ficha (tela 08)
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+/* Ordem da tela 08 do canonico: destaque do trailer -> trilha -> titulo,
+   generos e sinopse -> botoes (Minha lista / Avaliar) e onde assistir ->
+   Score e notas -> elenco. Os blocos da barra superior viram itens da coluna
+   flex da ficha (`display: contents` no casco) e cada um recebe a sua ordem e
+   o recuo lateral que o casco dava. O HTML (e a ordem de leitura do leitor de
+   tela) nao muda; o desktop tambem nao. */
+@media (max-width: 767px) {
+  main[data-vertical] > .detail-hero--title {
+    display: contents;
+  }
+  main[data-vertical] > .detail-hero--title .title-top {
+    display: contents;
+  }
+
+  main[data-vertical] .detail-hero--title .detail-hero__crumbs {
+    order: -9;
+    padding: 12px var(--pad-page-mobile) 0;
+  }
+  main[data-vertical] .detail-hero--title .title-top__main {
+    order: -8;
+    /* 'none': a base de 460px do desktop viraria ALTURA na coluna flex. */
+    flex: none;
+    padding: 10px var(--pad-page-mobile) 0;
+  }
+  main[data-vertical] .detail-hero--title .title-top__score {
+    order: -6;
+    flex: none;
+    padding: 22px var(--pad-page-mobile) 0;
+  }
+  main[data-vertical] .detail-hero--title .title-top__cast {
+    order: -5;
+    flex: none;
+    padding: 24px 0 8px;
+  }
+
+  /* Titulo, generos e sinopse na escala da tela 08. */
+  .title-top__title {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+  .title-top__synopsis {
+    font-size: 14.5px;
+    line-height: 1.6;
+  }
+
+  /* Elenco: scroll horizontal com avatares de 64px (contrato: "Elenco: grid ->
+     scroll horizontal <=767"). O rotulo e o "ver todos" mantem o recuo. */
+  .title-top__cast-label,
+  .title-top__see-all {
+    margin-inline: var(--pad-page-mobile);
+  }
+  .title-top__people {
+    overflow-x: auto;
+    gap: 14px;
+    padding: 0 var(--pad-page-mobile) 4px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .title-top__people::-webkit-scrollbar {
+    display: none;
+  }
+  .title-top__people > li {
+    flex: 0 0 88px;
+  }
+  .title-top__avatar {
+    width: 64px;
+    height: 64px;
+  }
+
+  /* Trilha e "ver todos": alvo de toque. */
+  .detail-hero__crumbs a,
+  .title-top__see-all {
+    display: inline-block;
+    padding-block: 8px;
+  }
+}

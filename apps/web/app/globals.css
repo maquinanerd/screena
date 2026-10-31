@@ -3452,3 +3452,55 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   outline: 2px solid var(--footer-text-primary);
   outline-offset: 2px;
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — regras globais
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .hero__eyebrow,
+  .hero__cert,
+  .glimpse-card__badge,
+  .eyebrow,
+  .badge,
+  .art-crumb__sep,
+  .art-hero__credit,
+  .footer__credits-label,
+  .footer__credit-role,
+  .footer__copyright,
+  .footer__trademarks {
+    font-size: 12px;
+  }
+
+  /* Titulo de secao: 24px no celular, nunca menor (contrato). */
+  .section-title {
+    font-size: 24px;
+  }
+
+  /* Trilhos: no celular o gesto de arrastar ja navega; as setas ficavam POR
+     CIMA dos posteres, cobrindo arte e titulo. */
+  .rail-arrow {
+    display: none;
+  }
+
+  /* Pontos do carrossel: o desenho continua 8x5, mas o alvo de toque cresce
+     para ~20x25 por uma area invisivel em volta. */
+  .hero__dot {
+    position: relative;
+  }
+  .hero__dot::after {
+    content: '';
+    position: absolute;
+    inset: -10px -6px;
+  }
+
+  /* Trilha da materia: links de texto com alvo de toque decente. */
+  .art-crumb a {
+    display: inline-block;
+    padding-block: 6px;
+  }
+}

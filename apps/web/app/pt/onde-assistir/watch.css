@@ -257,3 +257,18 @@
   font-weight: 600;
   color: var(--c-text-secondary, #6e6a61);
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — onde assistir
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .watch-hero__service-routes,
+  .watch-card__type {
+    font-size: 12px;
+  }
+}
