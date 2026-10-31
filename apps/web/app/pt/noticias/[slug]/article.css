@@ -231,10 +231,15 @@
   hyphens: none;
 }
 
+/* O poster tem tamanho FIXO (172x258, 2:3) e fica no topo do card. Sem o
+   `align-self`, o flex esticava a caixa ate a altura do corpo: com resumo
+   longo o poster passava de 400px e o `object-fit: cover` mostrava so um
+   recorte ampliado no meio da arte (visto em producao em 31/10/2026). */
 .art-ficha__poster {
   display: block;
   width: 172px;
   flex-shrink: 0;
+  align-self: flex-start;
   aspect-ratio: 2 / 3;
   background: var(--c-bg-skeleton);
   overflow: hidden;
@@ -536,8 +541,63 @@
   padding: 0;
 }
 
+/* Entidades citadas: os CHIPS do canonico ("Tags + share"), lado a lado e
+   quebrando linha, a esquerda do compartilhar. Antes cada item era um bloco
+   numa coluna, com o selo vermelho colado no nome. O chip leva o tipo escrito
+   ("Filme"/"Serie"/"Pessoa") e a cor do tipo so reforca. */
+.related-entities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+.related-entities a {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 100%;
+  padding: 7px 13px;
+  background: var(--c-bg-muted);
+  border: 1px solid var(--c-border);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--c-text-primary);
+  transition: border-color 0.15s ease;
+}
+
+.related-entities a:hover,
+.related-entities a:focus-visible {
+  border-color: var(--c-text-primary);
+}
+
+.related-entities__type {
+  flex: none;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa);
+}
+
+.related-entities a[data-entity='movie'] .related-entities__type {
+  color: var(--c-accent-movie-dark);
+}
+
+.related-entities a[data-entity='tv'] .related-entities__type {
+  color: var(--c-accent-series-dark);
+}
+
+.related-entities__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .art-share__row {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 10px;
 }
@@ -575,7 +635,14 @@
   gap: 24px;
 }
 
+/* `display: block` NAO e opcional: a capa e um <span> e `aspect-ratio` nao
+   vale em caixa inline. Sem ele a imagem tomava a altura do card inteiro
+   (262x280 em vez de 262x164), o rotulo, o titulo e a data escorriam para
+   FORA do link e o rodape cobria a data — o "Leia tambem" parecia colado no
+   rodape (visto em producao em 31/10/2026). Mesmo defeito das capas de
+   /pt/noticias, corrigido em 30/10. */
 .read-also__cover {
+  display: block;
   position: relative;
   aspect-ratio: 16 / 10;
   overflow: hidden;
@@ -718,14 +785,50 @@
     font-size: 12px;
   }
 
-  /* Entidades citadas e fontes: alvo de toque. */
+  /* Entidades citadas e fontes: alvo de toque. No celular o chip sobe para
+     13px e o tipo para 12px (piso do contrato). */
   .related-entities a {
     display: inline-flex;
     align-items: center;
     min-height: 36px;
+    font-size: 13px;
+  }
+  .related-entities__type {
+    font-size: 12px;
+    letter-spacing: 0.06em;
   }
   .art-sources a {
     display: inline-block;
     padding-block: 6px;
+  }
+}
+
+/* Leia tambem no celular: LISTA COMPACTA, como o feed de /pt/noticias —
+   miniatura 16:10 de 112px ao lado do rotulo, titulo e data. Na coluna unica
+   cada card com a capa na largura toda passava de 330px. */
+@media (max-width: 599px) {
+  .read-also__grid {
+    gap: 0;
+  }
+  .read-also__grid > a {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    column-gap: 14px;
+    align-items: start;
+    border-top: 1px solid var(--c-border);
+    padding: 16px 0;
+  }
+  .read-also__cover {
+    grid-row: 1 / span 3;
+  }
+  .read-also__cat {
+    margin: 0;
+  }
+  .read-also__title {
+    font-size: 15px;
+    margin: 4px 0 0;
+  }
+  .read-also__date {
+    margin-top: 6px;
   }
 }
