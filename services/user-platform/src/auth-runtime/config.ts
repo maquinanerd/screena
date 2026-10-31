@@ -57,7 +57,8 @@ export const C7D_DEFAULTS = {
   // juntos pediria a toda a base um novo aceite de um documento intacto.
   // `2026-10`: medicao de audiencia (Cloudflare Web Analytics e GA4 com
   // consentimento) — mudou o texto da Privacidade, nao o dos Termos.
-  privacyPolicyVersion: "2026-10",
+  // `2026-10.2`: ofertas afiliadas do OpaPreco Ads nas materias.
+  privacyPolicyVersion: "2026-10.2",
   sessionTtlHours: 720,
   deletionGraceDays: 30,
 } as const;

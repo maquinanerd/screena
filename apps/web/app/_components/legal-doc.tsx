@@ -55,8 +55,11 @@ export const LEGAL_TERMS_VERSION = '2026-08'
  *
  * `2026-10`: medição de audiência — Cloudflare Web Analytics sem cookie e
  * Google Analytics 4 só com autorização (itens 2.3, 3, 5.6, 5.7, 6 e 7).
+ *
+ * `2026-10.2`: ofertas afiliadas do OpaPreço Ads nas matérias (itens 2.3, 3,
+ * 5.8, 6, 7, 11 e 12). Mesmo mês da anterior, por isso o sufixo.
  */
-export const LEGAL_PRIVACY_VERSION = '2026-10'
+export const LEGAL_PRIVACY_VERSION = '2026-10.2'
 
 /**
  * Marca um dado que só o controlador pode preencher (razão social, CNPJ,

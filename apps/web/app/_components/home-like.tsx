@@ -314,7 +314,7 @@ export function HomeLike({
       {/* OpaPreço · home-after-popular (canônico: grade 4 itens, margem 56/56).
           Sem ad server configurado o slot não renderiza nada. */}
       <div className="container">
-        <AdSlot className="op-slot--home-popular" id="home-after-popular" tags={adTags} />
+        <AdSlot className="cin-adslot--home-popular" id="home-after-popular" tags={adTags} />
       </div>
 
       {/* Filmes em alta — certified-fresh cards (band condicional) */}
@@ -343,7 +343,7 @@ export function HomeLike({
 
       {/* OpaPreço · home-after-movies (margem 56/0) */}
       <div className="container">
-        <AdSlot className="op-slot--home-after" id="home-after-movies" tags={adTags} />
+        <AdSlot className="cin-adslot--home-after" id="home-after-movies" tags={adTags} />
       </div>
 
       {/* Séries da semana — certified-fresh cards (band condicional) */}
@@ -393,7 +393,7 @@ export function HomeLike({
 
       {/* OpaPreço · home-after-coming-soon (margem 56/0) */}
       <div className="container">
-        <AdSlot className="op-slot--home-after" id="home-after-coming-soon" tags={adTags} />
+        <AdSlot className="cin-adslot--home-after" id="home-after-coming-soon" tags={adTags} />
       </div>
 
       {/* Notícias & entrevistas — chips + lead 430 + grade 2x2 */}

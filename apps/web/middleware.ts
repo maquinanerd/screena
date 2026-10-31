@@ -4,6 +4,10 @@ import type { NextRequest } from "next/server";
 import { TMDB_IMAGE_HOST } from "@screena/public-contracts";
 
 import {
+  OPAPRECO_ADS_ENDPOINT,
+  OPAPRECO_ADS_IMAGE_ORIGINS,
+} from "./src/lib/opapreco-ads";
+import {
   resolveLocale,
   rootRedirectPath,
 } from "./src/lib/root-locale";
@@ -79,6 +83,16 @@ import { needsTrailingSlash } from "./src/lib/trailing-slash";
  *             `googletagmanager.com` serve o gtag.js e os hosts
  *             `*.google-analytics.com` / `*.analytics.google.com` recebem as
  *             coletas do GA4 — que so carrega depois do "Aceitar".
+ * OpaPreço Ads (`src/lib/opapreco-ads.ts`, 2026-10-31): `opapreco.com.br`
+ *             serve o script e a folha de estilo do SDK (`script-src`,
+ *             `style-src`), recebe o pedido da oferta e os beacons de
+ *             impressao e clique (`connect-src`) e serve parte das imagens de
+ *             produto; a outra parte vem do CDN de imagem da Shopee,
+ *             `cf.shopee.com.br` (`img-src`). As duas origens saem de
+ *             `OPAPRECO_ADS_IMAGE_ORIGINS`, a mesma lista que o servidor do
+ *             OpaPreço aceita para imagem. O `<style>` que o SDK injeta ja
+ *             passa pelo `'unsafe-inline'` de `style-src`. O clique NAO precisa
+ *             de origem aqui: e navegacao para `s.shopee.com.br`, nao requisicao.
  */
 const ANALYTICS_SCRIPT_SOURCES =
   "https://static.cloudflareinsights.com https://www.googletagmanager.com";
@@ -87,6 +101,7 @@ const ANALYTICS_CONNECT_SOURCES =
   "https://*.analytics.google.com https://www.googletagmanager.com";
 const ANALYTICS_IMAGE_SOURCES =
   "https://*.google-analytics.com https://www.googletagmanager.com";
+const ADS_IMAGE_SOURCES = OPAPRECO_ADS_IMAGE_ORIGINS.join(" ");
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -94,12 +109,12 @@ const CONTENT_SECURITY_POLICY = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  `img-src 'self' https://${TMDB_IMAGE_HOST} ${ANALYTICS_IMAGE_SOURCES} data: blob:`,
+  `img-src 'self' https://${TMDB_IMAGE_HOST} ${ANALYTICS_IMAGE_SOURCES} ${ADS_IMAGE_SOURCES} data: blob:`,
   "media-src 'self'",
   "font-src 'self' data:",
-  `connect-src 'self' ${ANALYTICS_CONNECT_SOURCES}`,
-  `script-src 'self' 'unsafe-inline' ${ANALYTICS_SCRIPT_SOURCES}`,
-  "style-src 'self' 'unsafe-inline'",
+  `connect-src 'self' ${ANALYTICS_CONNECT_SOURCES} ${OPAPRECO_ADS_ENDPOINT}`,
+  `script-src 'self' 'unsafe-inline' ${ANALYTICS_SCRIPT_SOURCES} ${OPAPRECO_ADS_ENDPOINT}`,
+  `style-src 'self' 'unsafe-inline' ${OPAPRECO_ADS_ENDPOINT}`,
   "frame-src https://www.youtube-nocookie.com",
   // `upgrade-insecure-requests` ESTAVA aqui e foi removida em 2026-09-11.
   //

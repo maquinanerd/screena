@@ -15,7 +15,7 @@ import {
 
 import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-body'
 import { CardBookmark } from '../../../_components/card-bookmark'
-import { AdSlot } from '../../../_components/opapreco/ad-slot'
+import { OpaPrecoAd } from '../../../_components/opapreco-ad'
 import { planArticleAdCuts } from '../../../../src/lib/article-ad-positions'
 import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
@@ -33,7 +33,7 @@ import './article.css'
  * Artigo — tela 05 do canônico: hero de CAPA full-bleed sob o header
  * transparente (breadcrumb no topo; data → headline 52 → deck → assinatura
  * no rodapé do hero; crédito da capa no canto inferior direito) → corpo de
- * leitura 720 justificado (17/1.8) → AdSlot mid-article → FICHA DO TÍTULO
+ * leitura 720 justificado (17/1.8) com os slots OpaPreço → FICHA DO TÍTULO
  * (entity card real da 1ª entidade citada) → fonte → entidades citadas +
  * share → nota de transparência de IA → LEIA TAMBÉM (4 artigos reais).
  *
@@ -173,7 +173,7 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   const data = await getNewsArticleData(slug)
   if (data === null) notFound()
 
-  const { view, indexability, canonicalUrl, readAlso, bodyBlocks } = data
+  const { view, indexability, canonicalUrl, readAlso, bodyBlocks, articleId } = data
   const isUnderReview = indexability.decision !== 'index'
   const card = view.entityCard
 
@@ -192,10 +192,13 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
       )
     : planArticleAdCuts(paragraphs.map(() => true))
   const inline01Cut = adCuts.inline01 ?? (hasStructuredBody ? bodyBlocks.length : paragraphs.length)
-  const adTags = {
-    vertical: 'news',
-    entity: view.related[0]?.title,
-    category: view.category ?? undefined,
+  // O contexto que o slot manda ao OpaPreço para escolher a oferta: o id e a
+  // categoria da matéria e o que ela cita (o CMS não tem tags editoriais).
+  // URL canônica e título o próprio script lê do <head>. Nada do leitor.
+  const adContext = {
+    contentId: articleId,
+    section: view.category,
+    tags: view.related.map((entity) => entity.title),
   } as const
 
   // A MATÉRIA MOSTRA ALGUMA IMAGEM?
@@ -405,15 +408,15 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
       {/* Corpo de leitura 720 */}
       <article className="art-body">
         {/* OpaPreço · article-top — abaixo do título e da linha fina, nunca
-            acima: product_hero_v1 no desktop/tablet, product_compact_v1 no
-            telefone (o hero ocuparia a primeira tela antes do texto). */}
-        <AdSlot className="op-slot--article-top" id="article-top" tags={adTags} />
+            acima: o servidor do OpaPreço manda product_hero_v1 no
+            desktop/tablet e product_compact_v1 no telefone. */}
+        <OpaPrecoAd className="art-ad art-ad--top" slotKey="article-top" {...adContext} />
 
         {hasStructuredBody ? (
           <>
             <ArticleBody blocks={bodyBlocks.slice(0, inline01Cut)} />
             {adCuts.inline01 !== null ? (
-              <AdSlot className="op-slot--article-inline-01" id="article-inline-01" tags={adTags} />
+              <OpaPrecoAd className="art-ad art-ad--inline-01" slotKey="article-inline-01" {...adContext} />
             ) : null}
             <ArticleBody blocks={bodyBlocks.slice(inline01Cut)} />
           </>
@@ -423,7 +426,7 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
               <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
             ))}
             {adCuts.inline01 !== null ? (
-              <AdSlot className="op-slot--article-inline-01" id="article-inline-01" tags={adTags} />
+              <OpaPrecoAd className="art-ad art-ad--inline-01" slotKey="article-inline-01" {...adContext} />
             ) : null}
             {paragraphs.slice(inline01Cut).map((paragraph, index) => (
               <p key={`after-${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
@@ -435,7 +438,7 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
             três parágrafos depois do inline-01. price_drop_v1 quando há queda
             comprovada; senão o servidor manda product_compact_v1. */}
         {adCuts.inline02 !== null ? (
-          <AdSlot className="op-slot--article-inline-02" id="article-inline-02" tags={adTags} />
+          <OpaPrecoAd className="art-ad art-ad--inline-02" slotKey="article-inline-02" {...adContext} />
         ) : null}
 
         {/* Ficha do título — entity card real da 1ª entidade citada.
@@ -581,9 +584,10 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
       </article>
 
       {/* OpaPreço · article-bottom — grade na coluna de 720px, antes dos
-          relacionados (spec §6). */}
+          relacionados (spec §6). Sem barra lateral na matéria, o `sidebar`
+          não entra: são quatro slots, o teto por matéria. */}
       <div className="art-bottom-ad">
-        <AdSlot className="op-slot--article-bottom" id="article-bottom" tags={adTags} />
+        <OpaPrecoAd className="art-ad art-ad--bottom" slotKey="article-bottom" {...adContext} />
       </div>
 
       {/* Leia também — 4 artigos reais */}

@@ -193,10 +193,10 @@ describe('estado desabilitado (oferta vencida depois do render)', () => {
 
 describe('raiz do slot no HTML do servidor', () => {
   it('data-op-slot, componente esperado, reserva por faixa, skeleton — e nenhum criativo', () => {
-    const html = renderToStaticMarkup(<AdSlotClient className="op-slot--title-mid" id="title-mid" />)
+    const html = renderToStaticMarkup(<AdSlotClient className="cin-adslot--title-mid" id="title-mid" />)
     expect(html).toContain('data-op-slot="title-mid"')
     expect(html).toContain('data-ad-component="product_hero_v1"')
-    expect(html).toContain('class="op-slot op-slot--loading op-slot--title-mid"')
+    expect(html).toContain('class="cin-adslot cin-adslot--loading cin-adslot--title-mid"')
     expect(html).toContain('--op-reserve-mobile:642px;--op-reserve-tablet:344px;--op-reserve-desktop:344px')
     expect(html).toContain('aria-hidden="true" class="op-skeleton op-skeleton--hero"')
     expect(html).not.toContain('<a ')
@@ -211,7 +211,7 @@ describe('raiz do slot no HTML do servidor', () => {
 
   it('lateral: classe que esconde abaixo de 1024px, sem reserva no celular', () => {
     const html = renderToStaticMarkup(<AdSlotClient id="news-sidebar" />)
-    expect(html).toContain('class="op-slot op-slot--sidebar op-slot--loading"')
+    expect(html).toContain('class="cin-adslot cin-adslot--sidebar cin-adslot--loading"')
     expect(html).toContain('--op-reserve-mobile:0px;--op-reserve-tablet:0px;--op-reserve-desktop:416px')
   })
 })

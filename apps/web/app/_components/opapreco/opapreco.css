@@ -18,7 +18,7 @@
 
 /* ---- raiz do slot: tokens, container e reserva de altura ---------- */
 
-.op-slot {
+.cin-adslot {
   --op-bg: #ffffff;
   --op-surface: #f7f7f7;
   --op-surface-hover: #f0f0f0;
@@ -66,18 +66,18 @@
 /* Reserva enquanto o anuncio nao chega (SPEC §14): a altura do componente
    esperado naquela faixa de viewport. O valor vem do registro de slots
    (`src/lib/opapreco/slots.ts`) como custom property na raiz. */
-.op-slot--loading {
+.cin-adslot--loading {
   min-height: var(--op-reserve-mobile);
 }
 
 @media (min-width: 768px) {
-  .op-slot--loading {
+  .cin-adslot--loading {
     min-height: var(--op-reserve-tablet);
   }
 }
 
 @media (min-width: 1024px) {
-  .op-slot--loading {
+  .cin-adslot--loading {
     min-height: var(--op-reserve-desktop);
   }
 }
@@ -93,7 +93,7 @@
    a mesma especificidade nas tres faixas (senao o do celular venceria o do
    desktop), e o `display` deixa a lateral de fora — ela some abaixo de 1024px
    pela regra propria. */
-.op-slot--ready:is(
+.cin-adslot--ready:is(
     [data-ad-component='product_hero_v1'],
     [data-ad-component='product_compact_v1'],
     [data-ad-component='product_card_v1'],
@@ -103,7 +103,7 @@
   min-height: var(--op-reserve-mobile);
 }
 
-.op-slot--ready:not(.op-slot--sidebar):is(
+.cin-adslot--ready:not(.cin-adslot--sidebar):is(
     [data-ad-component='product_hero_v1'],
     [data-ad-component='product_compact_v1'],
     [data-ad-component='product_card_v1'],
@@ -114,7 +114,7 @@
   flex-direction: column;
 }
 
-.op-slot--ready:is(
+.cin-adslot--ready:is(
     [data-ad-component='product_hero_v1'],
     [data-ad-component='product_compact_v1'],
     [data-ad-component='product_card_v1'],
@@ -126,7 +126,7 @@
 }
 
 @media (min-width: 768px) {
-  .op-slot--ready:is(
+  .cin-adslot--ready:is(
       [data-ad-component='product_hero_v1'],
       [data-ad-component='product_compact_v1'],
     [data-ad-component='product_compact_v1'],
@@ -139,7 +139,7 @@
 }
 
 @media (min-width: 1024px) {
-  .op-slot--ready:is(
+  .cin-adslot--ready:is(
       [data-ad-component='product_hero_v1'],
       [data-ad-component='product_compact_v1'],
     [data-ad-component='product_compact_v1'],
@@ -152,12 +152,12 @@
 }
 
 /* Lateral (product_card_v1 vertical, 300px): so >= 1024px, presa ao topo. */
-.op-slot--sidebar {
+.cin-adslot--sidebar {
   display: none;
 }
 
 @media (min-width: 1024px) {
-  .op-slot--sidebar {
+  .cin-adslot--sidebar {
     display: block;
     position: sticky;
     top: 24px;
@@ -166,7 +166,7 @@
 
 /* Colapso: altura ate 0 em 200ms, sem mensagem (SPEC §7). A especificidade
    dupla vence a margem que a pagina pos na raiz pela `className`. */
-.op-slot.op-slot--collapsing {
+.cin-adslot.cin-adslot--collapsing {
   min-height: 0;
   overflow: hidden;
   margin-top: 0;
@@ -992,7 +992,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .op-slot {
+  .cin-adslot {
     --op-duration: 0ms;
     --op-collapse: 0ms;
   }
@@ -1219,59 +1219,59 @@
    que o canonico da a cada `data-op-slot`, e ela mora NO PROPRIO slot: quando
    o slot nao renderiza (ad server desligado, 204, erro, timeout de 1,5 s) a
    margem some junto e nao sobra buraco na pagina.
-   Moram NESTA folha (e nao no globals) porque o bloco `.op-slot` so pode
+   Moram NESTA folha (e nao no globals) porque o bloco `.cin-adslot` so pode
    ser estilizado numa folha (tests/web/css-sheets-exclusive.test.ts). Duas
-   classes no seletor para vencer a regra base `.op-slot` acima.
+   classes no seletor para vencer a regra base `.cin-adslot` acima.
    No telefone os respiros de 52/56px descem para ~40px (mesma escala dos
    intervalos entre secoes). */
 
-.op-slot.op-slot--home-popular {
+.cin-adslot.cin-adslot--home-popular {
   margin: clamp(40px, 5vw, 56px) 0;
 }
 
-.op-slot.op-slot--home-after,
-.op-slot.op-slot--news-feed,
-.op-slot.op-slot--person-bottom {
+.cin-adslot.cin-adslot--home-after,
+.cin-adslot.cin-adslot--news-feed,
+.cin-adslot.cin-adslot--person-bottom {
   margin: clamp(40px, 5vw, 56px) 0 0;
 }
 
-.op-slot.op-slot--browse,
-.op-slot.op-slot--lists-after {
+.cin-adslot.cin-adslot--browse,
+.cin-adslot.cin-adslot--lists-after {
   margin: clamp(36px, 4.5vw, 52px) 0 0;
 }
 
-.op-slot.op-slot--lists-billboard {
+.cin-adslot.cin-adslot--lists-billboard {
   margin: clamp(32px, 4vw, 44px) 0 0;
 }
 
-.op-slot.op-slot--discover-top {
+.cin-adslot.cin-adslot--discover-top {
   margin: 0 0 36px;
 }
 
-.op-slot.op-slot--lists-top {
+.cin-adslot.cin-adslot--lists-top {
   margin: 0 0 44px;
 }
 
-.op-slot.op-slot--article-top {
+.cin-adslot.cin-adslot--article-top {
   margin: 0 0 40px;
 }
 
-.op-slot.op-slot--article-inline-01 {
+.cin-adslot.cin-adslot--article-inline-01 {
   margin: 40px 0 0;
 }
 
-.op-slot.op-slot--article-inline-02 {
+.cin-adslot.cin-adslot--article-inline-02 {
   margin: 44px 0 0;
 }
 
 /* article-bottom: 48px abaixo da materia, na coluna `.art-bottom-ad`. */
-.op-slot.op-slot--article-bottom {
+.cin-adslot.cin-adslot--article-bottom {
   margin: 48px 0 0;
 }
 
 /* As telas 17/18 vivem em app/dev/ad-preview/ad-preview.css; o anuncio dentro
    delas e um slot OpaPreço (`popup`, `interstitial`) sem margem propria. */
 
-.ad-tela__media .op-slot {
+.ad-tela__media .cin-adslot {
   margin: 0;
 }

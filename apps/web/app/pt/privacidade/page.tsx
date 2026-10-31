@@ -56,6 +56,19 @@ import '../../_components/legal.css'
  * meses de cookie, 14 meses de retenção, 6 meses de escolha) vivem no código ou
  * na configuração da propriedade — mudou lá, muda aqui.
  *
+ * REVISÃO 2026-10.2 (31/10/2026), a pedido do controlador: as matérias passaram
+ * a exibir ofertas afiliadas do OpaPreço Ads no lugar do AdSense. Itens 2.3, 3,
+ * 5.8 (novo; obrigações legais viraram 5.9), 6, 7, 11 e 12 descrevem o que
+ * `app/_components/opapreco-ad.tsx` carrega e o que o servidor do OpaPreço faz:
+ * o navegador de quem abre uma matéria fala com `opapreco.com.br` (script,
+ * estilo, pedido da oferta, beacons) e pode baixar a imagem do produto de
+ * `cf.shopee.com.br`, ANTES de qualquer clique e sem cookie; o pedido leva só a
+ * página. Que o OpaPreço não grava IP nem user-agent com o anúncio e apaga a
+ * exibição sem clique em 45 dias foi lido no repositório do OpaPreço
+ * (`packages/database/src/schema/ads.ts`, `docs/OPAPRECO-ADS-DATA-MODEL.md`) —
+ * mudou lá, muda aqui. O item 12 dizia "versão 2026-08" desde agosto; passou a
+ * ler a mesma constante do cabeçalho.
+ *
  * PENDÊNCIA QUE O TEXTO NÃO RESOLVE: `privacidade@cinerie.com` e
  * `contato@cinerie.com` ainda não existem como caixas configuradas. São os
  * canais canônicos declarados pelo controlador e por isso permanecem no texto,
@@ -92,6 +105,8 @@ import '../../_components/legal.css'
 export const dynamic = 'force-dynamic'
 
 const TITLE = 'Política de Privacidade'
+/** A vigência da versão `LEGAL_PRIVACY_VERSION`: no cabeçalho e no item 12. */
+const EFFECTIVE_DATE = '31 de outubro de 2026'
 const DESCRIPTION =
   'Como a Cinerie trata dados pessoais: o que coletamos, com que finalidade, ' +
   'por quanto tempo guardamos e como você exerce seus direitos de titular.'
@@ -127,7 +142,7 @@ export default function PrivacidadePage() {
     <>
       <LegalDoc
         breadcrumbLabel="Privacidade"
-        effectiveDate="30 de outubro de 2026"
+        effectiveDate={EFFECTIVE_DATE}
         title={TITLE}
         version={LEGAL_PRIVACY_VERSION}
       >
@@ -316,9 +331,11 @@ export default function PrivacidadePage() {
           </li>
           <li>
             <strong>Não usamos rastreamento publicitário.</strong> Não há Meta Pixel, Hotjar,
-            Clarity, pixel de anúncio ou gravação de sessão no site. A única medição de audiência
-            com cookies é o Google Analytics, e ele <strong>só carrega se você autorizar</strong>{' '}
-            (item 6.2).
+            Clarity, gravação de sessão nem anúncio de rede publicitária que acompanhe você de um
+            site para outro. A única medição de audiência com cookies é o Google Analytics, e ele{' '}
+            <strong>só carrega se você autorizar</strong> (item 6.2). As ofertas afiliadas das
+            matérias (item 5.8) contam quantas vezes cada anúncio foi visto e clicado, sem cookie e
+            sem saber quem viu.
           </li>
         </ul>
 
@@ -389,6 +406,14 @@ export default function PrivacidadePage() {
                 <td>
                   Consentimento (art. 7º, I), dado no aviso de cookies. Opcional e revogável a
                   qualquer momento (item 6.3).
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">Ofertas afiliadas nas matérias (OpaPreço Ads)</th>
+                <td>
+                  Legítimo interesse (art. 7º, IX), para manter o site com anúncios ligados ao assunto
+                  da matéria. A oferta é escolhida pela página, não por você: sem cookie, sem
+                  identificador e sem perfil (item 5.8).
                 </td>
               </tr>
             </tbody>
@@ -649,7 +674,39 @@ export default function PrivacidadePage() {
           e os termos de processamento de dados do Google Analytics.
         </p>
 
-        <h3>5.8 Cumprimento de obrigações legais</h3>
+        <h3>5.8 OpaPreço Ads e Shopee (ofertas afiliadas nas matérias)</h3>
+        <p>
+          As matérias exibem até quatro ofertas de produtos da Shopee, escolhidas e entregues pelo
+          OpaPreço Ads (<code>opapreco.com.br</code>). Cada oferta leva o aviso &quot;Link de
+          afiliado&quot;: se você comprar depois de clicar, a compra pode gerar comissão de
+          afiliado, sem custo a mais para você. A home, as listagens e as fichas de filmes, séries e
+          pessoas não exibem essas ofertas.
+        </p>
+        <p>
+          Ao abrir uma matéria, o seu navegador se conecta diretamente ao OpaPreço para carregar o
+          script e o estilo dos anúncios e pedir as ofertas. O pedido leva só informações da{' '}
+          <strong>página</strong>: o endereço e o título da matéria, a categoria, os títulos que ela
+          cita, o identificador da matéria, o tipo de tela (celular, tablet ou computador), a
+          largura do espaço do anúncio e o idioma.{' '}
+          <strong>Não leva cookie, e-mail, dado de conta nem identificador seu.</strong> Depois, o
+          navegador avisa o OpaPreço quando um anúncio ficou visível e quando você clicou nele, para
+          contar exibições e cliques.
+        </p>
+        <p>
+          As imagens dos produtos vêm do OpaPreço ou do servidor de imagens da Shopee (
+          <code>cf.shopee.com.br</code>). Como em qualquer conexão (item 5.2), o OpaPreço e a Shopee
+          podem receber o endereço IP, o user-agent e a data e a hora da requisição. O OpaPreço usa o
+          IP e o user-agent no momento do pedido, para limitar abuso e separar robôs de pessoas, e
+          não os grava junto dos registros de exibição e clique. A Cinerie não controla a retenção
+          desses registros técnicos pela Shopee.
+        </p>
+        <p>
+          Quando você clica numa oferta, vai direto para a Shopee (<code>s.shopee.com.br</code>).
+          Dali em diante, a Shopee trata os seus dados como controladora, sob a política de
+          privacidade dela.
+        </p>
+
+        <h3>5.9 Cumprimento de obrigações legais</h3>
         <p>Dados poderão ser compartilhados quando isso for necessário para:</p>
         <ul>
           <li>cumprir obrigação legal ou regulatória;</li>
@@ -667,7 +724,8 @@ export default function PrivacidadePage() {
         <p>
           A Cinerie usa <strong>dois cookies estritamente necessários</strong>, que só existem para
           quem entra na conta, e os <strong>cookies do Google Analytics</strong>, que só existem se
-          você autorizar no aviso de cookies. Não há cookie de publicidade.{' '}
+          você autorizar no aviso de cookies. Não há cookie de publicidade: as ofertas afiliadas das
+          matérias (item 5.8) não usam cookie.{' '}
           <strong>Nada que dependa da sua autorização carrega sozinho</strong>: o Google Analytics
           espera o seu &quot;Aceitar&quot; (item 6.2), e o player de vídeo espera o seu clique em
           assistir (item 6.1).
@@ -845,6 +903,16 @@ export default function PrivacidadePage() {
               <tr>
                 <th scope="row">Registros de envio de e-mail</th>
                 <td>Até 180 dias, ressalvados registros mantidos diretamente pela Brevo</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  Exibições e cliques das ofertas afiliadas (OpaPreço, sem IP, cookie ou identificador
+                  seu)
+                </th>
+                <td>
+                  Exibição sem clique: 45 dias. Com clique ou venda: guardados para conferir a
+                  comissão
+                </td>
               </tr>
               <tr>
                 <th scope="row">Dados do Google Analytics (só com autorização)</th>
@@ -1069,6 +1137,12 @@ export default function PrivacidadePage() {
           user-agent e informações sobre a imagem solicitada.
         </p>
         <p>
+          <strong>OpaPreço e Shopee</strong> — Ao abrir uma matéria, o navegador se conecta ao
+          OpaPreço e pode se conectar ao servidor de imagens da Shopee (item 5.8). Essas conexões
+          podem passar por redes de distribuição de conteúdo fora do Brasil e levam endereço IP,
+          user-agent e informações sobre a página, sem dado de conta.
+        </p>
+        <p>
           <strong>RapidAPI e APIs integradas</strong> — Consultas técnicas feitas pela Cinerie podem
           ser processadas fora do Brasil. Essas consultas não incluirão dados de conta ou dados
           comportamentais dos usuários.
@@ -1081,7 +1155,7 @@ export default function PrivacidadePage() {
 
         <h2>12. Alterações desta Política</h2>
         <p>
-          Esta Política entra em vigor em 4 de agosto de 2026 e corresponde à versão 2026-08.
+          Esta versão da Política ({LEGAL_PRIVACY_VERSION}) entra em vigor em {EFFECTIVE_DATE}.
         </p>
         <p>Mudanças relevantes serão acompanhadas de:</p>
         <ul>

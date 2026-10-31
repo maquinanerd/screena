@@ -185,6 +185,41 @@
   padding: 0 20px;
 }
 
+/* Slots OpaPreço da materia (`<op-slot>`, `_components/opapreco-ad.tsx`).
+   Daqui sai SO a margem em volta do slot, que e layout da materia. O estilo do
+   anuncio, a reserva de altura e o colapso sao do SDK do OpaPreço, e nenhuma
+   regra da Cinerie os sobrescreve.
+
+   A margem fica no proprio `<op-slot>` e zera quando o script o colapsa (sem
+   anuncio, `data-op-estado="colapsado"`): o slot vazio nao deixa buraco. */
+.art-ad--top {
+  margin: 0 0 40px;
+}
+
+.art-ad--inline-01 {
+  margin: 40px 0 0;
+}
+
+.art-ad--inline-02 {
+  margin: 44px 0 0;
+}
+
+.art-ad--bottom {
+  margin: 48px 0 0;
+}
+
+.art-ad[data-op-estado='colapsado'] {
+  margin: 0;
+}
+
+/* O slot do topo passou a ser o 1o filho do corpo, e o 1o paragrafo perdeu o
+   `p:first-child` que zera a margem dele (`art-body.css`). Mesma regra, um
+   irmao adiante: com anuncio, o espaco e a margem do slot; colapsado, o corpo
+   comeca onde comecava antes. */
+.art-body > .art-ad--top + p {
+  margin-top: 0;
+}
+
 /* Ficha do título — quebra o limite da coluna de leitura (720 → 880) */
 .art-ficha {
   margin: 44px -80px 0;

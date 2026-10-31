@@ -102,8 +102,25 @@ describe('notícias após o reset visual', () => {
     }
     for (const page of [index, article]) {
       expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
-      expect(page).toMatch(/<AdSlot [^>]*\bid="(?:news|article)-[a-z0-9-]+"/)
       expect(page).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
+    }
+    expect(index).toMatch(/<AdSlot [^>]*\bid="news-[a-z0-9-]+"/)
+    // A materia usa o SDK do OpaPreço (`<op-slot>`, 2026-10-31) nos quatro slots
+    // do corpo, na ordem do guia de integracao, e o de baixo antes do "Leia
+    // tambem". Coluna unica, sem barra lateral: o `sidebar` nao entra.
+    expect(article).not.toContain('<AdSlot')
+    expect(article).not.toContain('slotKey="sidebar"')
+    let adCursor = -1
+    for (const marker of [
+      'slotKey="article-top"',
+      'slotKey="article-inline-01"',
+      'slotKey="article-inline-02"',
+      'slotKey="article-bottom"',
+      'className="read-also"',
+    ]) {
+      const at = article.indexOf(marker)
+      expect(at, `slot ausente/fora de ordem: ${marker}`).toBeGreaterThan(adCursor)
+      adCursor = at
     }
     expect(article).toContain('view.heroImage !== null ?')
     // Tela 05: hero escuro -> corpo 720 -> ficha do titulo -> leia tambem
