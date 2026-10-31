@@ -40,7 +40,7 @@ import { chromium } from '@playwright/test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { RatingsPanel } from '../app/_components/ratings-panel'
+import { RatingsLine } from '../app/_components/ratings-panel'
 import { buildRatingsView } from '../src/lib/ratings-presenter'
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
@@ -68,6 +68,10 @@ const PAGES = [
   // markup COMPOSTO, nao so o arquivo da rota.
   path.join(webDir, 'app', '_components', 'entity-synopsis.tsx'),
   path.join(webDir, 'app', '_components', 'section-head.tsx'),
+  // Barra superior do canonico de 2026-10-30: a coluna "Elenco e Equipe".
+  path.join(webDir, 'app', '_components', 'title-top-cast.tsx'),
+  // Os episodios sairam da pagina de serie para `EpisodeList` (client).
+  path.join(webDir, 'app', '_components', 'episode-list.tsx'),
 ] as const
 
 /** As quatro larguras pedidas na auditoria + o piso de 320px do contrato. */
@@ -124,19 +128,27 @@ const SKELETON_CLASSES = [
   'detail-hero',
   'detail-container',
   'detail-hero__crumbs',
-  'detail-hero__grid',
-  'detail-hero__main',
-  'detail-hero__aside',
+  'title-top',
+  'title-top__main',
+  'title-top__score',
+  'title-top__cast',
+  'title-top__title',
+  'title-top__kicker',
+  'title-top__genres',
+  'title-top__synopsis',
+  'title-top__people',
+  'title-top__person',
+  'title-top__avatar',
+  'title-top__person-name',
+  'title-top__person-role',
+  'title-top__see-all',
   'detail-badge-row',
   'detail-badge',
-  'detail-hero__title',
-  'detail-hero__chips',
-  'detail-hero__meta-text',
-  'detail-hero__cert',
-  'detail-hero__synopsis',
+  'title-actions',
+  'title-actions__bar',
+  'title-actions__watch',
+  'title-actions__label',
   'detail-actions',
-  'detail-aside-block',
-  'detail-aside-block__label',
   'media-strip',
   'media-strip__grid',
   'media-strip__cell',
@@ -179,6 +191,10 @@ function assertSkeletonMatchesPages(): void {
   }
 }
 
+function person(initials: string, name: string, role: string): string {
+  return `<li><a class="title-top__person" href="#"><span class="title-top__avatar"><span aria-hidden="true">${initials}</span></span><span class="title-top__person-name">${name}</span><span class="title-top__person-role">${role}</span></a></li>`
+}
+
 function tile(initials: string, name: string, role: string): string {
   return `<li><a class="cast-tile" href="#"><span class="cast-tile__photo"><span aria-hidden="true">${initials}</span></span><p class="cast-tile__name">${name}</p><p class="cast-tile__role">${role}</p></a></li>`
 }
@@ -205,27 +221,29 @@ function episode(n: number): string {
  */
 function skeleton(vertical: 'movie' | 'series', chips: string): string {
   const isMovie = vertical === 'movie'
-  const meta = isMovie ? '2000 · 2h 35min' : '2024 · 2 temporadas · 16 episódios'
+  const genres = isMovie ? 'Ação · Drama · Aventura' : 'Drama · Mistério · Suspense'
   return `<main data-vertical="${vertical}">
-  <div class="detail-hero"><div class="detail-container">
+  <div class="detail-hero detail-hero--title"><div class="detail-container">
     <nav class="detail-hero__crumbs" aria-label="Trilha de navegação"><ol>
-      <li><a href="#">Início</a></li><li><a href="#">${isMovie ? 'Filmes' : 'Séries'}</a></li>
+      <li><a href="#">${isMovie ? 'Filmes' : 'Séries'}</a></li>
       <li aria-current="page">${isMovie ? 'Gladiador' : 'Vale dos Corvos'}</li>
     </ol></nav>
-    <div class="detail-hero__grid">
-      <div class="detail-hero__main">
-        <div class="detail-badge-row"><span class="detail-badge" data-entity-badge="${isMovie ? 'movie' : 'series'}">${isMovie ? 'Filme' : 'Série'}</span></div>
-        <h1 class="detail-hero__title">${isMovie ? 'Gladiador' : 'Vale dos Corvos'}</h1>
-        <ul class="detail-hero__chips"><li class="detail-hero__meta-text">${meta}</li><li class="detail-hero__cert">${isMovie ? '16 anos' : 'TV-MA'}</li></ul>
-        <p class="detail-hero__synopsis">Um general romano é traído e sua família assassinada por um imperador corrupto, e ele volta a Roma como gladiador em busca de vingança.</p>
-        <div class="detail-actions"><button type="button">Quero assistir</button><button type="button">Assistido</button></div>
+    <div class="title-top">
+      <div class="title-top__main">
+        <h1 class="title-top__title">${isMovie ? 'Gladiador (2000)' : 'Vale dos Corvos (2024)'}</h1>
+        <div class="detail-badge-row title-top__kicker"><span class="detail-badge" data-entity-badge="${isMovie ? 'movie' : 'series'}">${isMovie ? 'Filme' : 'Série'}</span><span class="title-top__genres">${genres}</span></div>
+        <p class="title-top__synopsis">Um general romano é traído e sua família assassinada por um imperador corrupto, e ele volta a Roma como gladiador em busca de vingança, enfrentando… <a class="title-top__read-more" href="#">Ler mais</a></p>
       </div>
-      <aside class="detail-hero__aside" aria-label="Notas e disponibilidade">
-        <div class="detail-aside-block detail-aside-block--first">
-          <p class="detail-aside-block__label">Avaliações</p>
-          ${chips}
-        </div>
-      </aside>
+      <div class="title-top__score">${chips}</div>
+      <div class="title-top__cast">
+        <p class="title-top__cast-label">Elenco e Equipe</p>
+        <ul class="title-top__people">
+          ${person('RC', 'Russell Crowe', 'como Maximus Decimus Meridius')}
+          ${person('JP', 'Joaquin Phoenix', 'como Commodus')}
+          ${person('RS', 'Ridley Scott', 'Direção')}
+        </ul>
+        <a class="title-top__see-all" href="#">Ver elenco e equipe completos</a>
+      </div>
     </div>
   </div></div>
 
@@ -236,6 +254,13 @@ function skeleton(vertical: 'movie' | 'series', chips: string): string {
       <a class="media-strip__cell" href="#"><span class="media-strip__caption">Notícias e Eventos</span></a>
       <a class="media-strip__cell" href="#"><span class="media-strip__caption">Onde assistir</span></a>
       <a class="media-strip__cell" href="#"><span class="media-strip__caption">Em breve</span></a>
+    </div>
+  </div></div>
+
+  <div class="detail-container title-actions"><div class="title-actions__bar">
+    <div class="detail-actions"><div class="hero-actions" role="group"><div class="hero-actions__row"><button type="button" class="hero-action">Minha lista</button><button type="button" class="hero-action">Avaliar</button></div></div></div>
+    <div class="title-actions__watch"><p class="title-actions__label">Onde assistir</p>
+      <ul class="watch-brands"><li class="watch-brands__item"><a class="watch-brands__link" href="#"><span class="watch-brands__mark"><span class="watch-brands__name">Netflix</span></span><span class="watch-brands__modalities">Assinatura</span></a></li><li class="watch-brands__item"><a class="watch-brands__link" href="#"><span class="watch-brands__mark"><span class="watch-brands__name">Prime Video</span></span><span class="watch-brands__modalities">Assinatura · Aluguel</span></a></li></ul>
     </div>
   </div></div>
 
@@ -299,7 +324,7 @@ function skeleton(vertical: 'movie' | 'series', chips: string): string {
 
 function page(vertical: 'movie' | 'series', chipCount: number, css: string): string {
   const view = buildRatingsView({ ratings: RATINGS.slice(0, chipCount) } as never)
-  const chips = renderToStaticMarkup(createElement(RatingsPanel, { view }))
+  const chips = renderToStaticMarkup(createElement(RatingsLine, { view }))
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>QA detalhe</title><style>${css}</style></head><body>${skeleton(vertical, chips)}</body></html>`

@@ -378,6 +378,45 @@ alvo do clique, ou não linkar) é decisão de produto, não de front.
 
 ---
 
+## 5bis. Revisão do canônico de 2026-10-30 (barra superior branca)
+
+O canônico do handoff `handoff-cinerie-frontend` (sha256 `13993b29…`) refez o
+topo das duas fichas. O que entrou, exatamente: fundo **branco**; trilha 11px;
+três colunas (título 21/700 com o ano, linha de gêneros 10.5/800 no acento
+escuro da vertical, sinopse 14px em 56ch com "Ler mais" | marca do Cinerie
+Score + caixa branca com o número no acento + linha de notas | "Elenco e
+Equipe" com avatares de 62px); mosaico com filetes brancos de 3px, play vazado
+de 62px e legendas em texto branco; tira "Minha lista · Avaliar | Onde
+assistir" sob o mosaico; a faixa **"Guia Cinerie · Crítica" saiu**; os rótulos
+"A obra"/"Ficha técnica" perderam o filete de 16×2 e "Elenco", "Editorial",
+"Catálogo" ficaram só com o título. No lugar da crítica e depois de "Mais como
+este" entram os slots OpaPreço `title-mid` e `title-bottom`.
+
+Onde a implementação diverge desta revisão, e por quê:
+
+| Canônico 2026-10-30 | Implementado | Motivo |
+| --- | --- | --- |
+| Sem selo "FILME"/"SÉRIE" no topo | Selo compacto mantido antes da linha de gêneros (`.detail-badge-row`) | Invariante 11: label + badge, nunca só cor |
+| Marcas de IMDb/TMDB/RT redesenhadas em SVG monocromático | Arquivo que a licença declara (ou o nome da fonte em texto) | `public/brand/sources/README.md`: marca de terceiro nunca é redesenhada; decisão de licença é humana |
+| "7.9" sem escala | "7,9/10", "84%" — sufixo menor e em cinza | Regra de notas: nunca número sem a medida da própria fonte |
+| "de 12.480 avaliações." + "Avaliar agora ›" na caixa do Score | Linha de composição real + "Como é calculado ›" | Não existe contagem: o Score é composto de notas externas, não de votos |
+| Caixa do Score sempre presente | Só com >= 2 fontes e decisão vigente; abaixo do piso, a linha de notas ocupa a coluna | Gate do Cinerie Score (decisão do dono, 20/08/2026) |
+| "Ler mais" sempre | Só quando a sinopse foi cortada; aponta para "A obra" | Link para o texto já inteiro na tela seria convite para nada |
+| Trilha com o degrau de gênero ("Filmes / Drama / …") | Sem o degrau | Decisão do dono de 11/09/2026 (não há página de gênero) |
+| "Elenco e Equipe": dois do elenco + direção com foto | Dois do elenco + direção com as INICIAIS no círculo (filme); três do elenco (série) | Direção não tem retrato no banco; a criação da série não está na projeção da página |
+| Marcas de onde assistir sem legenda | Marca + MODALIDADE visível | Decisão de 2026-08-13 (§2.8) |
+| "02:31 \| Trailer" e "6 vídeos \| 128 fotos" | "Trailer" e "6 vídeos · 128 fotos" | TMDB não entrega duração (§1); o separador vem do presenter |
+| Botões 11×18 (~41px de altura) | Mesmo padding, `min-height: 44px` | Alvo de toque do contrato |
+| Trilha e rótulos em `#9A958C` | `--c-text-muted-aa` | D3: valor que reprova em contraste não entra |
+| Rótulo "Ficha técnica" na série | "Detalhes" (inalterado) | Já divergia antes desta revisão; fora do recorte desta leva |
+
+O texto do prompt do handoff pedia "pill de gêneros sólida", "borda 2px" na
+caixa do Score e "avatares de 56px". O **arquivo** canônico desenha uma linha de
+texto, borda de 1px e avatares de 62px — e o próprio prompt põe o arquivo acima
+dele na ordem de autoridade. Vale o arquivo.
+
+---
+
 ## 6. Como auditar
 
 ```bash

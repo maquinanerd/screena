@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opapreco.com/schemas/offer.v1.json",
+  "title": "OfferData",
+  "type": "object",
+  "required": ["offerId", "productTitle", "currentPrice", "merchant", "href", "checkedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "offerId": { "type": "string", "description": "ID interno estável da oferta" },
+    "productTitle": { "type": "string", "minLength": 3, "maxLength": 120, "description": "Já limpo pelo backend (sem 'Promoção', 'Frete Grátis', emojis, colchetes, caixa alta excessiva)" },
+    "productImage": { "type": ["string", "null"], "format": "uri", "description": "WebP preferencial; ausente → ícone neutro" },
+    "imageRatio": { "enum": ["square", "vertical", "horizontal"], "description": "Dica; render é sempre object-fit: contain" },
+    "currentPrice": { "type": "number", "exclusiveMinimum": 0 },
+    "referencePrice": { "type": "number", "exclusiveMinimum": 0, "description": "Só se comprovado" },
+    "discountPercent": { "type": "integer", "minimum": 5, "maximum": 90, "description": "Só se comprovado; enviar apenas junto com referencePrice" },
+    "currency": { "const": "BRL" },
+    "merchant": { "const": "Shopee" },
+    "isOfficialStore": { "type": "boolean" },
+    "checkedAt": { "type": "string", "format": "date-time", "description": "Última verificação de preço; > 6 h → não servir" },
+    "href": { "type": "string", "format": "uri", "description": "Link afiliado final com parâmetros de tracking" },
+    "cta": { "type": "string", "maxLength": 28 },
+    "ctaShort": { "type": "string", "maxLength": 14 },
+    "eyebrow": { "enum": ["Oferta verificada", "Menor preço recente", "Boa oportunidade"] },
+    "affiliateDisclosure": { "enum": ["Link de afiliado", "Oferta afiliada", "Links de afiliado"] },
+    "priceDrop": {
+      "type": "object",
+      "required": ["from", "percent"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "number", "exclusiveMinimum": 0 },
+        "percent": { "type": "integer", "minimum": 5 },
+        "since": { "type": "string", "maxLength": 32, "examples": ["nas últimas 24 h", "desde ontem"] }
+      }
+    },
+    "historicalPrice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "lowest30d": { "type": "number", "exclusiveMinimum": 0 } }
+    },
+    "dealScore": { "type": "number", "minimum": 0, "maximum": 100, "description": "Interno; não exibido na v1" }
+  },
+  "dependentRequired": { "discountPercent": ["referencePrice"], "referencePrice": ["discountPercent"] }
+}

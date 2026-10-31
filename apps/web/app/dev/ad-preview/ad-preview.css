@@ -11,7 +11,7 @@
  * `pnpm --filter @screena/web css:move-check` prova que nenhuma regra que ficou
  * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
  *
- * `.ad-tela__media .ad-slot` ficou no global: o sujeito e o `.ad-slot`, que e
+ * `.ad-tela__media .op-slot` ficou no global: o sujeito e o `.op-slot`, que e
  * global (regra R4 do plano).
  */
 

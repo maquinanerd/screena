@@ -58,7 +58,8 @@
     "@screena/db": "workspace:*",
     "@screena/public-contracts": "workspace:*",
     "@screena/user-platform": "workspace:*",
-    "@screena/legal": "workspace:*"
+    "@screena/legal": "workspace:*",
+    "@screena/opapreco": "workspace:*"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.0",

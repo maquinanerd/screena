@@ -340,9 +340,12 @@
 }
 
 /* Midia full-bleed: grid 1fr 3fr 2fr, altura 472 */
+/* Sem respiro acima desde o canonico de 2026-10-30: o mosaico encosta no
+   filete inferior da barra superior. `.media-strip` so existe nas fichas de
+   filme e serie (temporada e episodio usam as celulas, nao a banda). */
 .media-strip {
   width: 100%;
-  padding: 34px 0 0;
+  padding: 0;
 }
 
 .media-strip__grid {
@@ -495,117 +498,6 @@ a.media-strip__cell {
   color: #4a463e;
   margin: 22px 0 0;
   max-width: 60ch;
-}
-
-/* Guia Screen — critica da redacao (full-bleed, overlay por vertical) */
-.critic-band {
-  position: relative;
-  width: 100%;
-  margin-top: 60px;
-  min-height: 460px;
-  background: #150b0a;
-  overflow: hidden;
-}
-
-.critic-band__img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.critic-band__scrim-h {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    92deg,
-    rgba(40, 15, 13, 0.93) 0%,
-    rgba(40, 15, 13, 0.62) 48%,
-    rgba(40, 15, 13, 0.3) 100%
-  );
-}
-
-[data-vertical='series'] .critic-band {
-  background: #0b1410;
-}
-
-[data-vertical='series'] .critic-band__scrim-h {
-  background: linear-gradient(
-    92deg,
-    rgba(13, 36, 26, 0.93) 0%,
-    rgba(13, 36, 26, 0.62) 48%,
-    rgba(13, 36, 26, 0.3) 100%
-  );
-}
-
-.critic-band__scrim-v {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(0deg, rgba(20, 9, 8, 0.88) 0%, rgba(20, 9, 8, 0) 58%);
-}
-
-.critic-band__inner {
-  position: relative;
-  max-width: 1360px;
-  margin-inline: auto;
-  padding: 0 64px;
-  min-height: 460px;
-  display: flex;
-  align-items: flex-end;
-}
-
-.critic-band__content {
-  width: 100%;
-  padding: 52px 0;
-}
-
-.critic-band__eyebrow {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  /* Token da vertical: rosa sobre a faixa vermelha (filme), verde-claro sobre
-     a verde (serie). O fallback cobre o uso fora de um `[data-vertical]`. */
-  color: var(--ctx-kicker-on-dark, #e7a59f);
-  margin-bottom: 24px;
-  display: block;
-}
-
-.critic-band__quote {
-  font-size: clamp(18px, 2vw, 23px);
-  line-height: 1.5;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: #fff;
-  margin: 0;
-  max-width: 780px;
-  text-shadow: 0 1px 18px rgba(0, 0, 0, 0.45);
-}
-
-.critic-band__byline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 20px;
-  font-size: 12px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.critic-band__byline::before {
-  content: '';
-  width: 26px;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.5);
-}
-
-@media (max-width: 767px) {
-  .critic-band__inner {
-    padding-inline: var(--pad-page-mobile);
-  }
 }
 
 /* Elenco — faixa visual 6 colunas, retratos 3/4 */
@@ -1134,8 +1026,6 @@ a.media-strip__cell {
   .episode-row__num,
   .episode-row__meta,
   .media-strip__caption,
-  .critic-band__eyebrow,
-  .critic-band__byline,
   .season-info__status,
   .cast-tile__role {
     font-size: 12px;
@@ -1411,63 +1301,92 @@ a.media-strip__cell {
 /* fileira de marcas de onde assistir e sinopse de tres linhas.       */
 /* ------------------------------------------------------------------ */
 
-/* Cinerie Score — o cartao do canonico (47/800 + rotulo + escala + composicao) */
-.score-card__row {
+/* Cinerie Score — a coluna do topo no canonico de 2026-10-30: marca + "(critica
+   + publico)" no acento escuro da vertical e, abaixo, a caixa BRANCA de borda
+   1px (sem raio) com o numero 34/800 no mesmo acento e "/100" em cinza. As
+   variantes `-dark` do acento passam AA como texto (D3); o acento cru continua
+   so para superficie. */
+.score-card__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 13px;
+  gap: 9px;
 }
 
-.score-card__value {
-  font-size: 47px;
-  font-weight: 800;
-  color: #12100e;
-  letter-spacing: -0.045em;
-  line-height: 0.82;
-}
-
-.score-card__label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-/* A marca "cinerie score" (degrade, arte do proprietario) no lugar do rotulo
-   em texto. Altura fixa, proporcao livre — marca nunca e esticada. */
+/* A marca "cinerie score" (degrade, arte do proprietario). Altura fixa,
+   proporcao livre — marca nunca e esticada. */
 .score-card__logo {
   display: block;
-  height: 17px;
+  height: 15px;
   width: auto;
 }
 
-main[data-vertical='movie'] .score-card__label {
-  color: var(--c-accent-movie-dark);
+.score-card__basis {
+  font-size: 12px;
+  font-weight: 600;
 }
 
-main[data-vertical='series'] .score-card__label {
-  color: var(--c-accent-series-dark);
+.score-card__box {
+  margin-top: 10px;
+  border: 1px solid #d8d2c8;
+  background: #ffffff;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.score-card__number {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.score-card__value {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
 }
 
 .score-card__scale {
-  font-size: 11.5px;
-  color: var(--c-text-muted-aa);
+  font-size: 15px;
+  font-weight: 600;
+  color: #6e6a61;
+}
+
+main[data-vertical='movie'] .score-card__basis,
+main[data-vertical='movie'] .score-card__value,
+main[data-vertical='movie'] .score-card__method {
+  color: #b23a31;
+}
+
+main[data-vertical='series'] .score-card__basis,
+main[data-vertical='series'] .score-card__value,
+main[data-vertical='series'] .score-card__method {
+  color: #3f6b34;
+}
+
+.score-card__detail {
+  min-width: 0;
 }
 
 /* Como o numero foi composto, NOMEANDO as fontes — sem esta linha o numero
-   seria afirmacao sem lastro. */
+   seria afirmacao sem lastro. Ocupa o lugar do "de N avaliacoes" do canonico,
+   que nao tem dado (o Score e composto de notas externas, nao de votos). */
 .score-card__composition {
-  margin: 10px 0 0;
+  margin: 0;
   font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--c-text-muted-aa);
+  line-height: 1.35;
+  color: #2b2723;
 }
 
-/* "Como é calculado": leva a metodologia (/pt/cinerie-score/). A cor e a da linha
-   de composicao; o sublinhado e o que diz que e link. */
+/* "Como e calculado ›": leva a metodologia (/pt/cinerie-score/), no lugar do
+   "Avaliar agora ›" do canonico. */
 .score-card__method {
-  color: inherit;
+  font-size: 11.5px;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -1739,4 +1658,332 @@ main[data-vertical='series'] .score-card__label {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* ==================================================================== *
+ * FICHAS DE FILME E SERIE — canonico de 2026-10-30
+ *
+ * No FIM da folha de proposito: varias regras abaixo corrigem regras de mesma
+ * especificidade la de cima (banda de midia, acoes, piso de 12px), e conflito
+ * assim resolve por ORDEM DE DOCUMENTO. Nao mova para cima sem subir a
+ * especificidade junto.
+ * ==================================================================== */
+
+/* --- Mosaico de midia: filetes BRANCOS de 3px, play vazado, legendas em
+   texto branco direto sobre a imagem (sem os chips brancos de antes). Tudo
+   escopado por `.media-strip`, que so existe nas fichas: temporada e episodio
+   usam `.media-strip__caption`/`__play` FORA dela e mantem o visual deles. -- */
+.media-strip .media-strip__grid {
+  gap: 3px;
+  background: #ffffff;
+}
+
+.media-strip .media-strip__stack {
+  gap: 3px;
+}
+
+/* Celula com legenda e SEM imagem: o texto branco ficaria sobre o esqueleto
+   claro (#eae4d9) e reprovaria em contraste. Fundo escuro neutro so ai. */
+.media-strip .media-strip__cell:has(> .media-strip__caption):not(:has(> img)) {
+  background: #3a362f;
+}
+
+.media-strip .media-strip__caption,
+.media-strip .media-strip__counts {
+  left: 18px;
+  bottom: 16px;
+  padding: 0;
+  background: none;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.6);
+}
+
+.media-strip .media-strip__counts {
+  left: auto;
+  right: 18px;
+}
+
+.media-strip .media-strip__stack .media-strip__caption {
+  left: 20px;
+  bottom: 16px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.55);
+}
+
+/* Play em circulo VAZADO: 62px, borda branca de 2px, veu de 16%. O hover
+   continua pintando o acento da vertical (regra base, mais acima). */
+.media-strip .media-strip__play {
+  width: 62px;
+  height: 62px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.media-strip .media-strip__play svg {
+  width: 24px;
+  height: 24px;
+}
+
+@media (max-width: 1023px) {
+  .media-strip .media-strip__stack .media-strip__caption {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 767px) {
+  .media-strip .media-strip__caption {
+    left: 10px;
+    bottom: 10px;
+    font-size: 12px;
+  }
+  .media-strip .media-strip__stack .media-strip__caption {
+    left: 10px;
+    bottom: 10px;
+    font-size: 13px;
+  }
+}
+
+/* --- Linha de notas externas sob o Score: marca + valor 13/700, filetes de
+   1x12 entre os itens. A marca e o ARQUIVO da licenca (altura declarada por
+   ela, no estilo inline) ou o nome da fonte em texto — nunca o redesenho
+   monocromatico do canonico (`public/brand/sources/README.md`). ---------- */
+/* Todo item leva o filete LIDERANTE, e a lista recua 37px (18 + 1 + 11 + 7)
+   para a esquerda dentro de uma caixa que corta o que sobra: o filete de quem
+   ABRE cada linha cai fora da caixa e some. Assim a linha pode quebrar (coluna
+   de 268px, nome da fonte em texto) sem comecar com um "|" solto. */
+.rating-line {
+  margin: 12px 0 0;
+  overflow: hidden;
+}
+
+.rating-line__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  margin: 0 0 0 -37px;
+  padding: 0;
+  list-style: none;
+}
+
+.rating-line__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* Divisoria LIDERANTE: 18px de cada lado, como o gap do canonico — 11 + os 7
+   do proprio item. */
+.rating-line__divider {
+  width: 1px;
+  height: 12px;
+  background: #dcd6cb;
+  margin: 0 11px 0 18px;
+}
+
+.rating-line__logo {
+  display: block;
+  width: auto;
+}
+
+.rating-line__name {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #12100e;
+}
+
+/* Natureza da nota: so quando a MESMA fonte aparece duas vezes (Tomatometer
+   critica != Popcornmeter publico, invariante 1). */
+.rating-line__type {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-text-muted-aa);
+}
+
+.rating-line__value {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #12100e;
+}
+
+/* Icone de ESTADO (tomate Fresh): a esquerda do numero, como o titular exige. */
+.rating-line__state {
+  display: inline-block;
+  width: auto;
+  margin-right: 5px;
+}
+
+/* A escala da PROPRIA fonte continua visivel ("/10", "%"): o canonico a
+   omite em IMDb/TMDB, e a regra de notas manda nunca deixar numero sem medida. */
+.rating-line__suffix {
+  margin-left: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--c-text-muted-aa);
+}
+
+/* --- Tira de acoes sob o mosaico: Minha lista · Avaliar | Onde assistir. -- */
+.title-actions {
+  padding-top: 20px;
+}
+
+.title-actions__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e4ded3;
+}
+
+.title-actions .detail-actions {
+  margin-top: 0;
+  gap: 10px;
+}
+
+/* Botoes do canonico: 13.5/700, 11x18, raio 8, borda #d8d2c8. O `min-height`
+   de 44px (regra base) fica: e o alvo de toque do contrato, e acrescenta 3px
+   aos ~41 do canonico. */
+.title-actions .detail-actions button {
+  font-size: 13.5px;
+  padding: 11px 18px;
+  border-radius: 8px;
+  border-color: #d8d2c8;
+}
+
+.title-actions .detail-actions button:hover,
+.title-actions .detail-actions button[aria-pressed='true'] {
+  border-color: #12100e;
+}
+
+.title-actions__watch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 22px;
+}
+
+.title-actions__label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  /* O canonico usa #9A958C, que reprova em contraste (D3). */
+  color: var(--c-text-muted-aa);
+}
+
+.title-actions .watch-brands {
+  align-items: center;
+  gap: 10px 22px;
+}
+
+.title-actions .watch-brands__link {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* O rotulo e, sem oferta, o estado vazio falado (`.section-empty`, que e da
+   folha global): os dois sem margem propria dentro da tira. Seletor por
+   ELEMENTO de proposito — estilizar `.section-empty` aqui faria a guarda R2
+   (css-route-sheets) cobrar esta folha de toda rota que usa a fronteira. */
+.title-actions__watch > p {
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .title-actions__bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .title-actions__watch {
+    gap: 12px 22px;
+  }
+}
+
+/* --- Slots OpaPreço das fichas (`title-mid`, `title-bottom`).
+   A classe vai no PROPRIO slot (o `AdSlot` a poe na raiz), e a geometria e
+   por MARGEM, nao por padding: desligado ou vazio, o slot nao renderiza e o
+   respiro some junto, e a reserva de altura do anuncio nao divide caixa com
+   um padding herdado. Largura = a do `.detail-container` (1360 menos 64 de
+   cada lado), na mesma escada de recuos. `main >` sobe a especificidade
+   acima da folha do proprio slot (`.op-slot`), que carrega depois. ------ */
+main > .title-ad {
+  box-sizing: border-box;
+  width: calc(100% - 128px);
+  max-width: 1232px;
+  margin-inline: auto;
+}
+
+main > .title-ad--mid {
+  margin-top: 52px;
+}
+
+/* Depois da ficha tecnica, que ja fecha com 72px de respiro. */
+main > .title-ad--bottom {
+  margin-top: 0;
+}
+
+@media (max-width: 1279px) {
+  main > .title-ad {
+    width: calc(100% - 96px);
+  }
+}
+
+@media (max-width: 1023px) {
+  main > .title-ad {
+    width: calc(100% - 64px);
+  }
+}
+
+@media (max-width: 767px) {
+  /* `[data-vertical]` + classe dobrada: no celular a ficha vira coluna flex e
+     `main[data-vertical="movie"]:has(> .detail-hero) > *` (detail-hero.css)
+     da 100% de largura a todo filho — sem subir a especificidade o slot
+     encostava nas bordas da tela (medido: 375px de largura em 375). */
+  main[data-vertical] > .title-ad.title-ad {
+    width: calc(100% - 2 * var(--pad-page-mobile));
+    margin-inline: auto;
+  }
+
+  /* Os slots OpaPreço acompanham a ordem editorial: sem `order` explicito eles
+     ficariam no 0 — ANTES do elenco —, e o `title-bottom` subiria para o meio
+     da pagina. Mesmo numero da secao que os precede: o DOM decide o empate. */
+  main[data-vertical='series'] > .title-ad--mid {
+    order: 4;
+  }
+
+  main[data-vertical='series'] > .title-ad--bottom {
+    order: 6;
+  }
+}
+
+
+@media (max-width: 1023px) {
+  .rating-line__name,
+  .rating-line__type,
+  .rating-line__suffix,
+  .title-actions__label,
+  .title-actions .watch-brands__modalities {
+    font-size: 12px;
+  }
+}
+
+/* Selo "Filme"/"Serie" compacto na barra superior (ver .title-top__kicker em
+   detail-hero.css). Aqui porque o bloco `.detail-badge` vive nesta folha. */
+.title-top__kicker .detail-badge {
+  padding: 3px 7px;
 }

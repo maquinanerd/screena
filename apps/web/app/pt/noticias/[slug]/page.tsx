@@ -13,9 +13,10 @@ import {
   buildMetaDescription,
 } from '@screena/seo'
 
-import { AdSlot } from '../../../_components/ad-slot'
 import { ArticleBody, IMAGE_CREDIT_LABEL } from '../../../_components/article-body'
 import { CardBookmark } from '../../../_components/card-bookmark'
+import { AdSlot } from '../../../_components/opapreco/ad-slot'
+import { planArticleAdCuts } from '../../../../src/lib/article-ad-positions'
 import { bodyBlocksShowImage } from '../../../../src/lib/article-body-presenter'
 import { authorInitials, heroCropOf, sectionCrumbLabel } from '../../../../src/lib/article-hero'
 import { authorHrefOf } from '../../../../src/lib/author-presenter'
@@ -180,21 +181,22 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
   // Nunca os dois: seria o mesmo texto duas vezes na página.
   const hasStructuredBody = bodyBlocks.length > 0
 
-  // AdSlot mid-article do canônico: entra no meio do corpo quando há corpo
-  // suficiente; senão, depois do último parágrafo.
+  // Slots OpaPreço da matéria — no MÁXIMO quatro (o `article-mid` do canônico
+  // foi removido): top antes do 1º parágrafo, inline-01 depois do 3º, inline-02
+  // no fim do corpo com >= 3 parágrafos de distância, bottom depois da matéria.
+  // Os cortes do meio contam só texto de leitura (`article-ad-positions.ts`).
   const paragraphs = view.bodyParagraphs
-  const adAfter = paragraphs.length >= 4 ? Math.ceil(paragraphs.length * 0.6) : paragraphs.length
-  const bodyBefore = paragraphs.slice(0, adAfter)
-  const bodyAfter = paragraphs.slice(adAfter)
-
-  // Mesma regra de posição do anúncio, aplicada aos blocos: só conta bloco de
-  // TEXTO. Cortar no meio de uma contagem que inclui divisores e fichas colocaria
-  // o anúncio entre uma imagem e a legenda dela.
-  const textBlockCount = bodyBlocks.filter(
-    (block) => block.kind === 'paragraph' || block.kind === 'quote',
-  ).length
-  const blockAdAfter =
-    textBlockCount >= 4 ? Math.ceil(bodyBlocks.length * 0.6) : bodyBlocks.length
+  const adCuts = hasStructuredBody
+    ? planArticleAdCuts(
+        bodyBlocks.map((block) => block.kind === 'paragraph' || block.kind === 'quote'),
+      )
+    : planArticleAdCuts(paragraphs.map(() => true))
+  const inline01Cut = adCuts.inline01 ?? (hasStructuredBody ? bodyBlocks.length : paragraphs.length)
+  const adTags = {
+    vertical: 'news',
+    entity: view.related[0]?.title,
+    category: view.category ?? undefined,
+  } as const
 
   // A MATÉRIA MOSTRA ALGUMA IMAGEM?
   //
@@ -402,31 +404,39 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
 
       {/* Corpo de leitura 720 */}
       <article className="art-body">
+        {/* OpaPreço · article-top — abaixo do título e da linha fina, nunca
+            acima: product_hero_v1 no desktop/tablet, product_compact_v1 no
+            telefone (o hero ocuparia a primeira tela antes do texto). */}
+        <AdSlot className="op-slot--article-top" id="article-top" tags={adTags} />
+
         {hasStructuredBody ? (
           <>
-            <ArticleBody blocks={bodyBlocks.slice(0, blockAdAfter)} />
-
-            <div className="art-ad">
-              <AdSlot format="leaderboard" slotId="article-mid" />
-            </div>
-
-            <ArticleBody blocks={bodyBlocks.slice(blockAdAfter)} />
+            <ArticleBody blocks={bodyBlocks.slice(0, inline01Cut)} />
+            {adCuts.inline01 !== null ? (
+              <AdSlot className="op-slot--article-inline-01" id="article-inline-01" tags={adTags} />
+            ) : null}
+            <ArticleBody blocks={bodyBlocks.slice(inline01Cut)} />
           </>
         ) : (
           <>
-            {bodyBefore.map((paragraph, index) => (
+            {paragraphs.slice(0, inline01Cut).map((paragraph, index) => (
               <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
             ))}
-
-            <div className="art-ad">
-              <AdSlot format="leaderboard" slotId="article-mid" />
-            </div>
-
-            {bodyAfter.map((paragraph, index) => (
+            {adCuts.inline01 !== null ? (
+              <AdSlot className="op-slot--article-inline-01" id="article-inline-01" tags={adTags} />
+            ) : null}
+            {paragraphs.slice(inline01Cut).map((paragraph, index) => (
               <p key={`after-${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
             ))}
           </>
         )}
+
+        {/* OpaPreço · article-inline-02 — no fim do corpo, só com pelo menos
+            três parágrafos depois do inline-01. price_drop_v1 quando há queda
+            comprovada; senão o servidor manda product_compact_v1. */}
+        {adCuts.inline02 !== null ? (
+          <AdSlot className="op-slot--article-inline-02" id="article-inline-02" tags={adTags} />
+        ) : null}
 
         {/* Ficha do título — entity card real da 1ª entidade citada.
             POR DESIGN só movie|tv chegam aqui (é a ficha do TÍTULO;
@@ -569,6 +579,12 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
           </p>
         ) : null}
       </article>
+
+      {/* OpaPreço · article-bottom — grade na coluna de 720px, antes dos
+          relacionados (spec §6). */}
+      <div className="art-bottom-ad">
+        <AdSlot className="op-slot--article-bottom" id="article-bottom" tags={adTags} />
+      </div>
 
       {/* Leia também — 4 artigos reais */}
       {readAlso.length > 0 ? (

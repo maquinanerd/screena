@@ -46,10 +46,16 @@ describe("GUIA POR TEMPORADA: a fiacao existe, o texto e que nao", () => {
     expect(SERIE).toContain("'episode_context'");
   });
 
-  it("o guia de critica le `review_summary` e passa pelo SectionBoundary", () => {
-    expect(SERIE).toContain("const REVIEW_BLOCK_TYPE = 'review_summary'");
-    expect(SERIE).toMatch(/section: 'guia-critica'/);
-    expect(SERIE).toMatch(/reason: 'no_editorial_review'/);
+  it("a faixa 'Guia Cinerie · Crítica' SAIU das duas fichas (canonico de 2026-10-30)", () => {
+    // Era aqui que `review_summary` aparecia, e a fiacao existia. O canonico
+    // novo removeu a faixa das fichas de filme e de serie; o tipo de bloco
+    // continua valido no schema, sem superficie nas fichas. Este caso trava a
+    // remocao: a faixa nao volta por um copiar-e-colar do canonico antigo.
+    for (const [nome, code] of [["serie", SERIE], ["filme", FILME]] as const) {
+      expect(code, nome).not.toContain("REVIEW_BLOCK_TYPE");
+      expect(code, nome).not.toMatch(/section: 'guia-critica'/);
+      expect(code, nome).not.toContain("critic-band");
+    }
   });
 
   it("o motivo e um FATO sobre a obra, nao um passo de operacao pendente", () => {

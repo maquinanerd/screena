@@ -79,10 +79,20 @@ describe("ratings-panel — componente publico", () => {
     // arquivos em 2026-09-11 (ordem expressa). O que continua proibido e o que
     // importava: marca DESENHADA no componente ou caminho de arquivo LITERAL —
     // as unicas imagens do painel sao as que o presenter repassa da licenca.
+    //
+    // Desde 2026-10-30 o arquivo tem DOIS componentes com o mesmo gate: o
+    // painel (`RatingsPanel`) e a linha do topo das fichas (`RatingsLine`). O
+    // canonico novo desenha as marcas de IMDb/TMDB/RT em SVG monocromatico —
+    // e e exatamente isso que este `not.toContain("<svg")` continua barrando.
     expect(code).not.toContain("<svg");
     expect(code).not.toMatch(/src="\/brand/);
     const srcs = [...code.matchAll(/src=\{([^}]+)\}/g)].map((m) => m[1]!.trim());
-    expect(srcs).toEqual(["item.logo.src", "item.stateIcon.src"]);
+    expect(srcs).toEqual([
+      "item.logo.src",
+      "item.stateIcon.src",
+      "item.logo.src",
+      "item.stateIcon.src",
+    ]);
   });
 
   it("nao inventa nota propria nem AggregateRating", () => {
@@ -153,15 +163,17 @@ describe("ratings — wiring ate a pagina e ate o gate de SEO", () => {
         expect(serverCode).toContain("ratings");
       });
 
-      it("a pagina monta o painel", () => {
-        expect(pageCode).toContain("RatingsPanel");
+      it("a pagina monta a linha de notas (topo do canonico de 2026-10-30)", () => {
+        // O painel de colunas virou a LINHA sob o Cinerie Score; o componente
+        // e outro, o gate e o mesmo (mesma view, mesma fronteira).
+        expect(pageCode).toContain("RatingsLine");
         // A view agora chega pela fronteira de secao — que garante, na MESMA
         // linha, que a ausencia sai do DOM e vira log. `decideSection(ratings,
         // ...)` continua provando que e a view GOVERNADA que alimenta o painel,
         // e nao um dado qualquer.
         expect(pageCode).toMatch(/decideSection\(ratings,/);
         expect(pageCode).toMatch(/<SectionBoundary decision=\{ratingsSection\}( speak)?>/);
-        expect(pageCode).toContain("<RatingsPanel view={view} />");
+        expect(pageCode).toContain("<RatingsLine view={view} />");
       });
 
       it("displayedRatings NAO e mais uma lista vazia fixa (gate cego)", () => {

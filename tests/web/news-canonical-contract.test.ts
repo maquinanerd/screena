@@ -33,10 +33,11 @@ describe('notícias após o reset visual', () => {
   it('renderiza o artigo real como texto e preserva seu estado editorial', () => {
     expect(article).toContain('getNewsArticleData(slug)')
     expect(article).toContain('notFound()')
-    // Corpo real dividido em antes/depois do AdSlot mid-article (tela 05)
+    // Corpo real dividido pelos slots OpaPreço do meio (inline-01 / inline-02)
     expect(article).toContain('view.bodyParagraphs')
-    expect(article).toContain('bodyBefore.map')
-    expect(article).toContain('bodyAfter.map')
+    expect(article).toContain('planArticleAdCuts(')
+    expect(article).toContain('paragraphs.slice(0, inline01Cut).map')
+    expect(article).toContain('paragraphs.slice(inline01Cut).map')
     expect(article).toContain('view.source !== null')
     expect(article).toContain('view.aiAssisted')
     expect(article).toMatch(/indexability\.decision !== ['"]index['"]/)
@@ -101,7 +102,7 @@ describe('notícias após o reset visual', () => {
     }
     for (const page of [index, article]) {
       expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
-      expect(page).toMatch(/<AdSlot format="(?:leaderboard|skyscraper)"/)
+      expect(page).toMatch(/<AdSlot [^>]*\bid="(?:news|article)-[a-z0-9-]+"/)
       expect(page).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     }
     expect(article).toContain('view.heroImage !== null ?')

@@ -781,15 +781,18 @@ async function main(): Promise<void> {
         title: Rect;
       };
       const pct = Math.round((s.heroHeight / s.viewportHeight) * 100);
+      // Canonico de 30/10/2026: a capa e TELA CHEIA (imagem de destaque com o
+      // texto ancorado embaixo). Ate entao este harness exigia o contrario —
+      // hero abaixo de 92% da dobra e corpo visivel na primeira tela.
       record(
-        `capa @${name}: hero encosta no topo e nao ocupa a dobra inteira`,
-        s.heroTop === 0 && s.heroHeight < s.viewportHeight * 0.92,
+        `capa @${name}: hero encosta no topo e ocupa a dobra inteira`,
+        s.heroTop === 0 && s.heroHeight >= s.viewportHeight - 1,
         `top=${s.heroTop}px altura=${Math.round(s.heroHeight)}px (${pct}% da dobra), corpo comeca em y=${Math.round(s.bodyTop)}px`,
       );
       record(
-        `capa @${name}: sobra texto visivel na primeira dobra`,
-        s.bodyTop < s.viewportHeight - 40,
-        `${Math.round(s.viewportHeight - s.bodyTop)}px de corpo visiveis abaixo do hero`,
+        `capa @${name}: o corpo comeca logo abaixo da capa`,
+        s.bodyTop >= s.viewportHeight - 1 && s.bodyTop <= s.heroHeight + 1,
+        `corpo em y=${Math.round(s.bodyTop)}px, capa com ${Math.round(s.heroHeight)}px`,
       );
       record(
         `capa @${name}: header transparente, sem faixa, com wordmark BRANCA`,

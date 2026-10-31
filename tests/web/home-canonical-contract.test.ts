@@ -284,8 +284,13 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(code(ticker)).not.toContain('attributionText')
   })
 
-  it('anúncios só via AdSlot governado (nunca criativo inline)', () => {
-    expect(homeLike).toMatch(/<AdSlot format="leaderboard" slotId=\{`\$\{adPrefix\}-/)
+  it('anúncios só via AdSlot OpaPreço governado (nunca criativo inline)', () => {
+    // Os três slots do canônico, na ordem: depois de Popular, depois de
+    // "Filmes em alta"/mês, depois de "Em breve". Nenhum depois de Notícias
+    // (removido a pedido — OPAPRECO-SLOT-MAP.md, "Removidos a pedido").
+    const ids = [...homeLike.matchAll(/<AdSlot[^>]*\bid="([a-z0-9-]+)"/g)].map((m) => m[1])
+    expect(ids).toEqual(['home-after-popular', 'home-after-movies', 'home-after-coming-soon'])
+    expect(homeLike.lastIndexOf('<AdSlot')).toBeLessThan(homeLike.indexOf('className="hnews-grid"'))
     expect(homeLike).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     expect(home).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
   })

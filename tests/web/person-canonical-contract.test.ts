@@ -60,7 +60,7 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     // Retrato canônico circular; fallback de iniciais (nunca imagem inventada)
     expect(code).toContain('person-head__avatar')
     expect(code).toContain('{initials}')
-    expect(code).toContain('<AdSlot format="leaderboard" slotId="person-credits" />')
+    expect(code).toMatch(/<AdSlot [^>]*\bid="person-bottom"/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
     expect(code).not.toMatch(/src="https?:/)
   })

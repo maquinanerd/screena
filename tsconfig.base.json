@@ -40,6 +40,7 @@
       "@screena/legal/public-credits": ["services/legal/src/public-credits.ts"],
       "@screena/legal": ["services/legal/src/index.ts"],
       "@screena/news-ingestion": ["services/news-ingestion/src/index.ts"],
+      "@screena/opapreco": ["services/opapreco/src/index.ts"],
       "@screena/tmdb-client": ["api-clients/tmdb/src/index.ts"],
       "@screena/rapidapi-core": ["api-clients/rapidapi-core/src/index.ts"],
       "@screena/omdb-client": ["api-clients/omdb/src/index.ts"],

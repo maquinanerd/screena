@@ -9,7 +9,7 @@ import {
   serializeJsonLd,
 } from '@screena/seo'
 
-import { AdSlot } from '../../../_components/ad-slot'
+import { AdSlot } from '../../../_components/opapreco/ad-slot'
 import { SectionTitle } from '../../../_components/ds'
 import { EntityExternalIds } from '../../../_components/entity-external-ids'
 import { Filmography } from '../../../_components/filmography'
@@ -473,7 +473,9 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
           )}
         </SectionBoundary>
 
-        <AdSlot format="leaderboard" slotId="person-credits" />
+        {/* OpaPreço · person-bottom — grade entre as fotos e a filmografia,
+            como no canônico (margem 56/0). */}
+        <AdSlot className="op-slot--person-bottom" id="person-bottom" tags={{ vertical: 'person' }} />
 
         <section aria-labelledby="person-filmography-title" className="section">
           <div className="section-head">

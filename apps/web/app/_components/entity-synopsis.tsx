@@ -30,25 +30,63 @@ export interface EntitySynopsisProps {
    * texto sai completo — e o modo da secao "A OBRA".
    */
   readonly maxChars?: number;
-  /** `work` = corpo da secao "A OBRA" (texto completo); default = hero. */
-  readonly variant?: "hero" | "work";
+  /**
+   * `work` = corpo da secao "A OBRA" (texto completo); `top` = a barra superior
+   * das fichas de filme e serie (canonico de 2026-10-30: 14px, 56ch, "Ler
+   * mais"); default = hero (temporada, episodio).
+   */
+  readonly variant?: "hero" | "work" | "top";
+  /**
+   * Ancora do texto completo. Com ela, o corte do topo termina em "Ler mais" —
+   * e so quando HOUVE corte: um link para o mesmo texto ja inteiro na tela
+   * seria um convite para nada.
+   */
+  readonly readMoreHref?: string;
 }
 
-export function EntitySynopsis({ synopsis, maxChars, variant = "hero" }: EntitySynopsisProps) {
+const TEXT_CLASS = {
+  hero: "detail-hero__synopsis",
+  work: "synopsis-body",
+  top: "title-top__synopsis",
+} as const;
+
+const NOTICE_CLASS = {
+  hero: "detail-hero__synopsis-notice",
+  work: "synopsis-body__notice",
+  top: "title-top__synopsis-notice",
+} as const;
+
+export function EntitySynopsis({
+  synopsis,
+  maxChars,
+  variant = "hero",
+  readMoreHref,
+}: EntitySynopsisProps) {
   if (synopsis === null) return null;
 
   const cut = maxChars === undefined ? null : truncateAtWord(synopsis.text, maxChars);
   const text = cut === null ? synopsis.text : cut.text;
   const truncated = cut !== null && cut.truncated;
-  const textClass = variant === "work" ? "synopsis-body" : "detail-hero__synopsis";
-  const noticeClass =
-    variant === "work" ? "synopsis-body__notice" : "detail-hero__synopsis-notice";
+  const textClass = TEXT_CLASS[variant];
+  const noticeClass = NOTICE_CLASS[variant];
+  // `lang` explicito no link: dentro de um `<p lang="en">` (sinopse no idioma
+  // de origem) o leitor de tela pronunciaria "Ler mais" em ingles.
+  const readMore =
+    truncated && readMoreHref !== undefined ? (
+      <>
+        {" "}
+        <a className="title-top__read-more" href={readMoreHref} lang="pt-BR">
+          Ler mais
+        </a>
+      </>
+    ) : null;
 
   // `published_locale` e o caminho comum: nada muda em relacao ao que existia.
   if (synopsis.source === "published_locale") {
     return (
       <p className={textClass} data-synopsis-truncated={truncated ? "true" : undefined}>
         {text}
+        {readMore}
       </p>
     );
   }
@@ -64,6 +102,7 @@ export function EntitySynopsis({ synopsis, maxChars, variant = "hero" }: EntityS
         lang={synopsis.languageCode}
       >
         {text}
+        {readMore}
       </p>
       <p className={noticeClass}>{synopsis.notice}</p>
     </div>

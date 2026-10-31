@@ -197,3 +197,98 @@ export function RatingsPanel({ view }: RatingsPanelProps): ReactNode {
     </div>
   );
 }
+
+/**
+ * RatingsLine — a LINHA de notas do topo das fichas (canonico de 2026-10-30):
+ * `IMDb 7.9 | TMDB 7.6 | RT 84%`, em linha, abaixo da caixa do Cinerie Score.
+ *
+ * O LAYOUT e o do canonico (marca + valor 13/700, filetes de 1x12 entre os
+ * itens). A MARCA NAO: o canonico desenha versoes monocromaticas de IMDb, TMDB
+ * e Rotten Tomatoes em SVG inline, e isso e redesenho de marca alheia — o que
+ * `apps/web/public/brand/sources/README.md` proibe ("nunca um redesenho ou
+ * aproximacao"; "nenhum SVG inline em componente"). O slot usa o MESMO gate do
+ * `RatingsPanel`: o arquivo que a licenca declara, ou o nome da fonte em texto.
+ *
+ * O resto das regras do painel vale igual: escala da propria fonte no sufixo,
+ * icone de estado a esquerda do numero, natureza visivel so quando a mesma
+ * fonte se repete, proveniencia (metrica, volume, data, URL) no `title`/`data-*`.
+ */
+export function RatingsLine({ view }: RatingsPanelProps): ReactNode {
+  if (view === null || view.items.length === 0) return null;
+
+  const sourceCounts = new Map<string, number>();
+  for (const item of view.items) {
+    sourceCounts.set(item.sourceKey, (sourceCounts.get(item.sourceKey) ?? 0) + 1);
+  }
+
+  // O <div> corta o filete LIDERANTE de quem abre cada linha: a coluna tem
+  // 268px e, com o nome da fonte em texto, a linha quebra — sem o corte, a
+  // segunda linha comecaria com um "|" solto (ver `.rating-line` no CSS).
+  return (
+    <div className="rating-line">
+      <ul className="rating-line__list">
+      {view.items.map((item) => {
+        const provenance = [
+          `${item.metricLabel} · ${item.scoreTypeLabel}`,
+          item.countLabel,
+          view.updatedAtLabel,
+          item.attribution.url,
+        ]
+          .filter((part): part is string => part !== null && part !== "")
+          .join(" · ");
+        return (
+          <li
+            className="rating-line__item"
+            data-rating-metric={item.metricLabel}
+            data-rating-source={item.sourceKey}
+            data-rating-updated={view.updatedAtLabel ?? undefined}
+            data-rating-url={item.attribution.url ?? undefined}
+            data-score-type={item.scoreType}
+            key={`${item.sourceKey}:${item.scoreType}:${item.metricLabel}`}
+            title={provenance}
+          >
+            <span aria-hidden="true" className="rating-line__divider" />
+            {item.logo !== null ? (
+              <img
+                alt={item.sourceLabel}
+                className="rating-line__logo"
+                data-rating-mark={item.sourceKey}
+                decoding="async"
+                fetchPriority="low"
+                height={item.logo.heightPx}
+                src={item.logo.src}
+                style={{ height: `${item.logo.heightPx}px` }}
+                width={item.logo.widthPx ?? undefined}
+              />
+            ) : (
+              <span className="rating-line__name" data-rating-mark={item.sourceKey}>
+                {item.sourceLabel}
+              </span>
+            )}
+            {(sourceCounts.get(item.sourceKey) ?? 0) > 1 ? (
+              <span className="rating-line__type">{item.scoreTypeLabel}</span>
+            ) : null}
+            <span className="rating-line__value">
+              {item.stateIcon !== null ? (
+                <img
+                  alt={item.stateIcon.alt}
+                  className="rating-line__state"
+                  data-rating-state={item.stateIcon.alt}
+                  decoding="async"
+                  fetchPriority="low"
+                  height={item.stateIcon.heightPx}
+                  src={item.stateIcon.src}
+                  style={{ height: `${item.stateIcon.heightPx}px` }}
+                  width={item.stateIcon.widthPx ?? undefined}
+                />
+              ) : null}
+              {item.valueLabel}
+              <span className="rating-line__suffix">{item.valueSuffix}</span>
+            </span>
+          </li>
+        );
+      })}
+      </ul>
+    </div>
+  );
+}

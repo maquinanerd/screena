@@ -37,14 +37,22 @@ nenhum componente escreve caminho de marca à mão.
   a "branca", na barra transparente sobre o hero (home, `/pt/filmes`,
   `/pt/series`, capa da matéria) e no rodapé escuro, que usa sempre a marca-mãe.
 
-## A palavra "cinérie" tem o mesmo tamanho em toda área
+## No header: a caixa do canônico (26 px de altura, largura por área)
 
-A palavra ocupa 672 × 163 px em **todas** as artes; as de área têm 181 px de
-altura porque a barra "/" passa 2 px acima e 16 px abaixo dela. O header fixa a
-altura da **palavra** (`--brand-word-h`: 28 px no desktop, 24 no tablet, 20 no
-telefone) e cada arte escala por `altura do arquivo ÷ 163`. A marca não muda de
-tamanho ao trocar de seção. Travado por `src/lib/__tests__/brand-logos.test.ts`,
-que lê os bytes.
+Desde o handoff de 30/10/2026 o header segue o mapa `LOGO_W` do canônico: a
+arte **inteira** mede 26 px de altura no desktop e a caixa tem **108** (neutra),
+**200** (filmes), **208** (séries) e **176** px (notícias) de largura, com a
+arte em `contain` ancorada à esquerda. Tablet e telefone mantêm a mesma
+proporção de caixa a 24 e 22 px de altura (`--brand-h`). A palavra "cinérie"
+ocupa 672 × 163 px em todas as artes e as de área têm 181 px de altura (a barra
+"/"), então nas áreas a palavra fica ~10% menor — é o desenho aprovado. Até
+30/10/2026 a regra era a oposta (altura da palavra fixa). Registro em
+`src/lib/brand-logos.ts` (`CINERIE_HEADER_LOGO_BOX`), travado por
+`src/lib/__tests__/brand-logos.test.ts`, que lê os bytes.
+
+Os PNGs do handoff de 30/10/2026 (`design/assets/brand/*.png`) foram conferidos
+pixel a pixel contra os WEBP desta pasta: **idênticos** (diferença máxima 0 em
+RGB e alfa nas 9 artes). Por isso não foram copiados de novo.
 
 ## Regras
 
