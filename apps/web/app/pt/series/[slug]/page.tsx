@@ -257,7 +257,7 @@ export default async function SeriesPage({
   const redirectPath = canonicalRedirectPath(SERIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, firstAirDateIso, lastAirDateIso, ended } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, mediaBandScenes, firstAirDateIso, lastAirDateIso, ended } =
     data
   // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
   // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
@@ -306,6 +306,8 @@ export default async function SeriesPage({
     videoCount: mediaCounts.videos,
     backdropUrl: view.media.backdrop?.src ?? null,
     hasTrailer: trailer !== null,
+    sceneUrls: mediaBandScenes,
+    newsImageUrl: visibleNews[0]?.image?.src ?? null,
   })
   const synopsisLead = editorialBlocks[0] ?? null
   const synopsisRest = editorialBlocks.slice(1)

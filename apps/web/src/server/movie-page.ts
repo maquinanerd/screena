@@ -45,7 +45,8 @@ import {
 } from "./entity-awards";
 import { getRatingsForEntity } from "./entity-ratings";
 import { getRecommendedTitlesForEntity, getSimilarMoviesForEntity } from "./similar-titles";
-import { countGalleryMedia } from "./entity-gallery";
+import { countGalleryMedia, getMediaBandScenePaths } from "./entity-gallery";
+import { tmdbImageUrlIfAllowed } from "@screena/public-contracts";
 import { getTrailerForEntity } from "./entity-trailer";
 import { getCinerieScoreForEntity, getGenresForEntity } from "./entity-hero";
 import {
@@ -100,6 +101,12 @@ export interface MoviePageData {
    * galeria. Um segundo criterio aqui faria a ficha e a galeria discordarem.
    */
   mediaCounts: { images: number; videos: number };
+  /**
+   * Outras cenas do título (até 3), já autorizadas pelo portão de imagem, para
+   * os cartões da banda de mídia — um quadro diferente em cada cartão, em vez
+   * do backdrop do destaque repetido três vezes. [] quando não houver.
+   */
+  mediaBandScenes: readonly string[];
   /** C8: id INTERNO do catalogo, serializado, para o botao de biblioteca. */
   entityId: string;
   indexability: IndexabilityResult;
@@ -384,6 +391,15 @@ export const getMoviePageData = cache(
     // prometeria um numero que a galeria nao entrega.
     const mediaCounts = await countGalleryMedia(prisma, "movie", movie.tmdbId);
 
+    // Um quadro DIFERENTE por cartão da banda de mídia, pelo MESMO portão de
+    // licença do backdrop (`imageAuthorization`): sem licença de imagem, a
+    // lista sai vazia e os cartões ficam como estavam.
+    const mediaBandScenes = (
+      await getMediaBandScenePaths(prisma, "movie", movie.tmdbId, movie.backdropPath)
+    )
+      .map((path) => tmdbImageUrlIfAllowed(path, "w780", imageAuthorization))
+      .filter((url): url is string => url !== null);
+
     // "Mais como este", com DOIS sinais e uma ordem que nao e arbitraria.
     //
     // 1. COLECAO primeiro. E parentesco DECLARADO pela fonte (a franquia): dois
@@ -434,6 +450,7 @@ export const getMoviePageData = cache(
       view,
       trailer,
       mediaCounts,
+      mediaBandScenes,
       // C8: id INTERNO do catalogo, serializado. A pagina o repassa ao botao de
       // biblioteca (client component); a biblioteca referencia a entidade
       // canonica, nunca o slug (que muda com traducao/recanonizacao).

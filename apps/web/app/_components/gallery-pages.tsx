@@ -179,7 +179,10 @@ export async function ImagesGalleryPage({
         belowFloor={!data.gallery.indexable}
         entityPath={data.entityPath}
         entityTitle={data.entityTitle}
-        facets={[...data.gallery.kindFacets, ...data.gallery.languageFacets]}
+        facetGroups={[
+          { dimension: 'kind', facets: data.gallery.kindFacets },
+          { dimension: 'lang', facets: data.gallery.languageFacets },
+        ]}
         facetsLabel="Composição da galeria"
         heading={heading}
         total={data.gallery.total}
@@ -235,7 +238,7 @@ export async function VideosGalleryPage({
         belowFloor={!data.gallery.indexable}
         entityPath={data.entityPath}
         entityTitle={data.entityTitle}
-        facets={data.gallery.typeFacets}
+        facetGroups={[{ dimension: 'kind', facets: data.gallery.typeFacets }]}
         facetsLabel="Tipos de vídeo"
         heading={heading}
         total={data.gallery.total}
@@ -322,7 +325,7 @@ export async function PersonPhotosGalleryPage({ slug }: { slug: string }) {
         belowFloor={!data.gallery.indexable}
         entityPath={data.personPath}
         entityTitle={data.personName}
-        facets={data.gallery.languageFacets}
+        facetGroups={[{ dimension: 'lang', facets: data.gallery.languageFacets }]}
         facetsLabel="Idioma das fotos"
         heading={heading}
         total={data.gallery.total}

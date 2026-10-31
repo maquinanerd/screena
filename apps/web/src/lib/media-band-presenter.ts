@@ -64,6 +64,13 @@ export interface MediaBandInput {
   readonly backdropUrl: string | null;
   /** Há trailer exibível? Decide a legenda do centro. */
   readonly hasTrailer: boolean;
+  /**
+   * Outras cenas do título, já autorizadas (`getMediaBandScenePaths`). Cada
+   * cartão pega uma DIFERENTE; sem cenas suficientes, cai no backdrop.
+   */
+  readonly sceneUrls?: readonly string[];
+  /** Capa da notícia relacionada mais recente, para o cartão de notícias. */
+  readonly newsImageUrl?: string | null;
 }
 
 /** A banda inteira, pronta para a página. */
@@ -88,6 +95,22 @@ function plural(n: number, singular: string, plural_: string): string {
 export function buildMediaBand(input: MediaBandInput): MediaBandView {
   const cards: MediaBandCard[] = [];
 
+  // UM QUADRO POR CARTÃO (30/10/2026). Antes os três usavam o backdrop do
+  // destaque — a mesma imagem empilhada três vezes ao lado dela mesma. Cada
+  // cartão tira a próxima cena ainda não usada; o de notícias prefere a capa da
+  // própria notícia. Sem arte suficiente, o backdrop volta como último recurso.
+  const scenes = [...(input.sceneUrls ?? [])];
+  const used = new Set<string>();
+  const pick = (preferred: string | null | undefined): string | null => {
+    const candidates = [preferred, ...scenes, input.backdropUrl];
+    const fresh = candidates.find(
+      (url): url is string => typeof url === "string" && url !== "" && !used.has(url),
+    );
+    const chosen = fresh ?? input.backdropUrl;
+    if (chosen !== null) used.add(chosen);
+    return chosen;
+  };
+
   // A ORDEM é a do canônico: imagens, notícias, vídeos.
   //
   // Cada cartão só entra com destino E com conteúdo. Um cartão de galeria
@@ -98,7 +121,7 @@ export function buildMediaBand(input: MediaBandInput): MediaBandView {
       key: "imagens",
       label: "Imagens e Pôsteres",
       href: input.imagesPath,
-      backgroundUrl: input.backdropUrl,
+      backgroundUrl: pick(null),
     });
   }
   if (input.newsCount > 0) {
@@ -106,7 +129,7 @@ export function buildMediaBand(input: MediaBandInput): MediaBandView {
       key: "noticias",
       label: "Notícias e Eventos",
       href: input.newsAnchor,
-      backgroundUrl: input.backdropUrl,
+      backgroundUrl: pick(input.newsImageUrl),
     });
   }
   if (input.videosPath !== null && input.videoCount > 0) {
@@ -114,7 +137,7 @@ export function buildMediaBand(input: MediaBandInput): MediaBandView {
       key: "videos",
       label: "Trailers e Teasers",
       href: input.videosPath,
-      backgroundUrl: input.backdropUrl,
+      backgroundUrl: pick(null),
     });
   }
 

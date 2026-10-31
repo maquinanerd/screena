@@ -215,7 +215,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const redirectPath = canonicalRedirectPath(MOVIES_INDEX_PATH, slug, data.canonicalSlug)
   if (redirectPath !== null) permanentRedirect(redirectPath)
 
-  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, directors, releaseDateIso } =
+  const { view, entityId, seo, canonicalUrl, relatedNews, cast, watch, watchAbsence, awards, awardsAbsence, ratings, externalIds, genres, score, fichaFacts, similar, trailer, mediaCounts, mediaBandScenes, directors, releaseDateIso } =
     data
   // So quando a pagina ESPERA uma decisao — nunca por portao de qualidade, caso
   // tecnico, licenca ou valvula (ver `isEditorialReviewPending`).
@@ -260,6 +260,8 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
     videoCount: mediaCounts.videos,
     backdropUrl: view.media.backdrop?.src ?? null,
     hasTrailer: trailer !== null,
+    sceneUrls: mediaBandScenes,
+    newsImageUrl: editorialNews[0]?.image?.src ?? null,
   })
   const synopsisLead = workBlocks[0] ?? null
   const synopsisRest = workBlocks.slice(1)

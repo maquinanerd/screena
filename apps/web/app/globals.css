@@ -3296,6 +3296,26 @@ body:has(.art-hero[data-hero-media='true']) .site-header__spacer {
   color: var(--c-text-muted-aa);
 }
 
+/* Chip de FILTRO (galerias, desde 30/10/2026): botao de verdade, com o mesmo
+   desenho do chip; pressionado ele fica escuro (`.chip[aria-pressed=true]`) e
+   a contagem precisa continuar legivel sobre o fundo escuro. */
+.chip--filter,
+.chip--clear {
+  gap: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip[aria-pressed='true'] .chip__count {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.chip--clear {
+  border-style: dashed;
+  color: var(--c-text-muted-aa);
+}
+
 /* A banda de midia (colapso da grade), a pagina de episodio e o trailer da
    temporada vivem em app/_components/detail.css. */
 

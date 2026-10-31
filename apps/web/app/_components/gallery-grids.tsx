@@ -29,14 +29,26 @@ export function GalleryImageGrid({ images }: { images: readonly GalleryImageView
   return (
     <ul className="gallery-grid poster-grid poster-grid--4">
       {images.map((image) => (
-        <li className="gallery-tile" data-kind={image.kind} key={image.fullUrl}>
+        <li
+          className="gallery-tile"
+          data-gallery-item=""
+          data-kind={image.kind}
+          data-lang={image.languageLabel}
+          key={image.fullUrl}
+        >
           {/*
-            `<a>` simples para o tamanho grande, e não um lightbox: um lightbox
-            exigiria `use client` e estado, e o ganho sobre "abrir a imagem"
-            não paga o segundo caminho. O `target` fica de fora de propósito —
-            abrir aba nova é decisão do leitor (ctrl+clique), não da página.
+            `<a>` para o tamanho grande, e o clique simples é interceptado pelo
+            visualizador (`GalleryLightbox`, em `gallery-interactive.tsx`), que
+            abre a imagem sem tirar o leitor do site. Sem JavaScript, ou com
+            ctrl/cmd/shift + clique, o link continua abrindo a imagem. O `target`
+            fica de fora de propósito: abrir aba nova é decisão do leitor.
           */}
-          <a className="gallery-tile__link" href={image.fullUrl}>
+          <a
+            className="gallery-tile__link"
+            data-caption={`${image.kindLabel} · ${image.languageLabel}`}
+            data-gallery-open=""
+            href={image.fullUrl}
+          >
             <img
               alt={image.alt}
               className="gallery-tile__img"
@@ -73,8 +85,19 @@ export function PersonPhotoGrid({ photos }: { photos: readonly PersonPhotoView[]
   return (
     <ul className="gallery-grid poster-grid poster-grid--4">
       {photos.map((photo) => (
-        <li className="gallery-tile" data-kind="profile" key={photo.fullUrl}>
-          <a className="gallery-tile__link" href={photo.fullUrl}>
+        <li
+          className="gallery-tile"
+          data-gallery-item=""
+          data-kind="profile"
+          data-lang={photo.languageLabel}
+          key={photo.fullUrl}
+        >
+          <a
+            className="gallery-tile__link"
+            data-caption={`Foto · ${photo.languageLabel}`}
+            data-gallery-open=""
+            href={photo.fullUrl}
+          >
             <img
               alt={photo.alt}
               className="gallery-tile__img"
@@ -104,7 +127,13 @@ export function GalleryVideoList({
   return (
     <ul className="gallery-videos">
       {videos.map((video) => (
-        <li className="gallery-video" key={`${video.site}:${video.videoKey}`}>
+        <li
+          className="gallery-video"
+          data-gallery-item=""
+          data-kind={video.typeLabel}
+          data-lang={video.languageLabel}
+          key={`${video.site}:${video.videoKey}`}
+        >
           <div
             className="gallery-video__art"
             // O fundo é o backdrop do TÍTULO (não uma miniatura do YouTube —
