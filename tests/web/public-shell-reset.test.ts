@@ -13,8 +13,9 @@ import { describe, expect, it } from 'vitest'
  * O caso do `AdSlot` OpaPreço saiu em 2026-10-31 junto com a integração de
  * mesma origem do PR #346 (`services/opapreco`, `/api/opapreco/*`): ela pedia
  * `GET /v1/ad`, que o ad server não implementa. O anúncio que fica é o SDK
- * oficial nas matérias (`opapreco-ad.test.tsx`); a ausência do AdSense é
- * travada por `sem-adsense.test.ts`.
+ * oficial (`opapreco-ad.test.tsx`), na matéria, na home, nas listagens de
+ * filmes e séries e nas fichas; a ausência do AdSense é travada por
+ * `sem-adsense.test.ts`.
  */
 
 const ROOT = process.cwd()

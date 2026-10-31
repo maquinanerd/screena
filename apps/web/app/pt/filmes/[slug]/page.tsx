@@ -16,6 +16,7 @@ import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
 import { AwardsBand } from '../../../_components/awards-band'
 import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
+import { OpaPrecoAd } from '../../../_components/opapreco-ad'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { SectionHead } from '../../../_components/section-head'
 import { SimilarTitles } from '../../../_components/similar-titles'
@@ -52,7 +53,8 @@ import '../../../_components/detail.css'
  * 14px/56ch com "Ler mais" | Cinerie Score + linha de notas externas | Elenco e
  * Equipe) → mosaico de mídia full-bleed (1fr/3fr/2fr, 472px, filetes brancos de
  * 3px) → tira de ações (Minha lista · Avaliar | Onde assistir) → Prêmios →
- * A obra → Elenco → Notícias e bastidores → Ficha técnica + Mais como este.
+ * A obra → OpaPreço `detail-01` → Elenco → Notícias e bastidores → Ficha
+ * técnica + Mais como este → OpaPreço `detail-02`.
  *
  * A seção "Guia Cinerie · Crítica" SAIU (canônico de 2026-10-30). A sinopse
  * completa continua em "A OBRA"; o topo mostra o corte em palavra inteira.
@@ -220,6 +222,14 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
   const isUnderReview = isEditorialReviewPending(seo)
   // A linha de gêneros do topo (canônico: "DRAMA · SUSPENSE · MISTÉRIO").
   const genreLine = heroGenreChips(genres).join(' · ')
+  // O contexto que os slots OpaPreço mandam para escolher a oferta: o título e
+  // os gêneros da ficha. URL canônica e título da página o próprio script lê
+  // do <head>. Nada do leitor.
+  const adContext = {
+    contentId: `movie-${entityId}`,
+    section: 'Filmes',
+    tags: [view.title, ...genres],
+  } as const
   const scoreDecision = decideCinerieScore(score)
 
   const workBlocks = view.blocks.filter((block) => WORK_BLOCK_TYPES.has(block.blockType))
@@ -611,6 +621,11 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         </section>
       ) : null}
 
+      {/* ===== OpaPreço · detail-01 — entre "A obra" e o elenco =====
+          A margem vive na classe do PRÓPRIO slot e zera quando ele colapsa
+          (`detail.css`); desligado, o slot nem sai no HTML. */}
+      <OpaPrecoAd className="title-ad title-ad--mid" slotKey="detail-01" {...adContext} />
+
       {/* ===== Elenco · faixa visual ===== */}
       <SectionBoundary decision={castSection}>
         {(members) => (
@@ -755,6 +770,9 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
           </div>
         </section>
       ) : null}
+
+      {/* ===== OpaPreço · detail-02 — depois de "Mais como este" ===== */}
+      <OpaPrecoAd className="title-ad title-ad--bottom" slotKey="detail-02" {...adContext} />
 
       <div className="detail-container">
         {isUnderReview ? (

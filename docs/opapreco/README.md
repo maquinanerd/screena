@@ -23,12 +23,30 @@ o guia de integração do publisher (no repositório do OpaPreço,
 - `apps/web/app/pt/noticias/[slug]/page.tsx` — as quatro posições; `article.css` — só a margem em volta do slot, que zera quando ele colapsa.
 - `apps/web/middleware.ts` — o CSP libera `opapreco.com.br` em `script-src`, `style-src`, `connect-src` e `img-src`, e `cf.shopee.com.br` em `img-src` (a imagem do produto vem de um ou de outro).
 - Política de Privacidade `2026-10.2` — itens 2.3, 3, 5.8, 6, 7, 11 e 12.
+- Política de Privacidade `2026-10.3` — ofertas também na home, nas listagens e nas fichas de filme e de série (itens 2.3, 3, 5.8, 6 e 11).
 
 O script do OpaPreço faz o resto, e a Cinerie não refaz nada: reserva a altura,
 pede a oferta (`POST /v1/ads/serve`), desenha, colapsa sem anúncio e conta
 impressão e clique por beacon. O clique vai direto para `s.shopee.com.br`. O
 pedido sai do navegador depois do render, sem cookie e sem dado do leitor: a
 página continua sem API externa no render (invariante 3).
+
+### Fora da matéria: home, listagens e fichas (2026-10-31)
+
+O mesmo `<OpaPrecoAd>` entra em mais três superfícies, nas posições que os
+slots de 30/10 tinham. As chaves são as do contrato **v1.2.0** do OpaPreço:
+enquanto o servidor não as aceitar, o pedido volta recusado e o script colapsa
+o slot (margem zero, nada sobra na página).
+
+| Página | Slots | Onde | Contexto |
+|---|---|---|---|
+| `/pt/` | `home-01`, `home-02`, `home-03` | grade depois de Popular, depois de "Seu mês em números" e depois de "Em breve" (antes de Notícias) | `content-id` = `home` |
+| `/pt/filmes/`, `/pt/series/` | `listing-01`, `listing-02`, `listing-03` | as mesmas três posições (`home-like.tsx`) | `content-id` = `filmes`/`series`, `section` = "Filmes"/"Séries" |
+| `/pt/filmes/{slug}/`, `/pt/series/{slug}/` | `detail-01`, `detail-02` | card entre a obra (na série, os episódios) e o elenco; grade depois de "Mais como este" | `content-id` = `movie-{id}`/`series-{id}`, `section` = vertical, `tags` = título + gêneros |
+
+A margem fica no próprio `<op-slot>` e zera no colapso (`home-like.css`,
+`detail.css`). Pessoa, Explorar, Onde assistir, Listas, Notícias e Entrar
+continuam sem anúncio.
 
 ### Ligar e desligar (runtime, sem rebuild)
 
