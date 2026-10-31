@@ -508,10 +508,12 @@
   font-weight: 600;
 }
 
+/* So o compartilhar, na direita da faixa — a posicao dele no canonico. A lista
+   de entidades citadas que ocupava a esquerda saiu em 31/10/2026. */
 .art-share {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 18px;
   border-top: 1px solid var(--c-border);
@@ -526,78 +528,18 @@
 }
 
 /*
- * Listas da materia que NAO sao lista de leitura: "Entidades citadas nesta
- * materia" (chips) e a galeria de imagens. As duas iam para o ar com o
- * marcador e o recuo do navegador — bolinha antes de cada chip, numero antes
- * de cada foto — porque nenhuma das duas classes tinha regra nesta folha.
- *
- * Aqui vai SO o que tira o padrao do navegador. O desenho dos dois blocos
- * continua ausente de proposito: e outra conversa, nao este vazamento.
+ * A galeria de imagens da materia NAO e lista de leitura: ia para o ar com o
+ * marcador e o recuo do navegador (numero antes de cada foto) porque a classe
+ * nao tinha regra nesta folha. Aqui vai SO o que tira o padrao do navegador.
  */
-.related-entities,
 .art-gallery__items {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-/* Entidades citadas: os CHIPS do canonico ("Tags + share"), lado a lado e
-   quebrando linha, a esquerda do compartilhar. Antes cada item era um bloco
-   numa coluna, com o selo vermelho colado no nome. O chip leva o tipo escrito
-   ("Filme"/"Serie"/"Pessoa") e a cor do tipo so reforca. */
-.related-entities {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  flex: 1 1 360px;
-  min-width: 0;
-}
-
-.related-entities a {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  max-width: 100%;
-  padding: 7px 13px;
-  background: var(--c-bg-muted);
-  border: 1px solid var(--c-border);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-  color: var(--c-text-primary);
-  transition: border-color 0.15s ease;
-}
-
-.related-entities a:hover,
-.related-entities a:focus-visible {
-  border-color: var(--c-text-primary);
-}
-
-.related-entities__type {
-  flex: none;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--c-text-muted-aa);
-}
-
-.related-entities a[data-entity='movie'] .related-entities__type {
-  color: var(--c-accent-movie-dark);
-}
-
-.related-entities a[data-entity='tv'] .related-entities__type {
-  color: var(--c-accent-series-dark);
-}
-
-.related-entities__name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
 .art-share__row {
   display: flex;
-  flex: none;
   align-items: center;
   gap: 10px;
 }
@@ -785,18 +727,7 @@
     font-size: 12px;
   }
 
-  /* Entidades citadas e fontes: alvo de toque. No celular o chip sobe para
-     13px e o tipo para 12px (piso do contrato). */
-  .related-entities a {
-    display: inline-flex;
-    align-items: center;
-    min-height: 36px;
-    font-size: 13px;
-  }
-  .related-entities__type {
-    font-size: 12px;
-    letter-spacing: 0.06em;
-  }
+  /* Fontes: alvo de toque. */
   .art-sources a {
     display: inline-block;
     padding-block: 6px;
