@@ -396,3 +396,26 @@
     right: calc(50% - 64px);
   }
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — galerias (30/10/2026)
+   Os filtros viram UMA linha com scroll horizontal: com 23 chips (Lupin) a
+   faixa quebrava em 8 linhas e empurrava a primeira imagem para a segunda
+   tela. A linha encosta nas bordas da tela e o primeiro chip mantem o recuo.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .gallery-facets .chip-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: calc(-1 * var(--pad-page-mobile));
+    padding: 2px var(--pad-page-mobile) 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .gallery-facets .chip-row::-webkit-scrollbar {
+    display: none;
+  }
+  .gallery-facets .chip-row > li {
+    flex: 0 0 auto;
+  }
+}

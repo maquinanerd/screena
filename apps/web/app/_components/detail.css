@@ -1987,3 +1987,91 @@ main > .title-ad--bottom {
 .title-top__kicker .detail-badge {
   padding: 3px 7px;
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — ficha (mosaico, acoes, piso de texto)
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .score-card__scale,
+  .score-card__method,
+  .similar-titles__relation-kicker,
+  .similar-card__type,
+  .similar-card__year {
+    font-size: 12px;
+  }
+
+  .detail-section-title {
+    font-size: 24px;
+  }
+
+  /* Ordem da tela 08 (ver detail-hero.css): o mosaico abre a pagina e a tira
+     de acoes vem logo depois da sinopse. Mesma especificidade das regras de
+     ordem que ja existiam acima, e depois delas. */
+  /* O container de dentro do casco da barra superior tambem vira "contents"
+     (o casco em si mora em detail-hero.css): so assim titulo, Score e elenco
+     viram itens da coluna flex e aceitam "order". */
+  main[data-vertical] > .detail-hero--title > .detail-container {
+    display: contents;
+  }
+
+  main[data-vertical] > .media-strip {
+    order: -10;
+  }
+  main[data-vertical] > .title-actions {
+    order: -7;
+  }
+
+  /* MOSAICO (tela 08): o destaque do trailer em 16:10 na largura toda — o
+     poster sai do celular, onde ele ficava espremido em ~60px ao lado — e os
+     atalhos (Imagens, Noticias, Trailers) numa linha logo abaixo.
+     O `[data-media-cards]` sobe a especificidade acima das regras por
+     contagem de cartoes (`1fr 3fr 2fr`), que vinham DEPOIS das media queries
+     antigas e por isso o celular herdava as 3 colunas do desktop.
+     So quando o destaque TEM imagem: sem backdrop, o poster continua sendo a
+     unica arte e fica como estava. */
+  .media-strip .media-strip__grid[data-media-cards]:has(> .media-strip__cell:nth-child(2) > img) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    height: auto;
+  }
+  .media-strip
+    .media-strip__grid[data-media-cards]:has(> .media-strip__cell:nth-child(2) > img)
+    > .media-strip__cell:first-child {
+    display: none;
+  }
+  .media-strip
+    .media-strip__grid[data-media-cards]:has(> .media-strip__cell:nth-child(2) > img)
+    > .media-strip__cell:nth-child(2) {
+    aspect-ratio: 16 / 10;
+  }
+  .media-strip .media-strip__grid[data-media-cards] > .media-strip__stack {
+    grid-column: 1 / -1;
+    grid-template-rows: none;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    height: 92px;
+  }
+  .media-strip .media-strip__stack .media-strip__caption {
+    left: 10px;
+    right: 8px;
+    bottom: 10px;
+    font-size: 13px;
+    line-height: 1.2;
+  }
+
+  /* Tira de acoes: "Minha lista" e "Avaliar" LADO A LADO (tela 08), e "onde
+     assistir" abaixo, com o mesmo recuo. Os botoes moram em
+     `.hero-actions__row` (flex que quebrava linha com cada botao em 100%). */
+  .title-actions .detail-actions {
+    margin-top: 0;
+  }
+  .title-actions .hero-actions__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+}

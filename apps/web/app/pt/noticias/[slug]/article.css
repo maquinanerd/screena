@@ -666,3 +666,31 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — materia
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .art-byline__avatar,
+  .art-ficha__kicker,
+  .read-also__cat,
+  .read-also__date {
+    font-size: 12px;
+  }
+
+  /* Entidades citadas e fontes: alvo de toque. */
+  .related-entities a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+  }
+  .art-sources a {
+    display: inline-block;
+    padding-block: 6px;
+  }
+}

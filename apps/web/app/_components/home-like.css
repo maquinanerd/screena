@@ -957,3 +957,27 @@ a.seg-toggle__opt[aria-current='page'] {
   border-bottom: 1px solid var(--c-border);
   overflow-x: auto;
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — Home e verticais
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .ticker__label,
+  .feat-card__kicker {
+    font-size: 12px;
+  }
+
+  .ticker__dot {
+    position: relative;
+  }
+  .ticker__dot::after {
+    content: '';
+    position: absolute;
+    inset: -10px -6px;
+  }
+}

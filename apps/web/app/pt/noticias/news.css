@@ -343,3 +343,74 @@
     white-space: nowrap;
   }
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — /pt/noticias
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .nws-cat {
+    font-size: 12px;
+  }
+
+  /* Destaque: a imagem vem PRIMEIRO no celular (padrao de capa editorial), em
+     16:10, e o titulo em 24px. */
+  .nws-feature {
+    gap: 16px;
+  }
+  .nws-feature__img {
+    order: -1;
+    min-height: 0;
+    height: auto;
+    aspect-ratio: 16 / 10;
+  }
+  .nws-feature__title {
+    font-size: 24px;
+  }
+
+  /* Os 3 destaques e o feed viram LISTA COMPACTA: miniatura 16:10 de 112px ao
+     lado do titulo, sem o resumo. Antes cada item ocupava ~450px (imagem na
+     largura toda + resumo) e a pagina passava de 12 mil px. */
+  .nws-cards3 {
+    gap: 0;
+    margin-top: 24px;
+  }
+  .nws-cards3 > li {
+    border-top: 1px solid var(--c-border);
+    padding: 16px 0;
+  }
+  .nws-cards3 a {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 6px 14px;
+    align-items: start;
+  }
+  .nws-cards3 .nws-card__cover {
+    grid-row: 1 / span 3;
+  }
+  .nws-cards3 .nws-card__title,
+  .nws-feed__item .nws-card__title {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+  .nws-cards3 .nws-card__excerpt,
+  .nws-feed__item .nws-card__excerpt {
+    display: none;
+  }
+
+  .nws-feed__item {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+
+  /* Coluna de posts em destaque: 16:10 em vez de 4:5 (cada um tinha ~430px). */
+  .nws-rail__post {
+    aspect-ratio: 16 / 10;
+  }
+}

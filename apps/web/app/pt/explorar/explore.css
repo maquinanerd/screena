@@ -753,3 +753,25 @@
   font-size: 12px;
   color: #9a958c;
 }
+
+/* =====================================================================
+   MOBILE (<= 767px) — explorar
+   Refeito em 30/10/2026 a partir do contrato de responsividade do handoff
+   (contrato-responsividade-screen-v4.md): texto nunca abaixo de 12px no
+   celular, titulos de secao em 24px, alvos de toque, nada de layout de
+   desktop espremido. No FIM da folha de proposito: conflito de mesma
+   especificidade resolve por ordem de documento.
+   ===================================================================== */
+@media (max-width: 767px) {
+  .disc-search__kbd,
+  .disc-feature__type,
+  .disc-feature__kicker,
+  .disc-feature__where-label,
+  .disc-feature__provider-name,
+  .disc-feature__provider-modality,
+  .disc-rank__type,
+  .disc-rank__meta,
+  .disc-agenda__weekday {
+    font-size: 12px;
+  }
+}
