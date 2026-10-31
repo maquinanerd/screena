@@ -23,6 +23,7 @@ o guia de integração do publisher (no repositório do OpaPreço,
 - `apps/web/app/pt/noticias/[slug]/page.tsx` — as quatro posições; `article.css` — só a margem em volta do slot, que zera quando ele colapsa.
 - `apps/web/middleware.ts` — o CSP libera `opapreco.com.br` em `script-src`, `style-src`, `connect-src` e `img-src`, e `cf.shopee.com.br` em `img-src` (a imagem do produto vem de um ou de outro).
 - Política de Privacidade `2026-10.2` — itens 2.3, 3, 5.8, 6, 7, 11 e 12.
+- Política de Privacidade `2026-10.3` — ofertas também na home, nas listagens e nas fichas de filme e de série (itens 2.3, 3, 5.8, 6 e 11).
 
 O script do OpaPreço faz o resto, e a Cinerie não refaz nada: reserva a altura,
 pede a oferta (`POST /v1/ads/serve`), desenha, colapsa sem anúncio e conta
