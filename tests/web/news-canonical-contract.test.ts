@@ -136,8 +136,11 @@ describe('notícias após o reset visual', () => {
       expect(at, `marcador ausente/fora de ordem: ${marker}`).toBeGreaterThan(artCursor)
       artCursor = at
     }
-    // Entidades citadas persistidas (nunca inferidas no render)
-    expect(article).toContain('view.related.length > 0 ?')
+    // Entidades citadas: a LISTA visivel saiu por decisao do dono (31/10/2026);
+    // o `mentions` do JSON-LD continua vindo das entidades PERSISTIDAS (nunca
+    // inferidas no render).
+    expect(article).not.toContain('related-entities')
+    expect(article).toContain('mentions: view.related.map(')
     // Ficha do titulo: so com entidade real hidratada (movie|tv por design — a
     // ficha do TITULO nao vira ficha de pessoa); score honesto (bloqueado)
     expect(article).toContain("card !== null && card.entityType !== 'person' ?")
