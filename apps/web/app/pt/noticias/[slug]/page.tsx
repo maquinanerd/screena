@@ -521,19 +521,14 @@ export default async function NewsArticlePage({ params }: { params: Promise<News
             <ul aria-label="Entidades citadas nesta matéria" className="related-entities">
               {view.related.map((entity) => (
                 <li key={`${entity.entityType}:${entity.href}`}>
-                  <a href={entity.href}>
-                    <span
-                      className={
-                        entity.entityType === 'movie'
-                          ? 'badge badge--movie'
-                          : entity.entityType === 'tv'
-                            ? 'badge badge--series'
-                            : 'badge'
-                      }
-                    >
+                  {/* Chip do canônico (tags + share): o TIPO vai escrito
+                      ("Filme", "Série", "Pessoa") antes do nome — a cor do
+                      tipo só reforça, nunca é o único sinal. */}
+                  <a data-entity={entity.entityType} href={entity.href}>
+                    <span className="related-entities__type">
                       {RELATED_LABELS[entity.entityType] ?? entity.entityType}
                     </span>
-                    {entity.title}
+                    <span className="related-entities__name">{entity.title}</span>
                   </a>
                 </li>
               ))}
