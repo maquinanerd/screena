@@ -58,13 +58,16 @@ Numa matéria publicada, em desktop e celular: cada `<op-slot>` com
 afiliado" visível e o layout parado. Um 204 traz o motivo em
 `X-OpaPreco-Ads-Reason` (`no_candidates`, `slot_disabled`, `site_not_approved`…).
 
-## A integração ANTERIOR (2026-10-30), que não fala com o servidor real
+## A integração ANTERIOR (2026-10-30), removida em 2026-10-31
 
 O PR #346 montou um sistema próprio, de mesma origem, contra um contrato
 (`GET {url}/v1/ad?publisher=…&slot=…`) que o servidor do OpaPreço não implementa.
-Ele continua no repositório, **desligado** (sem `OPAPRECO_AD_SERVER_URL` +
-`OPAPRECO_PUBLISHER_ID`), nas outras páginas — home, listagens, fichas, entrar —
-e sai num PR próprio:
+**Saiu do repositório em 2026-10-31**: `<AdSlot>` e os 6 componentes
+(`apps/web/app/_components/opapreco/`), `apps/web/src/lib/opapreco/`, as rotas
+`apps/web/app/api/opapreco/{ad,img,track}`, o harness `/dev/ad-preview` e
+`services/opapreco` (`@screena/opapreco`). Os slots da home, das listagens, das
+fichas, de Pessoa, Explorar, Onde assistir, Listas e Entrar saíram junto: essas
+posições não existem no cadastro do OpaPreço. Ficam só como histórico:
 
 | Pasta | O que é |
 |---|---|
@@ -73,10 +76,5 @@ e sai num PR próprio:
 | `fixtures/` | ofertas de teste, incluindo `mustNotRender` e `mustHideDiscount` |
 | `DECISIONS.md` | decisões e divergências, com as da implementação na Cinerie |
 
-- `apps/web/src/lib/opapreco/` — registro de slots, validação do contrato, ambiente, fixtures.
-- `apps/web/app/_components/opapreco/` — `<AdSlot id tags className>` e os 6 componentes desenhados na Cinerie.
-- `apps/web/app/api/opapreco/{ad,img,track}` — as rotas de mesma origem.
-- `services/opapreco` (`@screena/opapreco`) — o cliente HTTP desse contrato.
-
-Não ligue as variáveis `OPAPRECO_*` antigas: o ad server responde só em
-`/v1/ads/*`, e os slots da home e das fichas não existem no cadastro do site.
+As variáveis `OPAPRECO_AD_SERVER_URL`, `OPAPRECO_PUBLISHER_ID` e `OPAPRECO_MODE`
+não são mais lidas por nenhum código; podem sair do ambiente.

@@ -83,9 +83,9 @@ describe('notícias após o reset visual', () => {
     expect(jsonLd.image).toEqual(['https://cinerie.com/img.jpg'])
   })
 
-  it('design canônico (tela 03): layout magazine, AdSlot governado, um H1 por página', () => {
-    // Ordem: tabs+ad no header → magazine lead (feature 1.02/1.18 + rail
-    // 290px) → 3 cards → Ad → feed 1fr/340px.
+  it('design canônico (tela 03): layout magazine, um H1 por página', () => {
+    // Ordem: tabs no header → magazine lead (feature 1.02/1.18 + rail 290px)
+    // → 3 cards → feed 1fr/340px.
     const order = [
       'className="nws-header"',
       'className="nws-lead-grid"',
@@ -104,7 +104,10 @@ describe('notícias após o reset visual', () => {
       expect(page.match(/<h1[\s>]/g)).toHaveLength(1)
       expect(page).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     }
-    expect(index).toMatch(/<AdSlot [^>]*\bid="news-[a-z0-9-]+"/)
+    // A asserção dos `<AdSlot>` da listagem saiu em 2026-10-31 com a
+    // integração OpaPreço de mesma origem (PR #346): ela pedia `GET /v1/ad`, que
+    // o ad server não implementa, e as posições `news-*` da listagem não existem
+    // no cadastro do OpaPreço, que só atende os slots da matéria.
     // A materia usa o SDK do OpaPreço (`<op-slot>`, 2026-10-31) nos quatro slots
     // do corpo, na ordem do guia de integracao, e o de baixo antes do "Leia
     // tambem". Coluna unica, sem barra lateral: o `sidebar` nao entra.

@@ -16,7 +16,6 @@ import { EntityActions } from '../../../_components/entity-actions'
 import { EntitySynopsis } from '../../../_components/entity-synopsis'
 import { AwardsBand } from '../../../_components/awards-band'
 import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
-import { AdSlot } from '../../../_components/opapreco/ad-slot'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { SectionHead } from '../../../_components/section-head'
 import { SimilarTitles } from '../../../_components/similar-titles'
@@ -53,8 +52,7 @@ import '../../../_components/detail.css'
  * 14px/56ch com "Ler mais" | Cinerie Score + linha de notas externas | Elenco e
  * Equipe) → mosaico de mídia full-bleed (1fr/3fr/2fr, 472px, filetes brancos de
  * 3px) → tira de ações (Minha lista · Avaliar | Onde assistir) → Prêmios →
- * A obra → OpaPreço `title-mid` → Elenco → Notícias e bastidores → Ficha
- * técnica + Mais como este → OpaPreço `title-bottom`.
+ * A obra → Elenco → Notícias e bastidores → Ficha técnica + Mais como este.
  *
  * A seção "Guia Cinerie · Crítica" SAIU (canônico de 2026-10-30). A sinopse
  * completa continua em "A OBRA"; o topo mostra o corte em palavra inteira.
@@ -613,16 +611,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
         </section>
       ) : null}
 
-      {/* ===== OpaPreço · title-mid =====
-          No lugar da antiga faixa "Guia Cinerie · Crítica", que saiu no
-          canônico de 2026-10-30. A margem vive na classe do PRÓPRIO slot: com
-          anúncio desligado ou vazio ele não renderiza, e o respiro some junto. */}
-      <AdSlot
-        className="title-ad title-ad--mid"
-        id="title-mid"
-        tags={{ vertical: 'movie', entity: slug, genres }}
-      />
-
       {/* ===== Elenco · faixa visual ===== */}
       <SectionBoundary decision={castSection}>
         {(members) => (
@@ -767,13 +755,6 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
           </div>
         </section>
       ) : null}
-
-      {/* ===== OpaPreço · title-bottom — depois de "Mais como este" ===== */}
-      <AdSlot
-        className="title-ad title-ad--bottom"
-        id="title-bottom"
-        tags={{ vertical: 'movie', entity: slug, genres }}
-      />
 
       <div className="detail-container">
         {isUnderReview ? (

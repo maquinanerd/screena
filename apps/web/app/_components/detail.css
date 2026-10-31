@@ -1914,64 +1914,6 @@ main[data-vertical='series'] .score-card__method {
   }
 }
 
-/* --- Slots OpaPreço das fichas (`title-mid`, `title-bottom`).
-   A classe vai no PROPRIO slot (o `AdSlot` a poe na raiz), e a geometria e
-   por MARGEM, nao por padding: desligado ou vazio, o slot nao renderiza e o
-   respiro some junto, e a reserva de altura do anuncio nao divide caixa com
-   um padding herdado. Largura = a do `.detail-container` (1360 menos 64 de
-   cada lado), na mesma escada de recuos. `main >` sobe a especificidade
-   acima da folha do proprio slot (`.cin-adslot`), que carrega depois. ------ */
-main > .title-ad {
-  box-sizing: border-box;
-  width: calc(100% - 128px);
-  max-width: 1232px;
-  margin-inline: auto;
-}
-
-main > .title-ad--mid {
-  margin-top: 52px;
-}
-
-/* Depois da ficha tecnica, que ja fecha com 72px de respiro. */
-main > .title-ad--bottom {
-  margin-top: 0;
-}
-
-@media (max-width: 1279px) {
-  main > .title-ad {
-    width: calc(100% - 96px);
-  }
-}
-
-@media (max-width: 1023px) {
-  main > .title-ad {
-    width: calc(100% - 64px);
-  }
-}
-
-@media (max-width: 767px) {
-  /* `[data-vertical]` + classe dobrada: no celular a ficha vira coluna flex e
-     `main[data-vertical="movie"]:has(> .detail-hero) > *` (detail-hero.css)
-     da 100% de largura a todo filho — sem subir a especificidade o slot
-     encostava nas bordas da tela (medido: 375px de largura em 375). */
-  main[data-vertical] > .title-ad.title-ad {
-    width: calc(100% - 2 * var(--pad-page-mobile));
-    margin-inline: auto;
-  }
-
-  /* Os slots OpaPreço acompanham a ordem editorial: sem `order` explicito eles
-     ficariam no 0 — ANTES do elenco —, e o `title-bottom` subiria para o meio
-     da pagina. Mesmo numero da secao que os precede: o DOM decide o empate. */
-  main[data-vertical='series'] > .title-ad--mid {
-    order: 4;
-  }
-
-  main[data-vertical='series'] > .title-ad--bottom {
-    order: 6;
-  }
-}
-
-
 @media (max-width: 1023px) {
   .rating-line__name,
   .rating-line__type,

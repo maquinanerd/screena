@@ -14,10 +14,13 @@ const railsSource = readFileSync(RAILS_PATH, 'utf8')
 const cwSource = readFileSync(CW_PATH, 'utf8')
 
 describe('contrato canônico da rota Explorar (tela 11)', () => {
-  it('segue a ordem canônica: busca → ad → rails filtráveis com seções fixas', () => {
+  it('segue a ordem canônica: busca → rails filtráveis com seções fixas', () => {
+    // O marcador do AdSlot `discover-top` (entre a busca e os trilhos) saiu em
+    // 2026-10-31 com a integração OpaPreço de mesma origem (PR #346): ela pedia
+    // `GET /v1/ad`, que o ad server não implementa, e a posição não existe no
+    // cadastro do OpaPreço, que só atende os slots da matéria.
     const order = [
       'className="disc-search"',
-      'id="discover-top"',
       '<DiscoverFilterableRails',
       'className="disc-feature disc-section"',
       '<ContinueWatching route=',

@@ -87,7 +87,6 @@ export default defineConfig({
       '@screena/news-ingestion': fileURLToPath(
         new URL('./services/news-ingestion/src/index.ts', import.meta.url),
       ),
-      '@screena/opapreco': fileURLToPath(new URL('./services/opapreco/src/index.ts', import.meta.url)),
       '@screena/tmdb-client': fileURLToPath(
         new URL('./api-clients/tmdb/src/index.ts', import.meta.url),
       ),

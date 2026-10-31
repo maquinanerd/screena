@@ -12,6 +12,9 @@
  * no global empatava com uma daqui, e a paridade de estilo computado prova o resto.
  */
 
+/* A coluna de 300px era a do anuncio lateral (`.auth-side`), removido em
+   2026-10-31 junto com a integracao OpaPreco de mesma origem. Ela fica vazia
+   de proposito: sem ela o card centralizaria em outro lugar. */
 .auth-layout {
   max-width: 1120px;
   margin: 0 auto;
@@ -195,15 +198,4 @@
   font-size: 11px;
   color: var(--c-text-muted-aa); /* DD-02: nota decorativa curta */
   margin-top: 16px;
-}
-
-.auth-side {
-  position: sticky;
-  top: 96px;
-}
-
-@media (max-width: 900px) {
-  .auth-side {
-    display: none;
-  }
 }

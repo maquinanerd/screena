@@ -18,7 +18,6 @@ import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
 import { SectionHead } from '../../../_components/section-head'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
 import { AwardsBand } from '../../../_components/awards-band'
-import { AdSlot } from '../../../_components/opapreco/ad-slot'
 import { SectionBoundary } from '../../../_components/section-boundary'
 import { RatingsLine } from '../../../_components/ratings-panel'
 import { TitleTopCast, type TitleTopPerson } from '../../../_components/title-top-cast'
@@ -55,10 +54,10 @@ import '../../../_components/detail.css'
  * Score + notas externas | Elenco e Equipe) → mosaico de mídia → tira de ações
  * (Minha lista · Avaliar | Onde assistir) → Prêmios → A obra → EPISÓDIOS
  * (catálogo assistível: eyebrow "Catálogo", tabs de temporada à direita, rows
- * com still + número + título + sinopse + chevron) → OpaPreço `title-mid` →
- * Elenco → Notícias relacionadas → Detalhes + Mais como este → OpaPreço
- * `title-bottom`. A tela 08 (mobile) é ESTE MESMO template no breakpoint 390
- * (media queries). A seção "Guia Cinerie · Crítica" saiu no canônico novo.
+ * com still + número + título + sinopse + chevron) → Elenco → Notícias
+ * relacionadas → Detalhes + Mais como este. A tela 08 (mobile) é ESTE MESMO
+ * template no breakpoint 390 (media queries). A seção "Guia Cinerie ·
+ * Crítica" saiu no canônico novo.
  *
  * Série de ~21k episódios nunca vira 20k nós: só a temporada SELECIONADA
  * renderiza (paginação por temporada já vem do getter).
@@ -689,15 +688,6 @@ export default async function SeriesPage({
         </section>
       ) : null}
 
-      {/* ===== OpaPreço · title-mid — depois dos episódios, onde o canônico
-          de 2026-10-30 o põe na série. A margem vive na classe do PRÓPRIO slot:
-          desligado ou vazio, ele não renderiza e o respiro some junto. ===== */}
-      <AdSlot
-        className="title-ad title-ad--mid"
-        id="title-mid"
-        tags={{ vertical: 'series', entity: slug, genres }}
-      />
-
       {/* ===== Elenco · faixa visual ===== */}
       <SectionBoundary decision={castSection}>
         {(members) => (
@@ -848,13 +838,6 @@ export default async function SeriesPage({
           </div>
         </section>
       ) : null}
-
-      {/* ===== OpaPreço · title-bottom — depois de "Mais como este" ===== */}
-      <AdSlot
-        className="title-ad title-ad--bottom"
-        id="title-bottom"
-        tags={{ vertical: 'series', entity: slug, genres }}
-      />
 
       <div className="detail-container">
         {isUnderReview ? (

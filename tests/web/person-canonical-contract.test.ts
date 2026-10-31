@@ -52,7 +52,9 @@ describe('shell público mínimo · detalhe de pessoa', () => {
   it('design canônico: retrato real com fallback de iniciais, sem dado inventado', () => {
     // Guard ATUALIZADO DELIBERADAMENTE (tela 09): person-hero com portrait
     // 3/4 do asset governado; sem portrait -> INICIAIS (nunca imagem
-    // inventada). AdSlot passa a existir na posição da spec (pe-credits).
+    // inventada). O AdSlot `person-bottom` saiu em 2026-10-31 com a integração
+    // OpaPreço de mesma origem (PR #346), que falava um contrato que o ad
+    // server não implementa; a posição não existe no cadastro do OpaPreço.
     expect(existsSync(path.join(ROOT, CSS_REL))).toBe(false)
     expect(code).not.toContain('.module.css')
     expect(code).toContain('className="container"')
@@ -60,7 +62,6 @@ describe('shell público mínimo · detalhe de pessoa', () => {
     // Retrato canônico circular; fallback de iniciais (nunca imagem inventada)
     expect(code).toContain('person-head__avatar')
     expect(code).toContain('{initials}')
-    expect(code).toMatch(/<AdSlot [^>]*\bid="person-bottom"/)
     expect(code).not.toMatch(/(?:\?\?|=== null \?)\s*["']—["']/)
     expect(code).not.toMatch(/src="https?:/)
   })

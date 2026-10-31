@@ -106,19 +106,18 @@ describe('shell público mínimo · detalhe de filme', () => {
   it('design canônico (tela 06): estrutura EXATA do handoff, sem dado inventado', () => {
     // Ordem canônica (revisão de 2026-10-30): barra superior branca (título |
     // Score + notas | Elenco e Equipe) → mosaico de mídia → tira de ações e
-    // onde assistir → A obra → OpaPreço title-mid → Elenco → Notícias e
-    // bastidores → Ficha + Mais como este → OpaPreço title-bottom.
+    // onde assistir → A obra → Elenco → Notícias e bastidores → Ficha + Mais
+    // como este. Os slots `title-mid`/`title-bottom` saíram da ordem em
+    // 2026-10-31 (ver a nota no fim deste caso).
     const order = [
       'detail-hero',
       'title-top',
       'media-strip',
       'title-actions',
       'synopsis-lead',
-      'title-ad--mid',
       'cast-strip',
       'mnews-grid',
       'ficha-grid',
-      'title-ad--bottom',
     ]
     let cursor = -1
     for (const cls of order) {
@@ -147,10 +146,9 @@ describe('shell público mínimo · detalhe de filme', () => {
     expect(code).not.toMatch(/score-line__value/)
     expect(code).not.toMatch(/Ainda não calculado/)
     expect(code).not.toMatch(/Cinerie Score/)
-    // OpaPreço: os dois slots do slot map, com as tags da página.
-    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-mid"/)
-    expect(code).toMatch(/<AdSlot[\s\S]{0,80}id="title-bottom"/)
-    expect(code.match(/<AdSlot\b/g)).toHaveLength(2)
-    expect(code).toContain('tags={{ vertical: "movie", entity: slug, genres }}')
+    // As asserções dos `<AdSlot>` `title-mid`/`title-bottom` saíram em
+    // 2026-10-31 com a integração OpaPreço de mesma origem (PR #346): ela pedia
+    // `GET /v1/ad`, que o ad server não implementa, e as posições da ficha não
+    // existem no cadastro do OpaPreço, que só atende os slots da matéria.
   })
 })

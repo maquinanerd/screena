@@ -284,13 +284,11 @@ describe('home pública — design canônico (tela 02)', () => {
     expect(code(ticker)).not.toContain('attributionText')
   })
 
-  it('anúncios só via AdSlot OpaPreço governado (nunca criativo inline)', () => {
-    // Os três slots do canônico, na ordem: depois de Popular, depois de
-    // "Filmes em alta"/mês, depois de "Em breve". Nenhum depois de Notícias
-    // (removido a pedido — OPAPRECO-SLOT-MAP.md, "Removidos a pedido").
-    const ids = [...homeLike.matchAll(/<AdSlot[^>]*\bid="([a-z0-9-]+)"/g)].map((m) => m[1])
-    expect(ids).toEqual(['home-after-popular', 'home-after-movies', 'home-after-coming-soon'])
-    expect(homeLike.lastIndexOf('<AdSlot')).toBeLessThan(homeLike.indexOf('className="hnews-grid"'))
+  it('nenhum criativo de anúncio inline', () => {
+    // As asserções dos três `<AdSlot>` da home saíram em 2026-10-31 com a
+    // integração OpaPreço de mesma origem (PR #346): ela pedia `GET /v1/ad`, que
+    // o ad server não implementa, e as posições da home não existem no cadastro
+    // do OpaPreço, que só atende os slots da matéria (SDK oficial).
     expect(homeLike).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
     expect(home).not.toMatch(/<iframe|doubleclick|adsbygoogle/i)
   })

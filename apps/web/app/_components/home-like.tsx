@@ -6,7 +6,6 @@ import { HomeEditorialHighlights } from './home-editorial-highlights'
 import { HomeHeroCarousel } from './home-hero-carousel'
 import { HomeTicker } from './home-ticker'
 import { MonthStats } from './month-stats'
-import { AdSlot } from './opapreco/ad-slot'
 import { PopularThisWeek, type PopularRankingPanel } from './popular-this-week'
 import { Rail } from './rail'
 import { SectionBoundary } from './section-boundary'
@@ -220,11 +219,6 @@ export function HomeLike({
   vertical,
 }: HomeLikeProps): ReactNode {
   const hasRanking = rankingPanels.length > 0
-  // Tags da página para o ad server OpaPreço: só a vertical da rota (a home é
-  // mista). Nenhuma entidade: estas grades ficam entre seções de catálogo.
-  const adTags = {
-    vertical: vertical === 'movies' ? 'movie' : vertical === 'series' ? 'series' : 'home',
-  } as const
   const newsCategories = [
     ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
   ].slice(0, 6)
@@ -311,12 +305,6 @@ export function HomeLike({
         />
       ) : null}
 
-      {/* OpaPreço · home-after-popular (canônico: grade 4 itens, margem 56/56).
-          Sem ad server configurado o slot não renderiza nada. */}
-      <div className="container">
-        <AdSlot className="cin-adslot--home-popular" id="home-after-popular" tags={adTags} />
-      </div>
-
       {/* Filmes em alta — certified-fresh cards (band condicional) */}
       {showMoviesBand && movieCards.length > 0 ? (
         <div className="band" style={{ background: '#FFFFFF' }}>
@@ -340,11 +328,6 @@ export function HomeLike({
           O recorte segue a vertical: numa página de filmes o leitor não vê a
           própria contagem de episódios e séries. */}
       <MonthStats vertical={vertical} />
-
-      {/* OpaPreço · home-after-movies (margem 56/0) */}
-      <div className="container">
-        <AdSlot className="cin-adslot--home-after" id="home-after-movies" tags={adTags} />
-      </div>
 
       {/* Séries da semana — certified-fresh cards (band condicional) */}
       {showSeriesBand && seriesCards.length > 0 ? (
@@ -390,11 +373,6 @@ export function HomeLike({
           </div>
         )}
       </SectionBoundary>
-
-      {/* OpaPreço · home-after-coming-soon (margem 56/0) */}
-      <div className="container">
-        <AdSlot className="cin-adslot--home-after" id="home-after-coming-soon" tags={adTags} />
-      </div>
 
       {/* Notícias & entrevistas — chips + lead 430 + grade 2x2 */}
       {newsCards.length > 0 ? (
