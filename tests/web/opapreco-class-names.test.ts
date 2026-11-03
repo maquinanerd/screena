@@ -10,7 +10,6 @@
  * tem por que dizer "ad".
  */
 
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -26,24 +25,24 @@ const PAGINAS = [
 ]
 const FOLHAS = ['apps/web/app/_components/home-like.css', 'apps/web/app/_components/detail.css']
 
-/** A folha sem comentario: o comentario explica o nome antigo, e isso pode. */
-function folhaSemComentario(relativo: string): string {
-  return readFileSync(path.join(REPO_ROOT, relativo), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+function semComentario(relativo: string): string {
+  return readSourceWithoutComments(path.join(REPO_ROOT, relativo))
 }
 
 describe('classes dos slots OpaPreço', () => {
   it.each(PAGINAS)('%s nao usa o nome filtrado', (relativo) => {
-    const fonte = readSourceWithoutComments(path.join(REPO_ROOT, relativo))
+    const fonte = semComentario(relativo)
     expect(fonte).toContain('<OpaPrecoAd')
     expect(fonte).not.toMatch(NOME_FILTRADO)
   })
 
   it.each(FOLHAS)('%s nao usa o nome filtrado', (relativo) => {
-    expect(folhaSemComentario(relativo)).not.toMatch(NOME_FILTRADO)
+    // Sem comentario: o comentario da folha explica o nome antigo, e isso pode.
+    expect(semComentario(relativo)).not.toMatch(NOME_FILTRADO)
   })
 
   it('a home e as fichas usam os nomes novos', () => {
-    expect(folhaSemComentario(FOLHAS[0]!)).toContain('.home-offers[data-op-estado')
-    expect(folhaSemComentario(FOLHAS[1]!)).toContain('.title-offers[data-op-estado')
+    expect(semComentario(FOLHAS[0]!)).toContain('.home-offers[data-op-estado')
+    expect(semComentario(FOLHAS[1]!)).toContain('.title-offers[data-op-estado')
   })
 })
