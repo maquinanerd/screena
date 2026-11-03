@@ -325,7 +325,11 @@ export function HomeLike({
           e zera quando ele colapsa (`home-like.css`); desligado, o slot nem
           sai no HTML. */}
       <div className="container">
-        <OpaPrecoAd className="home-ad home-ad--popular" slotKey={adSlots[0]} {...adContext} />
+        <OpaPrecoAd
+          className="home-offers home-offers--popular"
+          slotKey={adSlots[0]}
+          {...adContext}
+        />
       </div>
 
       {/* Filmes em alta — certified-fresh cards (band condicional) */}
@@ -354,7 +358,11 @@ export function HomeLike({
 
       {/* OpaPreço · 2ª grade, depois de "Seu mês em números". */}
       <div className="container">
-        <OpaPrecoAd className="home-ad home-ad--after" slotKey={adSlots[1]} {...adContext} />
+        <OpaPrecoAd
+          className="home-offers home-offers--after"
+          slotKey={adSlots[1]}
+          {...adContext}
+        />
       </div>
 
       {/* Séries da semana — certified-fresh cards (band condicional) */}
@@ -404,7 +412,11 @@ export function HomeLike({
 
       {/* OpaPreço · 3ª grade, depois de "Em breve" e antes de Notícias. */}
       <div className="container">
-        <OpaPrecoAd className="home-ad home-ad--after" slotKey={adSlots[2]} {...adContext} />
+        <OpaPrecoAd
+          className="home-offers home-offers--after"
+          slotKey={adSlots[2]}
+          {...adContext}
+        />
       </div>
 
       {/* Notícias & entrevistas — chips + lead 430 + grade 2x2 */}

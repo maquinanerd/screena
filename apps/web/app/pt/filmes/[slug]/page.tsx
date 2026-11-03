@@ -624,7 +624,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
       {/* ===== OpaPreço · detail-01 — entre "A obra" e o elenco =====
           A margem vive na classe do PRÓPRIO slot e zera quando ele colapsa
           (`detail.css`); desligado, o slot nem sai no HTML. */}
-      <OpaPrecoAd className="title-ad title-ad--mid" slotKey="detail-01" {...adContext} />
+      <OpaPrecoAd className="title-offers title-offers--mid" slotKey="detail-01" {...adContext} />
 
       {/* ===== Elenco · faixa visual ===== */}
       <SectionBoundary decision={castSection}>
@@ -772,7 +772,11 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
       ) : null}
 
       {/* ===== OpaPreço · detail-02 — depois de "Mais como este" ===== */}
-      <OpaPrecoAd className="title-ad title-ad--bottom" slotKey="detail-02" {...adContext} />
+      <OpaPrecoAd
+        className="title-offers title-offers--bottom"
+        slotKey="detail-02"
+        {...adContext}
+      />
 
       <div className="detail-container">
         {isUnderReview ? (

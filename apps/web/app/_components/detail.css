@@ -1920,35 +1920,37 @@ main[data-vertical='series'] .score-card__method {
    anuncio, o script o colapsa (`data-op-estado="colapsado"`) e a margem zera
    junto, sem buraco. A reserva de altura e o estilo do anuncio sao do SDK do
    OpaPreço. Largura = a do `.detail-container` (1360 menos 64 de cada lado),
-   na mesma escada de recuos. ------ */
-main > .title-ad {
+   na mesma escada de recuos. O nome e `title-offers`, nunca `title-ad`: filtro
+   de bloqueador por nome de classe escondia o slot, medido em 2026-11-03 e
+   travado por `tests/web/opapreco-class-names.test.ts`. ------ */
+main > .title-offers {
   box-sizing: border-box;
   width: calc(100% - 128px);
   max-width: 1232px;
   margin-inline: auto;
 }
 
-main > .title-ad--mid {
+main > .title-offers--mid {
   margin-top: 52px;
 }
 
 /* Depois da ficha tecnica, que ja fecha com 72px de respiro. */
-main > .title-ad--bottom {
+main > .title-offers--bottom {
   margin-top: 0;
 }
 
-main > .title-ad[data-op-estado='colapsado'] {
+main > .title-offers[data-op-estado='colapsado'] {
   margin-top: 0;
 }
 
 @media (max-width: 1279px) {
-  main > .title-ad {
+  main > .title-offers {
     width: calc(100% - 96px);
   }
 }
 
 @media (max-width: 1023px) {
-  main > .title-ad {
+  main > .title-offers {
     width: calc(100% - 64px);
   }
 }
@@ -1959,7 +1961,7 @@ main > .title-ad[data-op-estado='colapsado'] {
      da 100% de largura a todo filho — sem subir a especificidade o slot
      encostava nas bordas da tela (medido em 2026-10-30: 375px de largura em
      375). */
-  main[data-vertical] > .title-ad.title-ad {
+  main[data-vertical] > .title-offers.title-offers {
     width: calc(100% - 2 * var(--pad-page-mobile));
     margin-inline: auto;
   }
@@ -1967,11 +1969,11 @@ main > .title-ad[data-op-estado='colapsado'] {
   /* Os slots acompanham a ordem editorial: sem `order` explicito eles ficariam
      no 0 — ANTES do elenco —, e o `detail-02` subiria para o meio da pagina.
      Mesmo numero da secao que os precede: o DOM decide o empate. */
-  main[data-vertical='series'] > .title-ad--mid {
+  main[data-vertical='series'] > .title-offers--mid {
     order: 4;
   }
 
-  main[data-vertical='series'] > .title-ad--bottom {
+  main[data-vertical='series'] > .title-offers--bottom {
     order: 6;
   }
 }
