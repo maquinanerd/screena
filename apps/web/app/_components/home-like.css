@@ -989,15 +989,19 @@ a.seg-toggle__opt[aria-current='page'] {
    estilo do anuncio, a reserva de altura e o colapso sao do SDK do OpaPreço.
    A margem fica no proprio `<op-slot>` e zera quando o script o colapsa (sem
    anuncio, `data-op-estado="colapsado"`): o slot vazio nao deixa buraco. No
-   telefone os 56px descem para 40, a escala dos intervalos entre secoes. */
-.home-ad--popular {
+   telefone os 56px descem para 40, a escala dos intervalos entre secoes.
+
+   O nome e `home-offers`, nunca `home-ad`: filtro de bloqueador por nome de
+   classe escondia o slot (`display: none`) com a oferta ja desenhada. Medido em
+   2026-11-03. Travado por `tests/web/opapreco-class-names.test.ts`. */
+.home-offers--popular {
   margin: clamp(40px, 5vw, 56px) 0;
 }
 
-.home-ad--after {
+.home-offers--after {
   margin: clamp(40px, 5vw, 56px) 0 0;
 }
 
-.home-ad[data-op-estado='colapsado'] {
+.home-offers[data-op-estado='colapsado'] {
   margin: 0;
 }

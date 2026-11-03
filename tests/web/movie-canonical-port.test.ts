@@ -114,11 +114,11 @@ describe('shell público mínimo · detalhe de filme', () => {
       'media-strip',
       'title-actions',
       'synopsis-lead',
-      'title-ad--mid',
+      'title-offers--mid',
       'cast-strip',
       'mnews-grid',
       'ficha-grid',
-      'title-ad--bottom',
+      'title-offers--bottom',
     ]
     let cursor = -1
     for (const cls of order) {
