@@ -1,9 +1,10 @@
 /**
  * cinerie-editorial-context-v1.ts — Contrato Cinerie -> MNScr. PURO.
  *
- * ESTADO: contrato TIPADO INICIAL. O Cinerie Context Service que o serve NAO faz
- * parte desta fase (ADR 0015, secao 3.2). O que existe aqui e a forma que o
- * servico tera de respeitar quando for implementado.
+ * ESTADO: servido desde 18/11/2026 por `POST /api/internal/editorial-context`
+ * (`apps/web`, ver `docs/operations/editorial-context.md`). Os campos `genres`,
+ * `seasonCount`, `episodeCount`, `lastAirDate`, `ended` (entidade) e `role`,
+ * `entityId`, `embedUrl` (midia) entraram com ele, opcionais e compativeis.
  *
  * E a SEGUNDA entrada do MNScr. Sem ela, o writer so conhece o que ScreenRant,
  * Variety e Collider disseram; com ela, conhece tambem o episodio, a temporada,
@@ -71,6 +72,13 @@ export const contextEntity = z.object({
   seasonNumber: z.number().int().min(0).optional(),
   episodeNumber: z.number().int().min(0).optional(),
   parentEntityId: stableId.optional(),
+  /** Generos localizados, na ordem do catalogo. */
+  genres: z.array(plainText(LIMITS.shortText)).max(20).default([]),
+  /** Serie: temporadas e episodios no catalogo, ultimo episodio exibido e se terminou. */
+  seasonCount: z.number().int().min(0).optional(),
+  episodeCount: z.number().int().min(0).optional(),
+  lastAirDate: optionalPlainText(64),
+  ended: z.boolean().optional(),
   externalIds: z.array(verifiedExternalId).max(10).default([]),
   cast: z.array(contextPerson).max(200).default([]),
   crew: z.array(contextPerson).max(200).default([]),
@@ -108,10 +116,23 @@ export type MediaLicenseStatus = (typeof MEDIA_LICENSE_STATUSES)[number]
  * contrato que as tornasse opcionais permitiria "esqueci de declarar" virar
  * "pode usar". O consumidor deve tratar ausencia de permissao como proibicao.
  */
+/** Papel da peca na ficha. Pôster e arte vertical; backdrop e cena servem de capa. */
+export const MEDIA_ROLES = ['poster', 'backdrop', 'scene', 'still', 'logo', 'trailer'] as const
+
 export const contextMedia = z.object({
   mediaId: stableId,
   kind: z.enum(['image', 'video', 'trailer']),
+  role: z.enum(MEDIA_ROLES).optional(),
+  /**
+   * A entidade dona da peca, quando o contexto traz mais de uma obra. O TIPO vai
+   * junto: filme e serie tem sequencias de id independentes, e `movie:12` e
+   * `tv:12` sao obras diferentes.
+   */
+  entityKind: entityKind.optional(),
+  entityId: stableId.optional(),
   url: httpUrl,
+  /** Video: endereco do player oficial para incorporar (sem cookie quando houver). */
+  embedUrl: httpUrl.optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   aspectRatio: optionalPlainText(16),
@@ -202,6 +223,7 @@ export const cinerieEditorialContextV1 = z
     availability: z
       .array(
         z.object({
+          entityKind: entityKind.optional(),
           entityId: stableId,
           country: z.string().length(2),
           providerName: plainText(LIMITS.shortText),

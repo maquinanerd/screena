@@ -146,7 +146,12 @@ transição editorial com gate e ator humano.
 
 ---
 
-## 3.2 Cinerie Context Service (componente futuro)
+## 3.2 Cinerie Context Service
+
+> **Implementado em 18/11/2026** como `POST /api/internal/editorial-context` no `screen-app`
+> (operação em [`docs/operations/editorial-context.md`](../operations/editorial-context.md)).
+> Primeiros consumidores: o MN-Prime e o portal do Máquina Nerd, que recebem o mesmo contrato
+> `cinerie-editorial-context-v1`. Os portões de mídia e de oferta são os da página pública.
 
 Será: **interno**, **autenticado**, **somente leitura**, **não acessível ao navegador**, independente
 do render público, baseado em **contrato versionado**, limitado aos dados necessários ao MNScr, e

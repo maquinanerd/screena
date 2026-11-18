@@ -215,6 +215,7 @@ export const validEditorialContext: CinerieEditorialContextV1 = {
       language: 'pt-BR',
       overview: 'Continuacao da adaptacao dirigida por Denis Villeneuve.',
       runtimeMinutes: 166,
+      genres: ['Ficcao cientifica', 'Aventura'],
       externalIds: [{ provider: 'tmdb', value: '693134' }],
       cast: [
         {

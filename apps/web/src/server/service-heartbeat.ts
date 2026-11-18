@@ -45,6 +45,7 @@ export const WEB_CREDENTIAL_ENV_NAMES = [
   "DATABASE_URL",
   "CINERIE_IP_HASH_SALT",
   "CINERIE_CATALOG_RESOLVE_API_KEYS",
+  "CINERIE_EDITORIAL_CONTEXT_API_KEYS",
 ] as const;
 
 type Env = Readonly<Record<string, string | undefined>>;
