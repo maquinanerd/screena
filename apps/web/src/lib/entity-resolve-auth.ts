@@ -46,7 +46,64 @@ export function readResolveCredentials(env: Record<string, string | undefined>):
   readonly credentials: readonly ResolveCredential[];
   readonly rejected: number;
 } {
-  const raw = (env.CINERIE_CATALOG_RESOLVE_API_KEYS ?? "").trim();
+  return readCredentialList(env.CINERIE_CATALOG_RESOLVE_API_KEYS);
+}
+
+/**
+ * As chaves cruas de uma variavel, na ordem, sem vazios.
+ */
+export function parseKeyList(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+}
+
+/**
+ * As chaves que VALEM: as cruas menos as curtas demais. E a lista que
+ * `matchResolveCredential` percorre.
+ *
+ * Ate 18/11/2026 as rotas comparavam contra a lista CRUA: a chave curta era
+ * "rejeitada" so na conta de ligar/desligar a rota, e um `changeme` ao lado da
+ * chave de verdade (`changeme,<chave>`) continuava abrindo a porta. Uma chave
+ * que o leitor recusa tem de ser recusada tambem na hora de comparar.
+ */
+export function acceptedKeys(raw: string | undefined): string[] {
+  return [...new Set(parseKeyList(raw).filter((key) => key.length >= MIN_KEY_LENGTH))];
+}
+
+/**
+ * Autenticacao de rota interna, inteira e PURA: a variavel de chaves e o
+ * cabecalho `Authorization` entram; sai `disabled` (nenhuma chave valida — a
+ * rota nao existe), `null` (nao autenticado) ou a credencial reconhecida. O
+ * `rejected` conta as chaves curtas da variavel, para a rota avisar SEMPRE que
+ * houver uma — inclusive ao lado de uma chave valida.
+ */
+export function authenticateInternalRequest(
+  rawKeys: string | undefined,
+  authorization: string | null,
+):
+  | { readonly state: "disabled"; readonly rejected: number }
+  | { readonly state: "unauthenticated"; readonly rejected: number }
+  | { readonly state: "ok"; readonly credential: ResolveCredential; readonly rejected: number } {
+  const { credentials, rejected } = readCredentialList(rawKeys);
+  if (credentials.length === 0) return { state: "disabled", rejected };
+  const credential = matchResolveCredential(acceptedKeys(rawKeys), extractPresentedKey(authorization));
+  if (credential === null) return { state: "unauthenticated", rejected };
+  return { state: "ok", credential, rejected };
+}
+
+/**
+ * O mesmo leitor, para QUALQUER variavel de chaves. Cada rota interna declara o
+ * seu escopo pelo nome da propria variavel (ver o cabecalho deste arquivo): o
+ * Context Service le `CINERIE_EDITORIAL_CONTEXT_API_KEYS`, e uma chave do
+ * resolve nao abre o contexto, nem o contrario.
+ */
+export function readCredentialList(rawValue: string | undefined): {
+  readonly credentials: readonly ResolveCredential[];
+  readonly rejected: number;
+} {
+  const raw = (rawValue ?? "").trim();
   if (raw === "") return { credentials: [], rejected: 0 };
 
   const parts = raw

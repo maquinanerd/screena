@@ -42,6 +42,12 @@ Como o `screen-app` nao tem tabela de contas tecnicas, o escopo e declarado pelo
 **nome da variavel** (§7). Uma lista de escopos por chave seria cerimonia sobre
 um conjunto de um elemento.
 
+**Chave curta não abre a rota (corrigido em 18/11/2026).** Até essa data a comparação usava a
+lista crua da variável: uma chave com menos de 24 caracteres era "ignorada" só na conta de
+ligar/desligar, e `changeme,<chave>` deixava `changeme` entrar. Hoje a comparação é contra as chaves
+válidas (`acceptedKeys`, `authenticateInternalRequest`), e o aviso
+`entity_resolve_credential_rejected` sai sempre que houver uma curta na lista.
+
 **A rota nasce desligada.** Sem chave configurada ela responde `503
 resolver_disabled` — nao ha flag `*_ENABLED` separada, porque ela so criaria o
 estado "ligada e sem credencial".

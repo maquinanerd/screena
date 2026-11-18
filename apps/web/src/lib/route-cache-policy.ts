@@ -247,6 +247,9 @@ export const ROUTE_CACHE_POLICY: Readonly<Record<string, RouteCachePolicy>> = {
   "/api/internal/entity-resolve": priv(
     "rota interna autenticada por credencial de maquina (ADR 0019)",
   ),
+  "/api/internal/editorial-context": priv(
+    "rota interna autenticada por credencial de maquina (ADR 0015, 3.2); quem chama guarda a ficha",
+  ),
   "/api/newsletter": priv("recebe dado pessoal (e-mail) por POST"),
   "/api/seo/redirect": priv(
     "consulta de redirect chamada pelo middleware a cada requisicao; cache aqui congelaria a tabela `redirects`",

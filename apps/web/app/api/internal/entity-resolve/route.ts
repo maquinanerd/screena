@@ -27,11 +27,7 @@ import {
   parseEntityResolveRequest,
   resolveAll,
 } from "../../../../src/lib/entity-resolve";
-import {
-  extractPresentedKey,
-  matchResolveCredential,
-  readResolveCredentials,
-} from "../../../../src/lib/entity-resolve-auth";
+import { authenticateInternalRequest } from "../../../../src/lib/entity-resolve-auth";
 import {
   consumeRateLimit,
   pruneRateLimitBuckets,
@@ -62,6 +58,9 @@ const rateLimitBuckets = new Map<string, RateLimitState>();
  * nenhum deve conseguir chamar esta rota, e a ausencia do cabecalho e o que
  * garante isso.
  */
+/** Chave curta na variavel ja foi avisada neste processo? */
+let warnedShortKey = false;
+
 const BASE_HEADERS: Readonly<Record<string, string>> = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
@@ -76,30 +75,33 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const { credentials, rejected } = readResolveCredentials(process.env);
-  const rawKeys = (process.env.CINERIE_CATALOG_RESOLVE_API_KEYS ?? "")
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part !== "");
+  // A comparacao e contra as chaves que VALEM (`acceptedKeys`): ate 18/11/2026
+  // ela usava a lista crua, e uma chave curta ao lado da verdadeira
+  // (`changeme,<chave>`) abria a rota. Chave curta e aviso sempre.
+  const auth = authenticateInternalRequest(
+    process.env.CINERIE_CATALOG_RESOLVE_API_KEYS,
+    request.headers.get("authorization"),
+  );
+  if (auth.rejected > 0 && !warnedShortKey) {
+    // Uma vez por processo: a cada requisicao seriam ate centenas de linhas por minuto.
+    warnedShortKey = true;
+    console.warn(
+      JSON.stringify({
+        event: "entity_resolve_credential_rejected",
+        count: auth.rejected,
+        detail: "chave curta demais em CINERIE_CATALOG_RESOLVE_API_KEYS",
+      }),
+    );
+  }
 
   // NASCE DESLIGADA. Sem chave configurada nao ha rota: `503` e nao `401`,
   // porque a diferenca importa para quem esta operando — `401` mandaria conferir
   // a chave do cliente quando o problema esta no ambiente do servidor.
-  if (credentials.length === 0) {
-    if (rejected > 0) {
-      console.warn(
-        JSON.stringify({
-          event: "entity_resolve_credential_rejected",
-          count: rejected,
-          detail: "chave curta demais em CINERIE_CATALOG_RESOLVE_API_KEYS",
-        }),
-      );
-    }
+  if (auth.state === "disabled") {
     return json({ error: "resolver_disabled" }, 503);
   }
 
-  const presented = extractPresentedKey(request.headers.get("authorization"));
-  const credential = matchResolveCredential(rawKeys, presented);
+  const credential = auth.state === "ok" ? auth.credential : null;
   if (credential === null) {
     // Uma unica recusa para "sem chave" e "chave errada": aqui, ao contrario do
     // CMS, nao ha conta reconhecida sem escopo — quem nao casa simplesmente nao

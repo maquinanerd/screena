@@ -48,10 +48,15 @@ export const DEFAULT_RATE_LIMIT_PER_MINUTE = 60;
  * recusa tudo, que e pior do que uma rota desligada.
  */
 export function readRateLimitPerMinute(env: Record<string, string | undefined>): number {
-  const raw = (env.CINERIE_CATALOG_RESOLVE_RATE_LIMIT_PER_MINUTE ?? "").trim();
-  if (raw === "") return DEFAULT_RATE_LIMIT_PER_MINUTE;
+  return readPositiveLimit(env.CINERIE_CATALOG_RESOLVE_RATE_LIMIT_PER_MINUTE, DEFAULT_RATE_LIMIT_PER_MINUTE);
+}
+
+/** O mesmo leitor, para o teto de outra rota interna (mesmas regras de fallback). */
+export function readPositiveLimit(rawValue: string | undefined, fallback: number): number {
+  const raw = (rawValue ?? "").trim();
+  if (raw === "") return fallback;
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) return DEFAULT_RATE_LIMIT_PER_MINUTE;
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return parsed;
 }
 
