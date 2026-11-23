@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { serializeJsonLd, websiteId } from '@screena/seo'
 
 import { EmptyState } from '../../_components/ds'
-import type { NewsCardView } from '../../../src/lib/news-presenter'
+import { newsCategoryLabel, type NewsCardView } from '../../../src/lib/news-presenter'
 import { HOME_PATH, SITE_URL, publicRobots } from '../../../src/lib/site'
 import { socialMetadata } from '../../../src/lib/social-metadata'
 import { getNewsIndexData } from '../../../src/server/news-pages'
@@ -66,8 +66,14 @@ export default async function NewsIndexPage() {
   const cards3 = orderedCards.slice(1, 4)
   const railPosts = orderedCards.slice(4, 6)
   const feed = orderedCards.slice(6)
+  // Rotulos de EXIBICAO ("news" -> "Notícia"). As abas ainda nao filtram
+  // (todas levam a /pt/noticias/): com UMA categoria so, a aba dela repetia
+  // "Todas" e prometia um filtro que nao existe — entao a barra so aparece com
+  // duas ou mais. Filtro de verdade pede `?categoria=` no servidor.
   const categories = [
-    ...new Set(orderedCards.map((card) => card.category).filter((c): c is string => c !== null)),
+    ...new Set(
+      orderedCards.map((card) => newsCategoryLabel(card.category)).filter((c): c is string => c !== null),
+    ),
   ].slice(0, 4)
 
   const breadcrumbJsonLd = {
@@ -117,11 +123,13 @@ export default async function NewsIndexPage() {
             <a aria-current="true" href="/pt/noticias/">
               Todas
             </a>
-            {categories.map((category) => (
-              <a href="/pt/noticias/" key={category}>
-                {category}
-              </a>
-            ))}
+            {categories.length > 1
+              ? categories.map((category) => (
+                  <a href="/pt/noticias/" key={category}>
+                    {category}
+                  </a>
+                ))
+              : null}
           </nav>
         </div>
         <div className="nws-divider" />
@@ -133,7 +141,7 @@ export default async function NewsIndexPage() {
               <div className="nws-feature">
                 <a href={feature.href}>
                   {feature.category !== null ? (
-                    <span className="nws-cat">{feature.category}</span>
+                    <span className="nws-cat">{newsCategoryLabel(feature.category)}</span>
                   ) : null}
                   <h2 className="nws-feature__title">{feature.title}</h2>
                   <NewsMeta card={feature} />
@@ -216,7 +224,7 @@ export default async function NewsIndexPage() {
                     </span>
                     <span>
                       {card.category !== null ? (
-                        <span className="eyebrow news-list-card__eyebrow">{card.category}</span>
+                        <span className="eyebrow news-list-card__eyebrow">{newsCategoryLabel(card.category)}</span>
                       ) : null}
                       <h3 className="nws-card__title" style={{ marginTop: 8 }}>
                         {card.title}

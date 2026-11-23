@@ -5,6 +5,7 @@ import { serializeJsonLd, websiteId } from '@screena/seo'
 import { CardBookmark } from '../../_components/card-bookmark'
 import { ContinueWatching } from '../../_components/continue-watching'
 import { DiscoverFilterableRails } from '../../_components/discover-rails'
+import { SEARCH_INPUT_ID, SearchAutofocus } from '../../_components/search-autofocus'
 import { SearchResults } from '../../_components/search-results'
 import { WatchPlatformLine } from '../../_components/watch-platform-line'
 import { takeUpcomingWeek } from '../../../src/lib/home-upcoming-presenter'
@@ -210,6 +211,7 @@ export default async function ExplorePage({
           <input
             aria-label="Buscar filmes, séries, pessoas"
             defaultValue={query}
+            id={SEARCH_INPUT_ID}
             name="q"
             placeholder="Buscar filmes, séries, pessoas…"
             type="search"
@@ -218,6 +220,8 @@ export default async function ExplorePage({
             ENTER
           </span>
         </form>
+        {/* Foca o campo quando a página é aberta pela lupa do cabeçalho (#busca). */}
+        <SearchAutofocus />
 
         {search !== null ? <SearchResults view={search} /> : null}
 

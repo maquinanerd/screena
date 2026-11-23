@@ -51,20 +51,19 @@ export function Filmography({ items }: { items: FilmographyItem[] }): ReactNode 
           <li key={`${item.entityType}-${item.href}-${index}`}>
             <a className="filmo__row" data-entity-type={item.entityType} href={item.href}>
               <span className="filmo__year">{item.year !== null ? item.year : '—'}</span>
+              {/* Badge TEXTUAL e visível (invariante 11). Até 23/11/2026 a
+                  linha só tinha um ponto vermelho/verde e o texto "Filme ·"
+                  ficava escondido para leitor de tela: quem enxerga sem
+                  distinguir vermelho de verde não sabia o que era cada linha. */}
               <span
-                aria-hidden="true"
                 className={
-                  item.entityType === 'movie' ? 'filmo__dot filmo__dot--movie' : 'filmo__dot filmo__dot--series'
+                  item.entityType === 'movie' ? 'filmo__type filmo__type--movie' : 'filmo__type filmo__type--series'
                 }
-              />
-              <span className="filmo__title">{item.title}</span>
-              <span className="filmo__role">
-                {/* Badge textual: a diferenciação nunca é só cor (invariante 11) */}
-                <span className="visually-hidden">
-                  {item.entityType === 'movie' ? 'Filme · ' : 'Série · '}
-                </span>
-                {item.roleLabel ?? ''}
+              >
+                {item.entityType === 'movie' ? 'Filme' : 'Série'}
               </span>
+              <span className="filmo__title">{item.title}</span>
+              <span className="filmo__role">{item.roleLabel ?? ''}</span>
             </a>
           </li>
         ))}

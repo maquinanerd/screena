@@ -250,12 +250,29 @@ describe('Popular essa semana — a aba ativa manda na lista', () => {
    */
 
   it('(9) aba vazia mantém a seção, as abas e a mensagem — nunca some', () => {
-    const text = renderRanking('movies')
+    // TODAS as abas vazias: a primeira pintura fica na default e diz que está
+    // vazia. (Com alguma aba cheia, a pintura abre nela — ver 9b.)
+    const allEmpty = panelsFor('movies').map((panel) => ({ ...panel, items: [] }))
+    const text = visibleText(
+      renderToStaticMarkup(<PopularThisWeek headingId="pop" panels={allEmpty} vertical="movies" />),
+    )
     expect(text).toContain('Nada por aqui esta semana.')
     // A seção e o resto das abas continuam na tela.
     expect(text).toContain('Popular essa semana')
     expect(text).toContain('Streaming')
     expect(text).toContain('Clássicos')
+  })
+
+  it('(9b) default vazia + outra aba cheia: a primeira pintura abre na CHEIA (23/11/2026)', () => {
+    // Em produção, `/pt/filmes` abria em "Em cartaz" dizendo "Nada por aqui
+    // esta semana" com "Streaming" e "Clássicos" cheios. A aba vazia continua
+    // na barra (clicável); só deixa de ser a porta de entrada.
+    const text = renderRanking('movies')
+    expect(text).not.toContain('Nada por aqui esta semana.')
+    expect(text).toContain('Em cartaz')
+    expect(
+      renderToStaticMarkup(<PopularThisWeek headingId="pop" panels={panelsFor('movies')} vertical="movies" />),
+    ).toMatch(/aria-selected="true"[^>]*>Streaming</)
   })
 
   it('(11) o número do rank entra no nome acessível (o card não tem texto)', () => {

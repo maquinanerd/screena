@@ -35,6 +35,7 @@ import type { ReactNode } from 'react'
 import { SectionTitle } from './ds'
 import { Rail } from './rail'
 import {
+  initialRankingSlug,
   RANKING_EMPTY_MESSAGE,
   RANKING_QUERY_PARAM,
   rankedTitleAccessibleName,
@@ -82,11 +83,10 @@ export function PopularThisWeek({
   panels,
   vertical,
 }: PopularThisWeekProps): ReactNode {
-  // A primeira pintura e SEMPRE a aba default da vertical — e por isso o HTML
-  // do servidor nao depende de `?ranking=` e a rota pode ser guardada.
-  const [active, setActive] = useState<RankingTabSlug>(() =>
-    resolveActiveRankingSlug(vertical, null),
-  )
+  // A primeira pintura e a aba default da vertical — ou a primeira CHEIA, se a
+  // default veio vazia (`initialRankingSlug`). Deriva so dos paineis, nunca da
+  // URL: o HTML do servidor nao depende de `?ranking=` e a rota segue guardavel.
+  const [active, setActive] = useState<RankingTabSlug>(() => initialRankingSlug(vertical, panels))
   // Marca se o leitor ja escolheu uma aba nesta sessao. Sem isso, o efeito que
   // le a URL brigaria com o clique: `replaceState` escreve `?ranking=` e a
   // leitura seguinte reafirmaria o mesmo valor a cada render.

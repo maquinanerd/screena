@@ -394,7 +394,7 @@ function buildSeasonView(
     overview: trimToNull(input.overview),
     airYear: validYearOrNull(input.airYear),
     episodeCount,
-    episodeCountLabel: formatCountLabel(episodeCount, "episodio", "episodios"),
+    episodeCountLabel: formatCountLabel(episodeCount, "episódio", "episódios"),
     poster: imageAsset(input.posterPath, POSTER_IMAGE_SPEC, authorization),
     episodes: input.episodes
       .map((episode) => buildEpisodeView(episode, authorization))
@@ -422,7 +422,7 @@ export function buildSeriesPageView(
     seasonsCount,
     episodesCount,
     seasonsCountLabel: formatCountLabel(seasonsCount, "temporada", "temporadas"),
-    episodesCountLabel: formatCountLabel(episodesCount, "episodio", "episodios"),
+    episodesCountLabel: formatCountLabel(episodesCount, "episódio", "episódios"),
     statusLabel: mapEntityStatus(input.record.status, "tv"),
     originalLanguageLabel: mapOriginalLanguage(input.record.originalLanguage),
     metaTitle: trimToNull(input.translation?.metaTitle),

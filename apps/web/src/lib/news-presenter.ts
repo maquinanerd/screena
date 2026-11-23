@@ -455,6 +455,34 @@ export function buildNewsCorrection(
   return { dateIso, dateLabel, note };
 }
 
+/**
+ * Rotulos pt-BR dos TIPOS de conteudo que o CMS grava como `category` em
+ * ingles. Mesmo vocabulario de `HOME_EDITORIAL_CONTENT_TYPE_EYEBROW` (a faixa
+ * "Destaques de hoje" ja dizia "Notícia" enquanto o indice de noticias dizia
+ * "news", em minuscula — medido em producao em 23/11/2026).
+ */
+const NEWS_CATEGORY_LABELS: Readonly<Record<string, string>> = {
+  news: "Notícia",
+  feature: "Especial",
+  review: "Crítica",
+  guide: "Guia",
+  list: "Lista",
+  interview: "Entrevista",
+  evergreen: "Atemporal",
+};
+
+/**
+ * Rotulo de EXIBICAO da categoria. So para a tela: o valor cru continua em
+ * `view.category`, que tambem e o `section` mandado ao OpaPreço — traduzir na
+ * origem mudaria o contexto do anuncio sem ninguem pedir. Categoria editorial
+ * de verdade ("Marvel") passa intacta.
+ */
+export function newsCategoryLabel(category: string | null): string | null {
+  const value = trimToNull(category);
+  if (value === null) return null;
+  return NEWS_CATEGORY_LABELS[value.toLowerCase()] ?? value;
+}
+
 /** Formata "YYYY-MM-DD..." em pt-BR: "30 de junho de 2026". `null` se invalido. */
 export function formatNewsDate(iso: string | null): string | null {
   const value = trimToNull(iso);

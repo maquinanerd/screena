@@ -153,7 +153,12 @@ describe('shell público mínimo · detalhe de série', () => {
     // pagina so entrega a ela os episodios da temporada selecionada.
     const listCode = withoutComments(episodeList).replaceAll("'", '"')
     expect(listCode.trimStart().startsWith('"use client"')).toBe(true)
-    expect(code).toContain('<EpisodeList episodes={season.episodes} seasonNumber={season.seasonNumber} />')
+    // Desde 23/11/2026 a pagina tambem entrega o slug canonico: a linha do
+    // episodio virou link da pagina do episodio (antes so tinha a seta).
+    expect(code.replace(/\s+/g, ' ')).toContain(
+      '<EpisodeList episodes={season.episodes} seasonNumber={season.seasonNumber} seriesSlug={seriesSlug} />',
+    )
+    expect(code).toContain('seriesSlug={data.canonicalSlug}')
     expect(listCode).toContain('episode.still !== null')
     expect(listCode).toContain('className="episode-row"')
     expect(code).not.toMatch(/src="https?:/)

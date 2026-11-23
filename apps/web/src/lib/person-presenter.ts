@@ -462,6 +462,62 @@ export function buildPersonCredits(
 }
 
 /**
+ * Personagens que o TMDB grava como "a propria pessoa" (documentario, talk
+ * show, making of). Sem genero no dado, o rotulo pt-BR e neutro.
+ */
+const SELF_CHARACTER = /^(self|himself|herself|themselves|themself)$/i;
+
+/**
+ * Rotulo de exibicao do papel de ELENCO: "Self" vira "Participação como si";
+ * o resto passa intacto (nome de personagem nao se traduz). So exibicao — o
+ * dado cru continua no banco e no JSON-LD.
+ */
+export function castCharacterLabel(character: string | null): string | null {
+  const value = trimToNull(character);
+  if (value === null) return null;
+  return SELF_CHARACTER.test(value) ? "Participação como si" : value;
+}
+
+/**
+ * Junta os creditos do MESMO titulo numa linha so, para EXIBICAO.
+ *
+ * O TMDB entrega um credito por funcao: Matt Damon em "Dinheiro Suspeito"
+ * chegava duas vezes (o personagem e "Producer"), e a ficha mostrava o mesmo
+ * poster duas vezes em "Conhecido por" e duas linhas iguais na filmografia
+ * (medido em producao em 23/11/2026). Aqui a primeira ocorrencia guarda a
+ * posicao (a lista ja vem ordenada por ano) e os papeis distintos viram
+ * "Personagem · Produção".
+ *
+ * NAO substitui `view.credits`: `countHiddenCredits` subtrai o tamanho DAQUELA
+ * lista do numero de linhas do banco, e juntar antes da subtracao faria a ficha
+ * anunciar creditos "ocultos" que estao na tela.
+ */
+export function mergeCreditsByTitle(credits: readonly PersonCredit[]): PersonCredit[] {
+  const merged = new Map<string, PersonCredit>();
+  const roles = new Map<string, string[]>();
+  for (const credit of credits) {
+    const previous = merged.get(credit.href);
+    if (previous === undefined) {
+      merged.set(credit.href, { ...credit });
+      roles.set(credit.href, credit.roleLabel === null ? [] : [credit.roleLabel]);
+      continue;
+    }
+    const list = roles.get(credit.href) ?? [];
+    if (credit.roleLabel !== null && !list.includes(credit.roleLabel)) list.push(credit.roleLabel);
+    roles.set(credit.href, list);
+    merged.set(credit.href, {
+      ...previous,
+      year: previous.year ?? credit.year,
+      posterUrl: previous.posterUrl ?? credit.posterUrl,
+    });
+  }
+  return [...merged.values()].map((credit) => {
+    const list = roles.get(credit.href) ?? [];
+    return { ...credit, roleLabel: list.length === 0 ? null : list.join(" · ") };
+  });
+}
+
+/**
  * Quantos creditos existem no banco e NAO chegaram a lista.
  *
  * Uma subtracao, e nao um contador por camada, porque o defeito que ela fecha e

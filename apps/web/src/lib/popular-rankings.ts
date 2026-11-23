@@ -134,6 +134,30 @@ export function resolveActiveRankingSlug(
   return match?.slug ?? fallback.slug;
 }
 
+/**
+ * A aba da PRIMEIRA pintura quando o leitor nao pediu nenhuma.
+ *
+ * A default da vertical, salvo quando ela esta VAZIA e outra aba tem titulos.
+ * Medido em producao em 23/11/2026: `/pt/filmes/` abria em "Em cartaz" com
+ * "Nada por aqui esta semana", enquanto "Streaming" e "Clássicos" estavam
+ * cheios — a faixa mais visivel da listagem comecava dizendo que nao havia
+ * nada. A aba vazia continua la, clicavel; so deixa de ser a porta de entrada.
+ *
+ * Deriva SO dos paineis que o servidor ja montou (nunca da URL): o HTML da
+ * primeira pintura continua o mesmo para qualquer `?ranking=`, e a rota segue
+ * guardavel. Um `?ranking=` explicito continua mandando (ver o efeito de deep
+ * link em `PopularThisWeek`), mesmo que aponte para uma aba vazia.
+ */
+export function initialRankingSlug(
+  vertical: RankingVertical,
+  panels: readonly { readonly tab: { readonly slug: RankingTabSlug }; readonly items: readonly unknown[] }[],
+): RankingTabSlug {
+  const preferred = resolveActiveRankingSlug(vertical, null);
+  const preferredPanel = panels.find((panel) => panel.tab.slug === preferred);
+  if (preferredPanel === undefined || preferredPanel.items.length > 0) return preferred;
+  return panels.find((panel) => panel.items.length > 0)?.tab.slug ?? preferred;
+}
+
 /** Um titulo ja posicionado no ranking. Card = poster + numero, nada mais. */
 export interface RankedTitle {
   /** `${entityType}:${id}` — chave estavel e unica entre filmes e series. */

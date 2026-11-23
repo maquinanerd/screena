@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 
 import { readSourceWithoutComments } from "../../../../../tests/support/source-text";
 import type { SeriesEpisodeView } from "../../../src/lib/series-presenter";
-import { EpisodeList } from "../episode-list";
+import { EPISODES_OPEN_LIMIT, EpisodeList } from "../episode-list";
 
 const STILL = { src: "https://image.tmdb.org/t/p/w500/still.jpg", width: 640, height: 360 };
 
@@ -61,7 +61,43 @@ describe("EpisodeList — a lista de episodios da ficha de serie", () => {
       '<p class="episode-row__synopsis">Sinopse inteira do piloto, sem corte nenhum.</p>',
     );
     expect(html).toContain('<p class="episode-row__meta">2019 · 45 min</p>');
+    // Sem slug da serie nao ha destino: nem link, nem a seta que prometia clique.
+    expect(html).not.toContain("<a ");
+    expect(html).not.toContain("episode-row__chevron");
+  });
+
+  it("(2b) com o slug da serie, o titulo e LINK da pagina do episodio e a seta aparece", () => {
+    const html = renderToStaticMarkup(
+      <EpisodeList episodes={[episode({ episodeNumber: 4 })]} seasonNumber={2} seriesSlug="terra-da-mafia" />,
+    );
+    expect(html).toContain(
+      '<h4 class="episode-row__title" style="letter-spacing:-0.01em;text-transform:none">' +
+        '<a class="episode-row__link" href="/pt/series/terra-da-mafia/temporadas/2/episodios/4/">Piloto</a></h4>',
+    );
     expect(html).toContain('<span aria-hidden="true" class="episode-row__chevron"><svg');
+    // Um link por linha: o cartao inteiro e alvo pelo `::after`, nao por varios `<a>`.
+    expect(html.match(/<a /g)).toHaveLength(1);
+  });
+
+  it("(2c) acima de EPISODES_OPEN_LIMIT, o resto vai dobrado num <details> nativo — e continua no HTML", () => {
+    const many = Array.from({ length: EPISODES_OPEN_LIMIT + 4 }, (_, i) =>
+      episode({ episodeNumber: i + 1, title: `Episodio ${i + 1}` }),
+    );
+    const html = renderToStaticMarkup(<EpisodeList episodes={many} seasonNumber={1} seriesSlug="x" />);
+    // Todos os episodios seguem no documento (indexaveis), nenhum some.
+    expect(html.match(/<li><article class="episode-row">/g)).toHaveLength(EPISODES_OPEN_LIMIT + 4);
+    expect(html).toContain('<details class="episode-more">');
+    expect(html).toContain('<summary class="episode-more__toggle">Mostrar mais 4 episódios</summary>');
+    expect(html).toContain(`<ol class="episode-list" start="${EPISODES_OPEN_LIMIT + 1}">`);
+    // O ultimo aberto vem ANTES do dobrado.
+    expect(html.indexOf(`>Episodio ${EPISODES_OPEN_LIMIT}<`)).toBeLessThan(html.indexOf("<details"));
+    expect(html.indexOf("<details")).toBeLessThan(html.indexOf(`>Episodio ${EPISODES_OPEN_LIMIT + 1}<`));
+  });
+
+  it("(2d) ate EPISODES_OPEN_LIMIT, nao ha <details> nem botao", () => {
+    const few = Array.from({ length: EPISODES_OPEN_LIMIT }, (_, i) => episode({ episodeNumber: i + 1 }));
+    const html = renderToStaticMarkup(<EpisodeList episodes={few} seasonNumber={1} />);
+    expect(html).not.toContain("<details");
   });
 
   it("(3) sem still autorizado nao ha img; campo ausente nao vira elemento vazio", () => {
