@@ -466,7 +466,7 @@ async function runChecks(
   record(17, "D. canonicalUrl usa /pt/series/", richByAlias?.canonicalUrl === "https://cinerie.com/pt/series/serie-rica/", `canonicalUrl=${richByAlias?.canonicalUrl}`);
   record(18, "D. titulo vem da traducao pt-BR", richByAlias?.view.title === "Serie Rica", `title=${richByAlias?.view.title}`);
   record(19, "D. periodo vem de first/last_air_date", richByAlias?.view.periodLabel === "2011-2019", `period=${richByAlias?.view.periodLabel}`);
-  record(20, "D. contagens reais aparecem", richByAlias?.view.seasonsCountLabel === "8 temporadas" && richByAlias?.view.episodesCountLabel === "73 episodios", `labels=${richByAlias?.view.seasonsCountLabel} / ${richByAlias?.view.episodesCountLabel}`);
+  record(20, "D. contagens reais aparecem", richByAlias?.view.seasonsCountLabel === "8 temporadas" && richByAlias?.view.episodesCountLabel === "73 episódios", `labels=${richByAlias?.view.seasonsCountLabel} / ${richByAlias?.view.episodesCountLabel}`);
   record(21, "D. imagens locais seguras aparecem", richByAlias?.view.media.poster?.src === "/media/series/rich-poster.webp" && richByAlias?.view.media.backdrop?.src === "/uploads/series/rich-backdrop.jpg", `poster=${richByAlias?.view.media.poster?.src ?? "null"}`);
 
   const visibleTypes = (richByAlias?.view.blocks ?? []).map((block) => block.blockType).sort();

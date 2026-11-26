@@ -288,11 +288,11 @@ describe("buildSeriesPageView", () => {
     expect(view.title).toBe("Serie PT");
     expect(view.periodLabel).toBe("2011-2019");
     expect(view.seasonsCountLabel).toBe("8 temporadas");
-    expect(view.episodesCountLabel).toBe("73 episodios");
+    expect(view.episodesCountLabel).toBe("73 episódios");
     expect(view.renderableBlockCount).toBe(2);
     expect(view.metaDescription).toBe("Descricao editorial existente.");
     expect(view.media.poster?.src).toBe("/media/series/show.webp");
-    expect(view.seasons[0]?.episodeCountLabel).toBe("2 episodios");
+    expect(view.seasons[0]?.episodeCountLabel).toBe("2 episódios");
     expect(view.seasons[0]?.poster?.src).toBe("/media/series/season-1.webp");
     expect(view.seasons[0]?.episodes.map((episode) => episode.episodeNumber)).toEqual([
       1,

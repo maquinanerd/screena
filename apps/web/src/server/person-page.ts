@@ -42,8 +42,10 @@ import type { SectionAbsenceReason } from "../lib/section-absence";
 import { SITE_URL } from "../lib/site";
 import { getPhotosForPerson, personPhotoAbsenceReason } from "./entity-gallery";
 import { getImageDisplayAuthorization } from "./image-license";
+import { crewJobLabel } from "../lib/crew-presenter";
 import {
   buildPersonPageView,
+  castCharacterLabel,
   countLinkableCreditRows,
   evaluatePersonIndexability,
   isPersonCreditEntityType,
@@ -344,11 +346,14 @@ async function resolveCredits(
 
   const credits: PersonCreditInput[] = [];
   for (const row of castRows) {
-    const credit = toCredit(row.entityType, row.entityId, row.character, targets);
+    // Rotulo de EXIBICAO: "Self" vira "Participação como si"; personagem passa intacto.
+    const credit = toCredit(row.entityType, row.entityId, castCharacterLabel(row.character), targets);
     if (credit !== null) credits.push(credit);
   }
   for (const row of crewRows) {
-    const role = row.job ?? row.department;
+    // Funcao em pt-BR pelo MESMO dicionario da ficha tecnica do episodio
+    // ("Executive Producer" -> "Produção executiva"); sem traducao, o nome cru.
+    const role = row.job !== null ? crewJobLabel(row.job) : row.department;
     const credit = toCredit(row.entityType, row.entityId, role, targets);
     if (credit !== null) credits.push(credit);
   }

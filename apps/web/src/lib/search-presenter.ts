@@ -181,6 +181,38 @@ export function buildSearchNewsResult(row: SearchNewsRowInput): SearchNewsResult
   }
 }
 
+/** Rotulo do tipo, o MESMO que o badge do cartao mostra sobre a imagem. */
+export const SEARCH_KIND_LABEL: Readonly<Record<SearchResultKind, string>> = {
+  movie: 'Filme',
+  tv: 'Série',
+  person: 'Pessoa',
+}
+
+/**
+ * A linha de meta do cartao de resultado, sem repeticao.
+ *
+ * O `subtitle` e projetado na ingestao ("Filme · 2026") e a tela ainda somava o
+ * ano: saia "Filme · 2026 · 2026", com o tipo repetido do badge logo acima
+ * (medido em producao em 23/11/2026). Aqui caem as partes que ja estao no
+ * cartao — o rotulo do tipo, que o badge mostra, e o ano repetido — e o ano
+ * entra uma vez so. Pura: nada e inventado, so deduplicado.
+ */
+export function formatSearchResultMeta(
+  result: Pick<SearchResultView, 'kind' | 'subtitle' | 'year'>,
+): string {
+  const kindLabel = SEARCH_KIND_LABEL[result.kind]
+  const year = result.year === null ? null : String(result.year)
+  const parts: string[] = []
+  for (const raw of (result.subtitle ?? '').split('·')) {
+    const part = raw.trim()
+    if (part === '' || part === year) continue
+    if (part.localeCompare(kindLabel, 'pt-BR', { sensitivity: 'base' }) === 0) continue
+    if (!parts.includes(part)) parts.push(part)
+  }
+  if (year !== null) parts.push(year)
+  return parts.join(' · ')
+}
+
 /**
  * Monta a view da pagina de busca.
  *

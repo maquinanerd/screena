@@ -23,7 +23,7 @@ import {
   hasEnoughUpcoming,
   type HomeUpcomingItem,
 } from '../../src/lib/home-upcoming-presenter'
-import type { NewsCardView } from '../../src/lib/news-presenter'
+import { newsCategoryLabel, type NewsCardView } from '../../src/lib/news-presenter'
 import { decideRouteSection } from '../../src/lib/section-absence'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SERIES_INDEX_PATH } from '../../src/lib/site'
 
@@ -170,7 +170,7 @@ function GlimpseCard({ item }: { item: HomeUpcomingItem }): ReactNode {
       </span>
       <span className="glimpse-card__body">
         <span className="glimpse-card__row">
-          <span style={{ minWidth: 0 }}>
+          <span className="glimpse-card__text">
             <span className="glimpse-card__title">{item.title}</span>
             <span className="glimpse-card__date">
               <svg aria-hidden="true" fill="none" height="13" viewBox="0 0 24 24" width="13">
@@ -235,8 +235,13 @@ export function HomeLike({
     contentId: adPrefix,
     section: vertical === 'movies' ? 'Filmes' : vertical === 'series' ? 'Séries' : null,
   } as const
+  // Rotulos pt-BR ("news" -> "Notícia"). Os chips ainda levam todos ao indice
+  // de noticias; com UMA categoria so, "Recomendados | news" eram dois links
+  // para a mesma pagina fingindo ser filtro — a linha so aparece com duas ou mais.
   const newsCategories = [
-    ...new Set(newsCards.map((card) => card.category).filter((c): c is string => c !== null)),
+    ...new Set(
+      newsCards.map((card) => newsCategoryLabel(card.category)).filter((c): c is string => c !== null),
+    ),
   ].slice(0, 6)
   const newsLead: NewsCardView | undefined = newsCards[0]
   const hasEditorial = hasEditorialHighlights(editorialHighlights)
@@ -433,7 +438,7 @@ export function HomeLike({
               Crônicas do cinema: lançamentos, bastidores e entrevistas do mundo dos filmes e
               séries
             </p>
-            {newsCategories.length > 0 ? (
+            {newsCategories.length > 1 ? (
               <ul className="hnews-chips">
                 <li>
                   <a aria-current="true" href={NEWS_INDEX_PATH}>

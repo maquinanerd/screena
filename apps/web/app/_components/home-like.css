@@ -100,7 +100,10 @@
 .ticker__dots {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 18px entre pontos de 6px = 24px de centro a centro. É o espaçamento que o
+     WCAG 2.2 (2.5.8) pede para alvo pequeno: o alvo de 24px de cada ponto
+     (abaixo) encosta no vizinho sem cobri-lo. Com 6px, os alvos tinham 12px. */
+  gap: 18px;
 }
 
 .ticker__dot {
@@ -127,8 +130,8 @@
 .ticker__dot::before {
   content: '';
   position: absolute;
-  left: -3px;
-  right: -3px;
+  left: -9px;
+  right: -9px;
   top: 50%;
   height: 24px;
   transform: translateY(-50%);

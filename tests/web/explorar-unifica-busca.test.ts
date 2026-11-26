@@ -66,7 +66,9 @@ describe("a rota que sobrevive é /pt/explorar/", () => {
   });
 
   it("o ícone de busca do cabeçalho aponta para a rota sobrevivente", () => {
-    expect(header).toContain("href={EXPLORE_PATH}");
+    // `#busca` foca o campo de Explorar ao chegar pela lupa (23/11/2026); a
+    // ROTA continua a sobrevivente, sem query propria.
+    expect(header).toContain("href={`${EXPLORE_PATH}#busca`}");
     expect(header).not.toContain('href="/pt/busca/"');
   });
 

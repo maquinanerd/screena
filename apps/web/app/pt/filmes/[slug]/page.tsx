@@ -23,6 +23,7 @@ import { SimilarTitles } from '../../../_components/similar-titles'
 import { TitleTopCast, type TitleTopPerson } from '../../../_components/title-top-cast'
 import { TrailerModal } from '../../../_components/trailer-modal'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
+import { WatchShortcut } from '../../../_components/watch-shortcut'
 import { RatingsLine } from '../../../_components/ratings-panel'
 import { canonicalRedirectPath } from '../../../../src/lib/canonical-redirect'
 import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
@@ -37,7 +38,7 @@ import {
   decideSection,
   type SectionDecision,
 } from '../../../../src/lib/section-absence'
-import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
+import { WATCH_ANCHOR_ID, watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { MOVIES_INDEX_PATH, NEWS_INDEX_PATH, SITE_URL, gatePublicRobots } from '../../../../src/lib/site'
 import { socialArt, socialMetadata } from '../../../../src/lib/social-metadata'
 import { getMoviePageData } from '../../../../src/server/movie-page'
@@ -435,6 +436,11 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
                 synopsis={view.synopsis}
                 variant="top"
               />
+              {/* Atalho para a tira de servicos, que fica abaixo do mosaico e
+                  fora da primeira dobra. Mesmas marcas da tira; sem marca, nada. */}
+              {watchSection.rendered ? (
+                <WatchShortcut view={watchSection.value} />
+              ) : null}
             </div>
 
             <div className="title-top__score">
@@ -568,7 +574,7 @@ export default async function MoviePage({ params }: { params: Promise<MoviePageP
           marcas licenciadas à direita, com a MODALIDADE visível ao lado de cada
           uma (decisão de 2026-08-13: loja só é honesta com a modalidade na
           tela). */}
-      <div className="detail-container title-actions">
+      <div className="detail-container title-actions" id={WATCH_ANCHOR_ID}>
         <div className="title-actions__bar">
           <div className="detail-actions">
             <EntityActions entityType="movie" entityId={entityId} />

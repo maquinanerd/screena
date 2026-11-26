@@ -18,6 +18,7 @@ import { isEditorialReviewPending } from '../../../../src/lib/editorial-review'
 import { buildExternalLinks } from '../../../../src/lib/external-links'
 import {
   formatHiddenCreditsNotice,
+  mergeCreditsByTitle,
   type PersonCredit,
   type PersonPageView,
 } from '../../../../src/lib/person-presenter'
@@ -94,7 +95,11 @@ const KNOWN_FOR_LIMIT = 5
  * cita um trabalho que a pagina nao mostra.
  */
 function knownForCredits(view: PersonPageView): PersonCredit[] {
-  return view.credits.filter((credit) => credit.posterUrl !== null).slice(0, KNOWN_FOR_LIMIT)
+  // Um poster por TITULO: sem a juncao, ator que tambem produziu o filme
+  // aparecia duas vezes seguidas (medido em producao em 23/11/2026).
+  return mergeCreditsByTitle(view.credits)
+    .filter((credit) => credit.posterUrl !== null)
+    .slice(0, KNOWN_FOR_LIMIT)
 }
 
 interface PersonPageParams {
@@ -478,7 +483,7 @@ export default async function PersonPage({ params }: { params: Promise<PersonPag
           </div>
           {view.credits.length > 0 ? (
             <Filmography
-              items={view.credits.map((credit) => ({
+              items={mergeCreditsByTitle(view.credits).map((credit) => ({
                 entityType: credit.entityType,
                 title: credit.title,
                 href: credit.href,

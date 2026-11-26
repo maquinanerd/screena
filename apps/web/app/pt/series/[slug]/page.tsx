@@ -17,6 +17,7 @@ import { EntitySynopsis } from '../../../_components/entity-synopsis'
 import { CinerieScoreCard } from '../../../_components/cinerie-score-card'
 import { SectionHead } from '../../../_components/section-head'
 import { WatchBrandsRow } from '../../../_components/watch-brands-row'
+import { WatchShortcut } from '../../../_components/watch-shortcut'
 import { AwardsBand } from '../../../_components/awards-band'
 import { OpaPrecoAd } from '../../../_components/opapreco-ad'
 import { SectionBoundary } from '../../../_components/section-boundary'
@@ -30,7 +31,7 @@ import {
   type CinerieScoreView,
 } from '../../../../src/lib/cinerie-score-presenter'
 import { HERO_SYNOPSIS_MAX_CHARS, heroGenreChips } from '../../../../src/lib/detail-hero'
-import { watchBrandsRow } from '../../../../src/lib/watch-brands-row'
+import { WATCH_ANCHOR_ID, watchBrandsRow } from '../../../../src/lib/watch-brands-row'
 import { SimilarTitles } from '../../../_components/similar-titles'
 import { TrailerModal } from '../../../_components/trailer-modal'
 import { EpisodeList } from '../../../_components/episode-list'
@@ -140,7 +141,13 @@ function seasonNumberFromQuery(value: string | string[] | undefined): number | n
   return Number.isSafeInteger(seasonNumber) ? seasonNumber : null
 }
 
-function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
+function SeasonGroup({
+  season,
+  seriesSlug,
+}: {
+  season: SeriesSeasonView
+  seriesSlug: string
+}): ReactNode {
   const seasonMeta = [
     season.episodeCountLabel,
     season.airYear !== null ? `estreou em ${season.airYear}` : null,
@@ -162,7 +169,11 @@ function SeasonGroup({ season }: { season: SeriesSeasonView }): ReactNode {
         // Client component DE PROPOSITO: o payload RSC leva os dados de cada
         // episodio, e nao a arvore de elementos de cada linha (ver o cabecalho
         // de `EpisodeList`). O HTML do servidor e o mesmo.
-        <EpisodeList episodes={season.episodes} seasonNumber={season.seasonNumber} />
+        <EpisodeList
+          episodes={season.episodes}
+          seasonNumber={season.seasonNumber}
+          seriesSlug={seriesSlug}
+        />
       ) : (
         <p className="muted">Nenhum episódio publicado nesta temporada.</p>
       )}
@@ -493,6 +504,11 @@ export default async function SeriesPage({
                 synopsis={view.synopsis}
                 variant="top"
               />
+              {/* Atalho para a tira de servicos, que fica abaixo do mosaico e
+                  fora da primeira dobra. Mesmas marcas da tira; sem marca, nada. */}
+              {watchSection.rendered ? (
+                <WatchShortcut view={watchSection.value} />
+              ) : null}
             </div>
 
             <div className="title-top__score">
@@ -604,7 +620,7 @@ export default async function SeriesPage({
       {/* ===== Ações + onde assistir (canônico de 2026-10-30) =====
           DOIS botões (Minha lista + Avaliar) e as marcas licenciadas com a
           MODALIDADE visível (decisão de 2026-08-13). */}
-      <div className="detail-container title-actions">
+      <div className="detail-container title-actions" id={WATCH_ANCHOR_ID}>
         <div className="title-actions__bar">
           <div className="detail-actions">
             <EntityActions entityType="tv" entityId={entityId} />
@@ -692,7 +708,11 @@ export default async function SeriesPage({
             </p>
           ))}
           {selectedSeason !== null ? (
-            <SeasonGroup key={selectedSeason.seasonNumber} season={selectedSeason} />
+            <SeasonGroup
+              key={selectedSeason.seasonNumber}
+              season={selectedSeason}
+              seriesSlug={data.canonicalSlug}
+            />
           ) : null}
         </section>
       ) : null}

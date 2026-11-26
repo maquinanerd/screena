@@ -445,7 +445,10 @@ async function runChecks(
   const credits = richByAlias?.view.credits ?? [];
   record(22, "D. filmografia resolve so alvos com slug (2 de 3 creditos)", credits.length === 2, `credits=${credits.length}`);
   record(23, "D. creditos ordenados por ano desc com hrefs corretos", credits[0]?.href === "/pt/series/serie-nova/" && credits[1]?.href === "/pt/filmes/filme-antigo/", `hrefs=[${credits.map((c) => c.href).join(", ")}]`);
-  record(24, "D. papel do credito (character/job) preservado", credits[0]?.roleLabel === "Director" && credits[1]?.roleLabel === "Protagonista", `roles=[${credits.map((c) => c.roleLabel).join(", ")}]`);
+  // Desde 23/11/2026 a funcao de EQUIPE sai em pt-BR pelo dicionario da ficha
+  // tecnica (`crewJobLabel`: "Director" -> "Direção"); o personagem do ELENCO
+  // continua intacto. O que esta assercao trava e que o papel CHEGA a tela.
+  record(24, "D. papel do credito (character/job) preservado", credits[0]?.roleLabel === "Direção" && credits[1]?.roleLabel === "Protagonista", `roles=[${credits.map((c) => c.roleLabel).join(", ")}]`);
   record(25, "D. credito sem slug canonico e omitido (nao inventa link)", !credits.some((c) => c.title === "Movie Without Slug"), `titulos=[${credits.map((c) => c.title).join(", ")}]`);
 
   // 27/28: OMITIR nao pode ser OCULTAR. A pessoa tem 3 linhas de credito

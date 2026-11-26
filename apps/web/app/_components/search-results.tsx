@@ -15,13 +15,11 @@
 
 import type { ReactNode } from 'react'
 
-import type { SearchPageView } from '../../src/lib/search-presenter'
-
-const KIND_LABEL: Record<string, string> = {
-  movie: 'Filme',
-  tv: 'Série',
-  person: 'Pessoa',
-}
+import {
+  formatSearchResultMeta,
+  SEARCH_KIND_LABEL,
+  type SearchPageView,
+} from '../../src/lib/search-presenter'
 
 export function SearchResults({ view }: { view: SearchPageView }): ReactNode {
   const nothingFound = view.results.length === 0 && view.news.length === 0
@@ -61,15 +59,17 @@ export function SearchResults({ view }: { view: SearchPageView }): ReactNode {
               <span className="explore-result__thumb">
                 {result.imageUrl !== null ? (
                   <img alt="" loading="lazy" src={result.imageUrl} />
-                ) : null}
-                <span className="explore-result__kind">{KIND_LABEL[result.kind] ?? 'Título'}</span>
+                ) : (
+                  // Sem pôster, a moldura bege vazia parecia imagem quebrada.
+                  // O título em tipografia ocupa o lugar — como a Letterboxd faz.
+                  <span aria-hidden="true" className="explore-result__noimg">
+                    {result.title}
+                  </span>
+                )}
+                <span className="explore-result__kind">{SEARCH_KIND_LABEL[result.kind] ?? 'Título'}</span>
               </span>
               <span className="explore-result__title">{result.title}</span>
-              <span className="explore-result__meta">
-                {[result.subtitle, result.year === null ? null : String(result.year)]
-                  .filter((part): part is string => part !== null && part !== '')
-                  .join(' · ')}
-              </span>
+              <span className="explore-result__meta">{formatSearchResultMeta(result)}</span>
             </a>
           ))}
         </div>

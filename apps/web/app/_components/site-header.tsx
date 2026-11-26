@@ -221,7 +221,9 @@ export function SiteHeader(): ReactNode {
           </nav>
 
           <div className="site-header__actions">
-            <a aria-label="Buscar" className="site-header__icon-link" href={EXPLORE_PATH}>
+            {/* `#busca`: Explorar põe o FOCO no campo (ver `search-autofocus.tsx`) —
+                quem clicou na lupa já pode digitar. */}
+            <a aria-label="Buscar" className="site-header__icon-link" href={`${EXPLORE_PATH}#busca`}>
               <svg aria-hidden="true" fill="none" height="19" viewBox="0 0 24 24" width="19">
                 <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
                 <path d="m20 20-3.8-3.8" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
@@ -266,7 +268,7 @@ export function SiteHeader(): ReactNode {
             </li>
           ))}
           <li>
-            <a href={EXPLORE_PATH} onClick={() => menuRef.current?.close()}>
+            <a href={`${EXPLORE_PATH}#busca`} onClick={() => menuRef.current?.close()}>
               Buscar
             </a>
           </li>

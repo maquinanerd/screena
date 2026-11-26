@@ -100,3 +100,33 @@ export function watchBrandsRow(view: WatchAvailabilityView): readonly WatchBrand
     destinationKind: item.destinationKind,
   }));
 }
+
+/** Âncora da tira "Onde assistir" da ficha (filme e série). */
+export const WATCH_ANCHOR_ID = "onde-assistir";
+
+/** Quantas marcas o atalho do topo nomeia antes de virar "e mais N". */
+const SHORTCUT_NAMED_BRANDS = 2;
+
+/**
+ * O texto do atalho "Onde assistir" do TOPO da ficha.
+ *
+ * Medido em produção em 23/11/2026: a tira de serviços fica abaixo do mosaico
+ * de mídia, a ~900px do topo num notebook de 1440×900 — fora da primeira dobra,
+ * para a pergunta que mais leva alguém a uma ficha no Brasil ("onde eu vejo
+ * isso?"). A IMDb e o Rotten Tomatoes respondem no próprio hero. Aqui o topo
+ * ganha UMA linha que nomeia até duas marcas e aponta para a tira — a tira
+ * continua sendo o único lugar com logo, modalidade e link de saída.
+ *
+ * Só nomes que já estão na tira (mesma fonte, `watchBrandsRow`): nada é
+ * inventado nem resumido além da contagem. Sem marca, `null` — e o atalho não
+ * aparece (a tira diz a ausência com a própria voz).
+ */
+export function watchShortcutLabel(brands: readonly WatchBrandRowItem[]): string | null {
+  const names = brands.map((brand) => brand.name.trim()).filter((name) => name !== "");
+  if (names.length === 0) return null;
+  const shown = names.slice(0, SHORTCUT_NAMED_BRANDS);
+  const rest = names.length - shown.length;
+  if (rest > 0) return `${shown.join(", ")} e mais ${rest}`;
+  if (shown.length === 2) return `${shown[0]} e ${shown[1]}`;
+  return shown[0] ?? null;
+}

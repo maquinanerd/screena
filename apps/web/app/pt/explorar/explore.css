@@ -686,6 +686,24 @@
   display: block;
 }
 
+/* Sem poster: o titulo, em tipografia, no lugar da imagem (nunca uma moldura
+   vazia que se le como imagem quebrada). */
+.explore-result__noimg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 36px 14px 14px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: #5d574d;
+  overflow-wrap: anywhere;
+}
+
 /* Pessoa nao tem poster 2:3; o retrato fica melhor em 3:4. */
 .explore-result[data-entity-type='person'] .explore-result__thumb {
   aspect-ratio: 3 / 4;

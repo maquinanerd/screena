@@ -41,7 +41,7 @@ describe('shell público mínimo · detalhe de pessoa', () => {
   it('preserva biografia revisada, créditos, notícias e revisão editorial', () => {
     expect(code).toContain('BIOGRAPHY_BLOCK_TYPES.has(block.blockType)')
     expect(code).toContain('block.blockType === "news_context"')
-    expect(code).toContain('view.credits.map(')
+    expect(code).toContain('mergeCreditsByTitle(view.credits).map(')
     expect(code).toContain('href={credit.href}')
     expect(code).toContain('Filmografia ainda não disponível.')
     expect(code).toContain('personalDetails.map(')
