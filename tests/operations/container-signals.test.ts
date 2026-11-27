@@ -169,7 +169,8 @@ describe('o script de servico entrega o SIGTERM ao processo que drena', () => {
  * usa; qualquer outra variavel crua vira sintaxe de shell).
  *
  * O Next trata o SIGTERM sozinho (`server/lib/start-server.js`, 15.5 e 16.4: fecha
- * o servidor, espera as requisicoes em curso e sai 0). O que faltava era o sinal
+ * o servidor, espera as requisicoes em curso e sai; 0 no 15.5, 143 no 16, de
+ * proposito e depois de drenar). O que faltava era o sinal
  * CHEGAR ate ele.
  */
 const START_DE_APP_NEXT =

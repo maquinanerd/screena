@@ -224,6 +224,13 @@ duas versoes do lockfile (15.5.25 no site e no admin, 15.4.11 no CMS): fecha o
 servidor, espera as requisicoes em curso, fecha o resto e sai 0. Nem o Payload nem
 o codigo dos apps registra outro handler. Faltava o sinal chegar.
 
+> **Desde 2026-11 o CMS roda Next 16** (correcao de seguranca,
+> [`seguranca-rce-2026-11.md`](seguranca-rce-2026-11.md)). O `start-server.js` do 16
+> drena do mesmo jeito, mas termina com `process.exit(143)` (128 + SIGTERM), de
+> proposito. O `docker stop` do CMS sai **143** com a requisicao entregue; o site e o
+> admin, no 15.5, seguem saindo 0. O passo "SIGTERM chega ao Next" da CI espera o
+> codigo de cada versao, e o controle negativo continua derrubando a requisicao.
+
 ### Laboratorio (CI, imagens REAIS, `docker stop -t 12` com uma requisicao em curso)
 
 A requisicao fica presa no handler pelo PostgreSQL PAUSADO (`/api/health/` no site,

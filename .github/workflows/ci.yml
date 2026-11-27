@@ -877,7 +877,11 @@ jobs:
       # saia 1 e o Next morria junto com o container, no meio das requisicoes
       # (medido em 17/09/2026 nas imagens reais: 175-240 ms, requisicao derrubada).
       # Com `exec next start` o processo do script E o Next, que trata o sinal
-      # sozinho: fecha o servidor, espera o que esta em curso e sai 0.
+      # sozinho: fecha o servidor, espera o que esta em curso e sai. O codigo de
+      # saida depende da versao: o Next 15.5 (site e admin) sai 0; o Next 16 (CMS,
+      # desde a correcao de seguranca de 2026-11) sai 143 = 128 + SIGTERM de
+      # proposito, DEPOIS de drenar (`process.exit(143)` em start-server.js). O que
+      # distingue o conserto do controle negativo e a requisicao entregue.
       #
       # A PROVA E UMA REQUISICAO EM CURSO. O PostgreSQL PAUSADO segura a requisicao
       # dentro do handler; o `docker stop` chega com ela aberta e o banco volta 3 s
@@ -967,32 +971,34 @@ jobs:
             echo "$c: saida [${saida}] stop_ms [$(( (fim - inicio) / 1000000 ))] curl [$(cat "/tmp/curl-$c")] http [$(cat "/tmp/http-$c")] requisicao_entregue [${entregue}]"
           }
 
-          # O conserto: o Next e filho DIRETO do pnpm no PID 1, drena e sai 0.
+          # O conserto: o Next e filho DIRETO do pnpm no PID 1, drena e sai com o
+          # codigo da versao dele (0 no Next 15.5, 143 no Next 16; nunca 137, o
+          # SIGKILL de quem estourou o prazo do `docker stop`).
           provar_conserto() {
-            local rotulo=$1 c=$2 url=$3 marcador=$4 cadeia
-            shift 4
+            local rotulo=$1 c=$2 url=$3 marcador=$4 saida_esperada=$5 cadeia
+            shift 5
             cadeia="$(cadeia_do_next "$c")"
             echo "${rotulo}: cadeia do Next ate o PID 1: ${cadeia}"
             local direto='^[0-9]+:next-server [^|]*[|]1:node[|]$'
             [[ "${cadeia}" =~ ${direto} ]] || falha "${rotulo}: o Next nao e filho direto do pnpm no PID 1: ${cadeia}"
             parar_com_requisicao "$c" "$url" "$marcador" "$@"
-            [ "${saida}" = "0" ] || falha "${rotulo}: docker stop saiu ${saida} (esperado 0)"
+            [ "${saida}" = "${saida_esperada}" ] || falha "${rotulo}: docker stop saiu ${saida} (esperado ${saida_esperada})"
             [ "${entregue}" = "sim" ] || falha "${rotulo}: a requisicao em curso nao chegou ao cliente — o Next nao drenou"
           }
 
           # O controle negativo: sem o `exec`, um shell fica entre o pnpm e o Next, o
           # sinal nao chega, e a requisicao morre com o container.
           provar_controle_negativo() {
-            local rotulo=$1 c=$2 url=$3 marcador=$4
-            shift 4
+            local rotulo=$1 c=$2 url=$3 marcador=$4 saida_do_conserto=$5
+            shift 5
             echo "${rotulo} (controle negativo): cadeia do Next ate o PID 1: $(cadeia_do_next "$c")"
             parar_com_requisicao "$c" "$url" "$marcador" "$@"
-            [ "${saida}" != "0" ] || falha "${rotulo}: o controle negativo saiu 0 — este passo nao distingue o conserto"
+            [ "${saida}" != "${saida_do_conserto}" ] || falha "${rotulo}: o controle negativo saiu ${saida}, como o conserto — este passo nao distingue o conserto"
             [ "${entregue}" = "nao" ] || falha "${rotulo}: o controle negativo entregou a requisicao — este passo nao distingue o conserto"
           }
 
           # 1) SITE: o container `web` dos passos anteriores, com o CMD da imagem.
-          provar_conserto site web http://localhost:3000/api/health/ '"database":"ok"'
+          provar_conserto site web http://localhost:3000/api/health/ '"database":"ok"' 0
           docker create --name web-sem-exec --network cinerie-ci \
             -e DATABASE_URL="${DB}/screen" \
             -e CINERIE_PUBLIC_SITE_URL=http://localhost:3100 \
@@ -1001,7 +1007,7 @@ jobs:
           tirar_exec web-sem-exec apps/web/package.json
           docker start web-sem-exec >/dev/null
           if esperar_200 http://localhost:3100/api/health/; then
-            provar_controle_negativo site web-sem-exec http://localhost:3100/api/health/ '"database":"ok"'
+            provar_controle_negativo site web-sem-exec http://localhost:3100/api/health/ '"database":"ok"' 0
           else
             falha "o controle negativo do site nao subiu"
           fi
@@ -1015,7 +1021,7 @@ jobs:
           admin_auth=(-u ci:senha-de-prova-nao-e-credencial)
           docker run -d --name admin --network cinerie-ci "${admin_env[@]}" -p 3006:3006 cinerie-admin:ci >/dev/null
           if esperar_200 http://localhost:3006/health "${admin_auth[@]}"; then
-            provar_conserto admin admin http://localhost:3006/health 'Conectado' "${admin_auth[@]}"
+            provar_conserto admin admin http://localhost:3006/health 'Conectado' 0 "${admin_auth[@]}"
           else
             falha "o admin nao subiu"
           fi
@@ -1023,7 +1029,7 @@ jobs:
           tirar_exec admin-sem-exec apps/admin/package.json
           docker start admin-sem-exec >/dev/null
           if esperar_200 http://localhost:3106/health "${admin_auth[@]}"; then
-            provar_controle_negativo admin admin-sem-exec http://localhost:3106/health 'Conectado' "${admin_auth[@]}"
+            provar_controle_negativo admin admin-sem-exec http://localhost:3106/health 'Conectado' 0 "${admin_auth[@]}"
           else
             falha "o controle negativo do admin nao subiu"
           fi
@@ -1041,7 +1047,7 @@ jobs:
           docker run -d --name cms --network cinerie-ci "${cms_env[@]}" \
             -e PAYLOAD_PUBLIC_SERVER_URL=http://localhost:3002 -p 3002:3002 cinerie-cms:ci >/dev/null
           if esperar_200 http://localhost:3002/healthz; then
-            provar_conserto cms cms http://localhost:3002/readyz '"service":"cinerie-cms"'
+            provar_conserto cms cms http://localhost:3002/readyz '"service":"cinerie-cms"' 143
           else
             falha "o CMS nao subiu"
           fi
@@ -1050,7 +1056,7 @@ jobs:
           tirar_exec cms-sem-exec apps/cms/package.json
           docker start cms-sem-exec >/dev/null
           if esperar_200 http://localhost:3102/healthz; then
-            provar_controle_negativo cms cms-sem-exec http://localhost:3102/readyz '"service":"cinerie-cms"'
+            provar_controle_negativo cms cms-sem-exec http://localhost:3102/readyz '"service":"cinerie-cms"' 143
           else
             falha "o controle negativo do CMS nao subiu"
           fi
@@ -1059,7 +1065,7 @@ jobs:
             echo "${falhas} falha(s) — ver as linhas ::error:: acima"
             exit 1
           fi
-          echo "OK: o Next dos tres apps recebe o SIGTERM, entrega a requisicao em curso e sai 0; sem o exec, a derruba."
+          echo "OK: o Next dos tres apps recebe o SIGTERM, entrega a requisicao em curso e sai (0 no 15.5, 143 no 16); sem o exec, a derruba."
 
       - name: Logs do container (sempre)
         if: always()

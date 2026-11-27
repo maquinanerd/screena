@@ -76,6 +76,13 @@ de `.js` para `.ts`). Para nao trocar de bundler num PR de seguranca:
 
 Migrar o CMS para Turbopack e outra mudanca, com teste proprio.
 
+**Desligamento:** o Next 16 drena as requisicoes em curso no SIGTERM como o 15.5,
+mas termina com `process.exit(143)` (128 + SIGTERM) de proposito, em vez de 0. O
+`docker stop` do CMS passa a sair 143 com a requisicao entregue. O passo "SIGTERM
+chega ao Next" da CI espera 0 no site e no admin e 143 no CMS (ver
+[`sigterm-e-pid1.md`](sigterm-e-pid1.md)). Para o EasyPanel nao muda nada: a tarefa
+parada pelo proprio orquestrador num redeploy nao entra na politica de restart.
+
 ### 2.3 Payload 3.86 para 3.94: o que exigiu codigo
 
 - **Migration** `20261127_034638_payload_3_94_seguranca`: a 3.90 trouxe o campo
