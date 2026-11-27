@@ -629,7 +629,12 @@ async function bootCmsHarness(resources: HarnessResources): Promise<CmsHarness> 
   if (!skipped) {
     // ~2 minutos com o Postgres de pe: o caso em que congelar o laco de eventos
     // mais custaria (ver `async-child-process.ts`).
-    const build = await spawnChild('node', [nextBin, 'build'], {
+    //
+    // `--webpack`, o MESMO bundler do script `build` do pacote: no Next 16 o
+    // padrao virou Turbopack, que recusa o `webpack()` do `next.config.ts`
+    // (o `extensionAlias` de `.js` para `.ts`). Sem a flag a suite testaria um
+    // build diferente do que vai para a imagem.
+    const build = await spawnChild('node', [nextBin, 'build', '--webpack'], {
       cwd: cmsDir,
       env: childEnv,
       stdio: 'pipe',

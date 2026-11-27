@@ -12,7 +12,7 @@
 # Este servico NUNCA aplica migration do `screen-db`: a migration publica
 # pertence ao processo governado do banco. Ele apenas RECUSA readiness enquanto o
 # schema estiver atrasado.
-ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
 FROM ${NODE_IMAGE}
 
 WORKDIR /app

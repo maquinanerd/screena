@@ -16,6 +16,7 @@ import * as migration_20260805_231638_media_thumbnail from './20260805_231638_me
 import * as migration_20260807_024956_editorial_media_ingest from './20260807_024956_editorial_media_ingest';
 import * as migration_20260811_184943_entity_link_verification_source from './20260811_184943_entity_link_verification_source';
 import * as migration_20260811_221529_articles_language_enum from './20260811_221529_articles_language_enum';
+import * as migration_20261127_034638_payload_3_94_seguranca from './20261127_034638_payload_3_94_seguranca';
 
 export const migrations = [
   {
@@ -106,6 +107,11 @@ export const migrations = [
   {
     up: migration_20260811_221529_articles_language_enum.up,
     down: migration_20260811_221529_articles_language_enum.down,
-    name: '20260811_221529_articles_language_enum'
+    name: '20260811_221529_articles_language_enum',
+  },
+  {
+    up: migration_20261127_034638_payload_3_94_seguranca.up,
+    down: migration_20261127_034638_payload_3_94_seguranca.down,
+    name: '20261127_034638_payload_3_94_seguranca'
   },
 ];

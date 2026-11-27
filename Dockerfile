@@ -3,7 +3,7 @@
 # resolvido no Docker Hub. Sobrescrevivel no deploy sem editar o Dockerfile:
 #   docker build --build-arg NODE_IMAGE=node:22-bookworm-slim@sha256:<novo> ...
 # Para atualizar o default, resolva o digest atual (ver docs/runbooks/PRODUCTION_DEPLOY.md).
-ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
 FROM ${NODE_IMAGE}
 
 WORKDIR /app

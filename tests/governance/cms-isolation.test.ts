@@ -147,9 +147,12 @@ describe('CMS editorial: banco e codigo isolados', () => {
     const cms = JSON.parse(await readFile(resolve(CMS_DIR, 'package.json'), 'utf-8')) as {
       dependencies: Record<string, string>
     }
-    // `@payloadcms/next@3.86.0` NAO aceita 15.5.x, que e o que apps/web usa.
-    // A divergencia e deliberada e precisa continuar visivel.
-    expect(cms.dependencies.next).toBe('15.4.11')
+    // `@payloadcms/next@3.94.2` aceita `>=15.4.11 <15.5.0 || >=16.4.5`: NUNCA a
+    // 15.5.x, que e o que apps/web usa. A 15.4 acabou na 15.4.11, sem as
+    // correcoes de RCE do otimizador, entao o CMS foi para a 16.4 (ver
+    // docs/operations/seguranca-rce-2026-11.md). A divergencia e deliberada e
+    // precisa continuar visivel.
+    expect(cms.dependencies.next).toBe('16.4.6')
   })
 
   it('as migrations Prisma nao foram alteradas por esta fase', async () => {
