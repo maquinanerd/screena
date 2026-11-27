@@ -1486,7 +1486,15 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e: unknown) => {
-  console.error(e);
-  process.exitCode = 1;
-});
+// Falha sai por `process.exit(1)` EXPLICITO. O `embedded-postgres` registra, ao
+// ser importado, um gancho que chama `process.exit(0)` no `beforeExit`: o zero
+// escrito vence o `process.exitCode = 1` e a falha saia com codigo 0. Travado por
+// tests/governance/embedded-postgres-child-process.test.ts.
+main()
+  .then(() => {
+    if (Number(process.exitCode ?? 0) !== 0) process.exit(1);
+  })
+  .catch((e: unknown) => {
+    console.error(e);
+    process.exit(1);
+  });

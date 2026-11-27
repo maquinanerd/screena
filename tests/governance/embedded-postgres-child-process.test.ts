@@ -35,6 +35,28 @@
  * LIMITE CONHECIDO: a regra olha o arquivo hospedeiro, nao os modulos que ele
  * importa. Um helper em outro arquivo que chame a API sincrona escaparia. Nao ha
  * nenhum hoje; se surgir, o caminho e o mesmo: `runChild`/`spawnChild` nele.
+ *
+ * ============================================================================
+ * SEGUNDA REGRA: O PONTO DE ENTRADA REPROVA COM `process.exit`, NAO `exitCode`
+ * ============================================================================
+ * Ao ser IMPORTADO, o `embedded-postgres` chama `AsyncExitHook(gracefulShutdown)`.
+ * O `async-exit-hook` liga o `beforeExit` a `process.exit(0)`, com o zero
+ * ESCRITO, e esse zero vence qualquer `process.exitCode = 1` atribuido antes. Um
+ * script que reprova so por `exitCode` imprime `[FAIL]` e sai 0. Medido em
+ * 26/11/2026: `process.exitCode = 1` sozinho sai 1; com o pacote importado antes,
+ * sai 0. Foi assim que `validate:synopsis-render` ficou verde na CI com
+ * `RESUMO: 0/1` (main de 18/11 a 26/11), e o `validate:person-eligibility` ja
+ * tinha caido no mesmo buraco em 21/08 (PR #212). Os outros doze scripts com o
+ * mesmo final passavam de verdade, mas nada os impedia de esconder uma falha.
+ *
+ * Ponto de entrada = hospedeiro dentro de uma pasta `scripts/` (o que
+ * `tsx scripts/x.ts` roda). Harness de teste nao entra: quem decide o codigo de
+ * saida ali e o vitest/playwright, pelo relatorio, nao pelo `exit`.
+ *
+ * LIMITE CONHECIDO: a regra pede que a CHAMADA exista no arquivo, nao que todo
+ * caminho de falha chegue a ela, e uma string com `process.exit(` tambem
+ * satisfaria a regra. Ela pega o padrao que de fato se repetiu (`void main()` /
+ * `await main()` com `exitCode` e nenhum `exit`), nao toda grafia possivel.
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs'
@@ -104,6 +126,16 @@ export function usosDaApiSincrona(
     usos.push({ identificador: m[1] ?? '', linha })
   }
   return usos
+}
+
+/** Hospedeiro que e PONTO DE ENTRADA: mora numa pasta `scripts/` e nao e arquivo de teste. */
+export function ehPontoDeEntrada(arquivo: string): boolean {
+  return arquivo.split('/').includes('scripts') && !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(arquivo)
+}
+
+/** Ha CHAMADA a `process.exit(...)`? `process.exitCode` nao conta: e ele que o gancho apaga. */
+export function chamaProcessExit(codigoSemComentarios: string): boolean {
+  return /\bprocess\s*\.\s*exit\s*\(/.test(codigoSemComentarios)
 }
 
 function relativo(absoluto: string): string {
@@ -268,6 +300,35 @@ describe('hospedeiros de PostgreSQL embarcado nao congelam o laco de eventos', (
     ).toEqual([])
   }, 60_000)
 
+  it('todo hospedeiro que e ponto de entrada reprova com process.exit, nunca so com exitCode', () => {
+    const { hospedeiros, semComentarios } = varrer()
+    const pontosDeEntrada = [...hospedeiros].filter(ehPontoDeEntrada).sort()
+    // Nao vacuo: a regra precisa enxergar os scripts que ja cairam no buraco,
+    // inclusive os que so hospedam POR FECHO (os canarios sobem o cluster pelos
+    // harnesses do CMS e do screen-db, sem citar o pacote).
+    expect(pontosDeEntrada.length).toBeGreaterThanOrEqual(40)
+    for (const conhecido of [
+      'apps/web/scripts/validate-synopsis-render-real-postgres.ts',
+      'apps/web/scripts/validate-person-eligibility-real-postgres.ts',
+      'services/ingestion/scripts/validate-text-recovery-real-postgres.ts',
+      'apps/web/scripts/canary-editorial-entity-links-real-postgres.ts',
+      'apps/web/scripts/canary-entity-link-auto-verification-real-postgres.ts',
+    ]) {
+      expect(pontosDeEntrada.includes(conhecido), conhecido).toBe(true)
+    }
+    const ofensores = pontosDeEntrada.filter((arquivo) => !chamaProcessExit(semComentarios(arquivo)))
+    expect(
+      ofensores,
+      [
+        'Estes scripts hospedam PostgreSQL embarcado e nao chamam process.exit: o embedded-postgres',
+        'responde ao beforeExit com process.exit(0) e apaga qualquer process.exitCode = 1, entao uma',
+        'falha sai com codigo 0 e o passo da CI fica verde. Termine com',
+        'main().then(() => { if (Number(process.exitCode ?? 0) !== 0) process.exit(1) })',
+        '      .catch((e) => { console.error(e); process.exit(1) })',
+      ].join('\n'),
+    ).toEqual([])
+  }, 60_000)
+
   it('a copia do CMS tem o MESMO codigo do helper canonico', () => {
     // Linha a linha, sem comentarios e sem linhas vazias: o cabecalho de cada
     // copia e diferente de proposito, e o diff de uma divergencia aponta a linha.
@@ -325,6 +386,30 @@ describe('detector (funcoes puras) — controles negativos', () => {
     expect(hospeda("import type EmbeddedPostgres from 'embedded-postgres'")).toBe(false)
     expect(hospeda('// sobe um embedded-postgres por validador')).toBe(false)
     expect(hospeda("import { spawn } from 'node:child_process'")).toBe(false)
+  })
+
+  it('saida: so a CHAMADA a process.exit conta; exitCode e comentario nao', () => {
+    const chama = (codigo: string): boolean => chamaProcessExit(stripComments(codigo, 'c-like'))
+    expect(chama('if (falhou) process.exit(1)')).toBe(true)
+    expect(chama('main().then((c) => process.exit(c))')).toBe(true)
+    expect(chama('process . exit (1)')).toBe(true)
+    // O final que se repetiu: placar em exitCode e saida natural.
+    expect(chama("process.exitCode = passed === total ? 0 : 1\n\nvoid main()")).toBe(false)
+    expect(chama('process.exitCode = 1\nawait main();')).toBe(false)
+    expect(chama('// sem process.exit(1) aqui, o gancho zera o exitCode')).toBe(false)
+    expect(chama('/* process.exit(1) */ void main()')).toBe(false)
+  })
+
+  it('ponto de entrada: pasta scripts/, nunca arquivo de teste nem harness', () => {
+    expect(ehPontoDeEntrada('apps/web/scripts/validate-synopsis-render-real-postgres.ts')).toBe(true)
+    expect(ehPontoDeEntrada('services/ingestion/scripts/validate-text-recovery-real-postgres.ts')).toBe(
+      true,
+    )
+    expect(ehPontoDeEntrada('apps/cms/src/__tests__/harness.ts')).toBe(false)
+    expect(ehPontoDeEntrada('apps/cms/e2e/global-setup.ts')).toBe(false)
+    expect(ehPontoDeEntrada('apps/web/scripts/x.test.ts')).toBe(false)
+    // Substring nao basta: o segmento tem de ser `scripts`.
+    expect(ehPontoDeEntrada('apps/web/src/transcripts/x.ts')).toBe(false)
   })
 
   it('resolve import relativo com extensao .js e alias do tsconfig', () => {
