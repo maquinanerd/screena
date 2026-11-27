@@ -537,8 +537,16 @@ async function main(): Promise<void> {
   console.log('cadeia da automacao provada: limiar -> verificado -> projetado -> superficie')
 }
 
-main().catch((error: unknown) => {
-  // Sem eco do conteudo da materia nem da URL do banco.
-  console.error('[canario] falhou:', error instanceof Error ? error.message : 'erro desconhecido')
-  process.exitCode = 1
-})
+// Falha sai por `process.exit(1)` EXPLICITO. O `embedded-postgres` registra, ao
+// ser importado, um gancho que chama `process.exit(0)` no `beforeExit`: o zero
+// escrito vence o `process.exitCode = 1` e a falha saia com codigo 0. Travado por
+// tests/governance/embedded-postgres-child-process.test.ts.
+main()
+  .then(() => {
+    if (Number(process.exitCode ?? 0) !== 0) process.exit(1)
+  })
+  .catch((error: unknown) => {
+    // Sem eco do conteudo da materia nem da URL do banco.
+    console.error('[canario] falhou:', error instanceof Error ? error.message : 'erro desconhecido')
+    process.exit(1)
+  })

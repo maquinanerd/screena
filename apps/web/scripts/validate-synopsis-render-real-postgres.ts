@@ -36,7 +36,7 @@
  */
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
+import { createRequire, register } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -59,6 +59,14 @@ const SITE = "https://cinerie.com";
 /** O texto que o backfill teria recuperado do bloco `translations`. */
 const SINOPSE_RECUPERADA =
   "Sinopse recuperada do bloco translations, que estava no banco o tempo todo.";
+
+/**
+ * Quantos checks uma execucao COMPLETA registra. Um placar `n/n` com `n` menor
+ * que isto e uma execucao que parou no meio (o `catch` registra UM check de
+ * "execucao") ou um check apagado sem querer: nos dois casos o validador nao
+ * mediu o que diz medir, e reprova.
+ */
+const CHECKS_ESPERADOS = 4;
 
 let passed = 0;
 let total = 0;
@@ -108,6 +116,34 @@ function ligarAmbienteIndexavel(): void {
   delete env.VERCEL_ENV;
 }
 
+/**
+ * Faz `import "./x.css"` virar um modulo vazio NESTE processo.
+ *
+ * A ficha de filme importa `detail-hero.css` e `detail.css` desde a divisao do
+ * CSS por rota. Quem carrega CSS e o bundler do Next; o Node puro nao sabe o que
+ * e `.css` e o `import()` da rota morria com `ERR_UNKNOWN_FILE_EXTENSION` antes
+ * do primeiro check (medido na CI da main de 18/11/2026 e no PR #356). A pagina
+ * nao muda: o CSS nao participa do texto que este validador procura no markup.
+ *
+ * O gancho entra por `register` (o mesmo de
+ * `validate-decision-robots-render-real-postgres.ts`) e precisa ser registrado
+ * ANTES do `import()` da rota. Registrado depois do `tsx`, ele roda PRIMEIRO na
+ * cadeia de `load`, entao o `.css` nunca chega ao loader do `tsx`. A query e
+ * descartada antes do teste de extensao, para um `?v=` qualquer nao escapar.
+ */
+function tratarCssComoModuloVazio(): void {
+  register(
+    "data:text/javascript," +
+      encodeURIComponent(
+        "export async function load(url, context, nextLoad) {" +
+          " if (url.split('?')[0].endsWith('.css'))" +
+          " return { format: 'module', source: 'export default {};', shortCircuit: true };" +
+          " return nextLoad(url, context); }",
+      ),
+    import.meta.url,
+  );
+}
+
 /** A pagina como o Next a chamaria: componente async que devolve JSX. */
 type PageComponent = (args: {
   params: Promise<Record<string, string>>;
@@ -143,7 +179,7 @@ function semScripts(markup: string): string {
   return markup.replace(/<script[\s\S]*?<\/script>/g, '');
 }
 
-async function main(): Promise<void> {
+async function main(): Promise<number> {
   const port = await freePort();
   const dataDir = mkdtempSync(path.join(tmpdir(), "cinerie-synopsis-render-pg-"));
   // SEM `initdbFlags`: o cluster default sobe no checkout acentuado (quem morre
@@ -206,6 +242,7 @@ async function main(): Promise<void> {
                ('movie', 901, '${LANGUAGE}', 'Filme Recuperado', '${SINOPSE_RECUPERADA}', now()),
                ('movie', 902, '${LANGUAGE}', 'Filme Sem Sinopse', NULL, now())`);
 
+    tratarCssComoModuloVazio();
     const movieRoute = (await import("../app/pt/filmes/[slug]/page.tsx")) as unknown as {
       default: PageComponent;
     };
@@ -248,8 +285,20 @@ async function main(): Promise<void> {
     record("execucao", false, primeiraLinha(e));
     console.error(e);
   } finally {
-    if (disconnect) await disconnect();
-    if (started) await pg.stop();
+    // Limpeza nao e check: no Windows o `stop()` do embedded-postgres rejeita com
+    // `EBUSY` ao apagar o diretorio de dados (medido em 26/11/2026), e sem estes
+    // `catch` a rejeicao escapava do `finally`, o RESUMO nem era impresso e o
+    // codigo de saida vinha do acidente, nao do placar.
+    if (disconnect) {
+      await disconnect().catch((e: unknown) =>
+        console.warn(`Aviso: disconnect falhou (${primeiraLinha(e)}).`),
+      );
+    }
+    if (started) {
+      await pg.stop().catch((e: unknown) =>
+        console.warn(`Aviso: pg.stop falhou (${primeiraLinha(e)}); o SO limpa o resto.`),
+      );
+    }
     delete process.env.DATABASE_URL;
     try {
       rmSync(dataDir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250 });
@@ -260,7 +309,32 @@ async function main(): Promise<void> {
   }
 
   console.log(`\nRESUMO: ${passed}/${total} checks OK.`);
-  process.exitCode = passed === total ? 0 : 1;
+  if (passed !== total || total !== CHECKS_ESPERADOS) {
+    console.error(
+      `Resultado: FALHOU (${passed}/${total} OK; uma execucao completa registra ${CHECKS_ESPERADOS} checks).`,
+    );
+    return 1;
+  }
+  console.log(
+    "Resultado: PASSOU. A sinopse recuperada atravessa loader, presenter e componente ate o HTML.",
+  );
+  return 0;
 }
 
-void main();
+/**
+ * `process.exit` EXPLICITO, nunca so `process.exitCode`.
+ *
+ * `embedded-postgres` registra `async-exit-hook` ao ser IMPORTADO, e esse gancho
+ * responde ao `beforeExit` chamando `process.exit(0)` — com o zero escrito, que
+ * vence qualquer `process.exitCode` atribuido antes. Por isso este validador
+ * imprimia `[FAIL] 1. execucao` e `RESUMO: 0/1` e saia com codigo 0: o passo da
+ * CI ficou verde sem medir nada. Chamar `process.exit(codigo)` aqui encerra o
+ * processo antes de o laco de eventos esvaziar, entao o `beforeExit` nunca
+ * dispara. O Postgres ja foi derrubado no `finally` de `main`.
+ */
+main()
+  .then((codigo) => process.exit(codigo))
+  .catch((e: unknown) => {
+    console.error("[FAIL] validador ABORTOU fora do bloco de checks:", e);
+    process.exit(1);
+  });
