@@ -10,7 +10,7 @@ Interactive workflow to design Payload collections from source CMS data. Config-
 > ## ⚠️ Restricoes da Cinerie
 >
 > Conteudo VENDORIZADO de `payloadcms/skills` (commit `832d5bc`, 2026-07-07),
-> alinhado a Payload `^3.0.0`. Rodamos **3.86.0** — compativel.
+> alinhado a Payload `^3.0.0`. Rodamos **3.94.2** — compativel.
 >
 > **Relevancia baixa neste repo.** Nao ha migracao de CMS em curso: o editorial
 > entra por contrato (`editorial-draft-v1` do MNScr) ou pela redacao humana no

@@ -87,7 +87,7 @@ exemplo que pode ter envelhecido.
 | Contexto de build | raiz do repositório |
 | Dockerfile | `Dockerfile.cms` |
 | Target | nenhum (single-stage deliberado) |
-| Base | `node:22-bookworm-slim`, **pinada por digest** `sha256:6c74791e…f6b3` |
+| Base | `node:22-bookworm-slim`, **pinada por digest** `sha256:be979e55…d6eb` |
 | Gerenciador | pnpm 9.15.4 via corepack |
 | WORKDIR | `/app` |
 | Usuário final | `node` (**não-root**) |

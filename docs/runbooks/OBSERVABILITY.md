@@ -81,7 +81,7 @@ de site/indexação; são metadados seguros de baking.
 
 | Item | Estado | Onde |
 | --- | --- | --- |
-| Base pinada por **digest** (não tag flutuante) | `ARG NODE_IMAGE=node:22-bookworm-slim@sha256:6c74791e…f6b3` | `Dockerfile` |
+| Base pinada por **digest** (não tag flutuante) | `ARG NODE_IMAGE=node:22-bookworm-slim@sha256:be979e55…d6eb` | `Dockerfile` |
 | Base **sobrescrevível** no deploy | `--build-arg NODE_IMAGE=…@sha256:<novo>` | idem |
 | Container **não-root** (`USER node`, uid 1000) | `chown -R node:node /app` + `USER node` | idem |
 | Migrate no boot **fail-loud** | `migrate deploy || exit 1` | idem (preservado) |

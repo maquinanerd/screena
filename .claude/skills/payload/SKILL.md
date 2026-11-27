@@ -10,7 +10,7 @@ Payload is a Next.js native CMS with TypeScript-first architecture, providing ad
 > ## ⚠️ Restricoes da Cinerie (leia ANTES de aplicar qualquer default daqui)
 >
 > Este arquivo e conteudo VENDORIZADO de `payloadcms/skills` (commit `832d5bc`,
-> 2026-07-07), alinhado a Payload `^3.0.0`. Rodamos **3.86.0** — compativel.
+> 2026-07-07), alinhado a Payload `^3.0.0`. Rodamos **3.94.2** — compativel.
 >
 > Tres defaults upstream foram **removidos** deste arquivo por contradizerem o
 > contrato de publicacao. Nao os reintroduza a partir da memoria nem da doc
