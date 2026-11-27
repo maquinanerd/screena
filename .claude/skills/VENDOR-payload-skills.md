@@ -13,7 +13,7 @@
 | Data do commit | 2026-07-07 |
 | Licenca | MIT |
 | Payload alvo do upstream | `^3.0.0` (peer deps em `PLUGIN-DEVELOPMENT.md`) |
-| Payload deste repo | `3.86.0` (`apps/cms/package.json`) |
+| Payload deste repo | `3.94.2` (`apps/cms/package.json`; era 3.86.0 quando este registro foi feito) |
 
 ## Verificacao de versao
 
